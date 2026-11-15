@@ -6143,6 +6143,64 @@ test('C2/C3/C7 candidates render, choose and page with revision', () => {
     equal(choose[0].args[1], 'c1', 'candidate id');
 });
 
+// ---- 拼音条跟随候选栏（3.74.7）：音节按内容坐标放，滑动只同步 scrollLeft。
+// 旧实现按视口坐标放、左滑出界时全被钳到 12px 堆成一团。
+test('pinyin strip follows the candidate bar when it scrolls', {since: '3.74.7'}, () => {
+    const world = new KeyboardWorld();
+    world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
+        'const keyboard = window.testKeyboard = new FeelimeKeyboard();');
+    world.build();
+    world.hello({ mode: 'pinyin' });
+    const kb = world.context.testKeyboard;
+    const candidates = [
+        { id: 'c1', text: '法比' }, { id: 'c2', text: '发币' },
+        { id: 'c3', text: '乏力' }, { id: 'c4', text: '发布' },
+        { id: 'c5', text: '法宝' }, { id: 'c6', text: '发飙' },
+        { id: 'c7', text: '法币' }, { id: 'c8', text: '罚笔' },
+        { id: 'c9', text: '发鼻' }, { id: 'c10', text: '法度' },
+    ];
+    world.engineState({ phase: 'READY', revision: 7, composing: 'fabi', candidates, hasNextPage: false });
+    const line = world.$('preeditLine');
+    const bar = world.$('candidates');
+    // 拼音带 360 宽、左缘在 0；首候选词两字各 40 宽，从 x=20 起。
+    line.getBoundingClientRect = () => ({ left: 0, top: 0, right: 360, bottom: 18, width: 360, height: 18 });
+    const cand = bar.children[0];
+    Object.defineProperty(cand, 'firstChild', {
+        value: { nodeType: 3, length: 2, textContent: '法比' }, configurable: true,
+    });
+    cand.getBoundingClientRect = () => ({ left: 12, top: 0, right: 112, bottom: 40, width: 100, height: 40 });
+    world.document.createRange = () => {
+        let s = 0, e = 0;
+        return {
+            setStart: (_n, o) => { s = o; },
+            setEnd: (_n, o) => { e = o; },
+            getBoundingClientRect: () => ({
+                left: 20 + s * 40, top: 0, right: 20 + e * 40, bottom: 20,
+                width: (e - s) * 40, height: 20,
+            }),
+        };
+    };
+    // mock 的 scrollWidth 只按子元素宽度累加，不算绝对定位的 left 偏移；
+    // 真实 WebView 里 .py-slot 的 left 本身就会撑开溢出区，这里直接给足。
+    Object.defineProperty(line, 'scrollWidth', { value: 600, configurable: true });
+    // 左滑 100px：首候选词已滑出大半，旧实现会把两个音节都钳到 12px。
+    bar.scrollLeft = 100;
+    kb.alignPinyin();
+    const slots = [...line.querySelectorAll('.py-slot')];
+    equal(slots.length, 2, 'two syllables placed');
+    equal(slots[0].textContent, 'fa', 'first syllable');
+    equal(slots[1].textContent, 'bi', 'second syllable');
+    // 内容坐标：字中心 40/80 + 已滚 100；绝不能是钳制后的 12px。
+    equal(slots[0].style.left, '140px', 'fa stays over 法 in content coords');
+    equal(slots[1].style.left, '180px', 'bi stays over 比 in content coords');
+    equal(line.scrollLeft, 100, 'strip scrolls with the bar');
+    // 继续左滑：只同步 scrollLeft，不重建音节。
+    bar.scrollLeft = 150;
+    kb.syncPinyinScroll();
+    equal(line.scrollLeft, 150, 'strip follows further swipes');
+    equal(line.querySelectorAll('.py-slot').length, 2, 'slots survive sync without rebuild');
+});
+
 test('bar auto-fetches pages and CN alts carry their final glyphs ',  ()=> {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ phase: 'READY', revision: 7, composing: '', candidates: [] });

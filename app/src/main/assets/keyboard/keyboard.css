@@ -376,7 +376,11 @@ body.landscape #symCatBar { margin-top: 3px; gap: 4px; }
     left: 0;
     right: 0;
     min-height: var(--preedit-band, 18px);
-    overflow: visible;
+    /* 横向可滚、滚动条隐藏：拼音带与候选条同 scrollLeft，音节贴着汉字走。
+     * 纵向不溢出（音节 11px 在 18px 行盒内）。 */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
     white-space: nowrap;
     align-items: center;
     font-size: calc(13px * var(--preedit-font-scale, 1));

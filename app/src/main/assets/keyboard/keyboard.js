@@ -348,7 +348,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.6';
+    const KEYBOARD_VERSION = '3.74.7';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -2306,7 +2306,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // near its end pulls the next page too.
             document.getElementById('candidates').addEventListener('scroll', () => {
                 this.maybeLoadMoreCandidates();
-                this.schedulePinyinAlign();
+                this.syncPinyinScroll();
             });
             // Word-frequency vs single-char filter tabs.
             document.querySelectorAll('[data-expand-tab]').forEach(button => {
@@ -10281,6 +10281,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this._pyAlign = requestAnimationFrame(() => this.alignPinyin());
         }
 
+        /** 拼音带跟随候选条滚动：音节位置只在内容变化时量一次，滑动时只同步
+         * scrollLeft，不再每帧重算重建（旧做法左滑出界时全被钳到 12px 堆成一团）。 */
+        syncPinyinScroll() {
+            const line = document.getElementById('preeditLine');
+            const bar = document.getElementById('candidates');
+            if (!line || !bar || !line.querySelector('.py-slot')) return;
+            line.scrollLeft = bar.scrollLeft;
+        }
+
         /** 每个音节落在对应汉字正上方，不再整串贴在键盘最左边。 */
         alignPinyin() {
             this._pyAlign = 0;
@@ -10290,16 +10299,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             line.classList.remove('aligned');
             document.body.classList.remove('preedit-aligned');
             document.querySelectorAll('.ruby-target').forEach(node => node.classList.remove('ruby-target'));
+            line.scrollLeft = 0;
             if (!this.composing || this.preeditFrame) return;
             const rawEl = line.querySelector('.preedit-raw');
             const pieces = this.pinyinPieces(rawEl ? rawEl.textContent : '');
             const cand = document.querySelector('#candidates .candidate');
-            const host = document.getElementById('softKeyboard');
-            if (!pieces.length || !cand || !host || !cand.firstChild || cand.firstChild.nodeType !== 3) return;
+            const bar = document.getElementById('candidates');
+            if (!pieces.length || !cand || !bar || !cand.firstChild || cand.firstChild.nodeType !== 3) return;
             cand.classList.add('ruby-target');
             void cand.offsetWidth;
-            const hostRect = host.getBoundingClientRect();
-            if (!hostRect.width) return;
+            // 内容坐标：字符中心相对拼音带左缘，再加候选条已滚过的距离。
+            // 拼音带随后与候选条同 scrollLeft，音节就贴着汉字一起走；
+            // 滑出视野的字自然带走，不再被钳到左缘堆成一团。
+            // 用拼音带自身作参照（而非键盘），单手模式下带子偏移时也不错位。
+            const lineRect = line.getBoundingClientRect();
+            if (!lineRect.width) return;
+            const scrollX = bar.scrollLeft || 0;
             const chars = Array.from(cand.textContent);
             const node = cand.firstChild;
             const range = document.createRange();
@@ -10313,24 +10328,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         range.setStart(node, start);
                         range.setEnd(node, end);
                         const rect = range.getBoundingClientRect();
-                        if (rect.width > 0) center = rect.left + rect.width / 2 - hostRect.left;
+                        if (rect.width > 0) center = rect.left + rect.width / 2 - lineRect.left + scrollX;
                     }
                 }
                 if (center == null) {
                     const rect = cand.getBoundingClientRect();
-                    center = rect.right - hostRect.left + 16 + (index - chars.length) * 28;
+                    center = rect.right - lineRect.left + scrollX + 16 + (index - chars.length) * 28;
                 }
                 const slot = document.createElement('span');
                 slot.className = 'py-slot';
                 slot.setAttribute('aria-hidden', 'true');
                 slot.textContent = piece;
-                slot.style.left = Math.max(12, Math.min(hostRect.width - 12, center)) + 'px';
+                slot.style.left = Math.max(0, center) + 'px';
                 line.append(slot);
                 placed += 1;
             });
             if (placed) {
                 line.classList.add('aligned');
                 document.body.classList.add('preedit-aligned');
+                line.scrollLeft = scrollX;
             }
         }
 

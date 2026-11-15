@@ -618,7 +618,7 @@ class FakeDocument extends FakeElement {
 // containers). The harness has no CSS engine, so scrollability is declared
 // here - keep in sync with keyboard.css (css_lint.js guards the other side).
 // ExpandGrid scrolled vertically now, so it left this list.
-const OVERFLOW_X_IDS = ['symCats', 'candidates'];
+const OVERFLOW_X_IDS = ['symCats', 'candidates', 'preeditLine'];
 
 // Parses the real index.html into fake elements (structure-level assertions
 // come along for free: symbol layer starts hidden, voice overlay exists...).
