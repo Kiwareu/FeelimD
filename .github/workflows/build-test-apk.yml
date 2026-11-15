@@ -67,7 +67,17 @@ jobs:
             mv "$SDK/cmdline-tools/tmp/cmdline-tools" "$SDK/cmdline-tools/latest"
             rm -rf "$SDK/cmdline-tools/tmp" cmdtools.zip
           fi
+          # `yes | sdkmanager` always ends with SIGPIPE (141) once the
+          # consumer exits; under `pipefail` that alone fails the step.
+          # Read sdkmanager's own exit code out of PIPESTATUS instead.
+          set +o pipefail
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          LICENSE_STATUS=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$LICENSE_STATUS" -ne 0 ]; then
+            echo "sdkmanager --licenses failed: $LICENSE_STATUS" >&2
+            exit 1
+          fi
           "$SDK/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" "build-tools;36.1.0" "platform-tools"
 
