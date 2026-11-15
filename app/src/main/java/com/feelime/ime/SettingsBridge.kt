@@ -3651,8 +3651,8 @@ class SettingsBridge(
     @JavascriptInterface
     fun openGithub(page: String, token: String) = guarded(token) {
         val url = when (page) {
-            "issues" -> "https://github.com/feelime/feelime/issues"
-            else -> "https://github.com/feelime/feelime"
+            "issues" -> "https://github.com/Kiwareu/feelime/issues"
+            else -> "https://github.com/Kiwareu/feelime"
         }
         runCatching {
             context.startActivity(
@@ -3686,9 +3686,9 @@ class SettingsBridge(
     @JavascriptInterface
     fun openReleaseDownload(url: String, token: String) = guarded(token) {
         val onGithub = url.startsWith(
-            "https://github.com/feelime/feelime/releases/download/")
+            "https://github.com/Kiwareu/feelime/releases/download/")
         val onMirror = url.startsWith(
-            "https://gh-proxy.com/https://github.com/feelime/feelime/releases/download/")
+            "https://gh-proxy.com/https://github.com/Kiwareu/feelime/releases/download/")
         if (!onGithub && !onMirror) return@guarded
         runCatching {
             context.startActivity(
@@ -3854,7 +3854,7 @@ class SettingsBridge(
 
     private companion object {
         const val TAG = "FeelimeSettings"
-        const val DEFAULT_GITHUB_SOURCE = "https://github.com/feelime/feelime"
+        const val DEFAULT_GITHUB_SOURCE = "https://github.com/Kiwareu/feelime"
         const val STATE_AUTO_CHECK_ENABLED = "update_auto_check_enabled"
         const val STATE_AUTO_CHECK_LAST_ATTEMPT_AT = "update_auto_check_last_attempt_at"
 

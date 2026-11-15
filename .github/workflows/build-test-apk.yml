@@ -27,6 +27,7 @@ on:
       - "gradle.properties"
       - "models/**"
       - "scripts/setup-assets.sh"
+      - "scripts/package-keyboard.sh"
       - ".github/workflows/build-test-apk.yml"
   workflow_dispatch:
 
@@ -149,3 +150,47 @@ jobs:
           path: app/build/outputs/apk/direct/debug/app-direct-debug.apk
           retention-days: 7
           if-no-files-found: error
+
+  # Fork 自有键盘热更通道：把当前键盘打包成签名 zip，发到本仓库的
+  # keyboard-<版本> release 上（只含一个 feelime-keyboard-<版本>.zip
+  # 资产，应用内更新检查读的就是 releases/latest）。
+  # 签名身份：FEELIME_SIGNING_KEY（Ed25519 私钥 PEM 内容）+
+  # FEELIME_KEY_ID（feelime-fork-2026-11），与 ReleaseKeys.kt 的
+  # fork 公钥对应；上游的包从此验不过（键盘已领先上游，无需再收
+  # 上游包）。同一键盘版本只发一次；改键盘必须先 bump VERSION。
+  publish-keyboard:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish keyboard package
+        env:
+          SIGNING_KEY: ${{ secrets.FEELIME_SIGNING_KEY }}
+          KEY_ID: ${{ secrets.FEELIME_KEY_ID }}
+        run: |
+          set -euo pipefail
+          VERSION=$(tr -d '\n' < app/src/main/assets/keyboard/VERSION)
+          TAG="keyboard-$VERSION"
+          ZIP="feelime-keyboard-$VERSION.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; skipping."
+            exit 0
+          fi
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "FEELIME_SIGNING_KEY secret is not configured; cannot publish." >&2
+            exit 1
+          fi
+          printf '%s' "$SIGNING_KEY" > /tmp/feelime-signing-key.pem
+          FEELIME_SIGNING_KEY=/tmp/feelime-signing-key.pem \
+            FEELIME_KEY_ID="${KEY_ID:-feelime-fork-2026-11}" \
+            ./scripts/package-keyboard.sh "$ZIP"
+          gh release create "$TAG" \
+            --title "键盘热更包 $VERSION" \
+            --notes "Feelime 键盘热更包（fork 自有签名通道）。应用内设置页 → 检查更新即可拉取；也可手动下载后用设置页的安装包地址安装。" \
+            "$ZIP"
+
