@@ -1087,7 +1087,8 @@ class SettingsBridge(
 
     private fun modelTitle(model: ModelSpec): String = when (model.id) {
         "streaming-zipformer-bilingual-zh-en" -> t(context, "流式语音识别（中英）", "Streaming speech recognition (Chinese/English)")
-        "paraformer-zh-small" -> t(context, "整句纠错识别", "Full-sentence correction")
+        "paraformer-zh-small",
+        "paraformer-zh-large" -> t(context, "整句纠错识别", "Full-sentence correction")
         "offline-punct-zh-en",
         "online-punct-en" -> t(context, "中英标点恢复", "Chinese-English punctuation restoration") // Keep old downloaded manifests readable during migration.
         else -> model.title

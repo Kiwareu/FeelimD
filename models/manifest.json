@@ -42,9 +42,9 @@
       "title": "流式语音识别（中英）"
     },
     {
-      "id": "paraformer-zh-small",
+      "id": "paraformer-zh-large",
       "role": "asr-final",
-      "version": "2024-03-09",
+      "version": "2023-09-14",
       "files": [
         {
           "path": "final-model/model.int8.onnx",
@@ -60,9 +60,8 @@
         }
       ],
       "sources": {
-        "gitee": "https://gitee.com/feelime/distribution/releases/download/asr-final-zh/",
-        "github": "https://github.com/feelime/distribution/releases/download/asr-final-zh/",
-        "ghproxy": "https://gh-proxy.com/https://github.com/feelime/distribution/releases/download/asr-final-zh/"
+        "github": "https://huggingface.co/csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14/resolve/main/",
+        "ghproxy": "https://hf-mirror.com/csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14/resolve/main/"
       },
       "title": "整句纠错识别"
     },

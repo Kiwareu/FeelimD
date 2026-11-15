@@ -30,10 +30,10 @@ MODEL_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$M
 MODEL_SHA256="45b8d04fe8faf5146397ff2e71d90ca8effdfcbe9adc30fdce769e92cabd6b03"
 MODEL_DIR="sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-mobile"
 
-FINAL_ARCHIVE="sherpa-onnx-paraformer-zh-small-2024-03-09.tar.bz2"
+FINAL_ARCHIVE="sherpa-onnx-paraformer-zh-2023-09-14.tar.bz2"
 FINAL_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$FINAL_ARCHIVE"
-FINAL_SHA256="da92b3db5218c5be53aad53e57d1b6e63e7fc98a0e054fbdd6dbe18e9c6b1450"
-FINAL_DIR="sherpa-onnx-paraformer-zh-small-2024-03-09"
+FINAL_SHA256="9c49fd9c6fb63de8e18c1054cf3d100f804741b7e608e187923cd8ff09fa9f03"
+FINAL_DIR="sherpa-onnx-paraformer-zh-2023-09-14"
 
 PUNCT_ARCHIVE="sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2"
 PUNCT_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-models/$PUNCT_ARCHIVE"

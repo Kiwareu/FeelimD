@@ -110,7 +110,7 @@ sherpa-onnx AAR、ONNX 模型与语音测试音频不提交 Git；
 
 ```text
 sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-mobile
-sherpa-onnx-paraformer-zh-small-2024-03-09
+sherpa-onnx-paraformer-zh-2023-09-14
 sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8
 ```
 

@@ -1902,6 +1902,7 @@ function modelTitle(model) {
     const key = {
         "streaming-zipformer-bilingual-zh-en": "model.title.streaming",
         "paraformer-zh-small": "model.title.final",
+        "paraformer-zh-large": "model.title.final",
         "offline-punct-zh-en": "model.title.punctuation",
         "online-punct-en": "model.title.punctuation", // Legacy model ID.
     }[String(model && model.id || "")];

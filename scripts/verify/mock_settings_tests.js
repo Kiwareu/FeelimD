@@ -442,10 +442,10 @@ test('English model rows translate titles and action labels for installed/downlo
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, uiLanguage: 'en', uiLocale: 'en', models: [
         { id: 'streaming-zipformer-bilingual-zh-en', title: '流式语音识别（中英）', sizeBytes: 122577743, state: 'installed' },
-        { id: 'paraformer-zh-small', title: '整句纠错识别', sizeBytes: 52428800, state: 'downloading' },
+        { id: 'paraformer-zh-large', title: '整句纠错识别', sizeBytes: 243446974, state: 'downloading' },
     ] });
     const installed = world.doc.querySelector('.model[data-id="streaming-zipformer-bilingual-zh-en"]');
-    const downloading = world.doc.querySelector('.model[data-id="paraformer-zh-small"]');
+    const downloading = world.doc.querySelector('.model[data-id="paraformer-zh-large"]');
     equal(installed.querySelector('.model-name').textContent, 'Streaming speech recognition (Chinese/English)', 'English installed title');
     equal(installed.querySelector('[data-action="remove"]').textContent, 'Delete', 'English installed action');
     equal(downloading.querySelector('.model-name').textContent, 'Full-sentence correction', 'English downloading title');
