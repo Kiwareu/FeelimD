@@ -682,6 +682,7 @@ const I18N = {
         "action.appStore": "在 Google Play 查看应用",
         "action.githubRepo": "GitHub 仓库",
         "action.githubIssues": "问题反馈",
+        "action.githubUpstream": "官方原版仓库",
         "action.feishuGroup": "加入飞书交流群",
         "action.checkUpdate": "检查更新",
         "action.checkUpdatePlay": "去 Google Play 更新",
@@ -693,6 +694,7 @@ const I18N = {
         "update.failed": "检查更新失败，请稍后再试（或到 GitHub Releases 页查看）",
         "about.copyHint": "反馈问题时直接粘贴；复制内容标记为敏感，不会进入键盘剪贴板历史。",
         "about.offlineHint": "全程离线：语音识别与文字候选都不联网。",
+        "about.forkNote": "本仓库按个人使用习惯定制，与官方原版有所不同；检查更新默认走本仓库，官方原版更新请见上方链接。",
         "about.noticesTitle": "第三方许可与组件说明",
         "about.legalBadge": "许可",
         "about.expandNotices": "展开完整说明",
@@ -1582,6 +1584,7 @@ const I18N = {
         "action.appStore": "View app on Google Play",
         "action.githubRepo": "GitHub repository",
         "action.githubIssues": "Report an issue",
+        "action.githubUpstream": "Official upstream repository",
         "action.feishuGroup": "Join the Feishu group",
         "action.checkUpdate": "Check for updates",
         "action.checkUpdatePlay": "Update on Google Play",
@@ -1593,6 +1596,7 @@ const I18N = {
         "update.failed": "Update check failed. Try again later, or visit GitHub Releases.",
         "about.copyHint": "Paste this when reporting a problem. The copied report is marked sensitive and is kept out of keyboard clipboard history.",
         "about.offlineHint": "Everything stays offline: voice recognition and text candidates use no network.",
+        "about.forkNote": "This fork is customized around personal usage habits and differs from the official upstream; update checks use this fork by default — see the link above for official upstream updates.",
         "about.noticesTitle": "Third-party licenses & components",
         "about.legalBadge": "Licenses",
         "about.expandNotices": "Show full notices",
@@ -5084,6 +5088,8 @@ $("btnExportDiagnostics").addEventListener("click", () => {
 $("btnAppStore").addEventListener("click", () => call("openAppStore"));
 // #29-4：关于页开源仓库/问题反馈入口（native 侧只认内置两址）。
 $("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
+// 关于页官方原版仓库入口（native 侧白名单另认上游一址）。
+$("btnGithubUpstream").addEventListener("click", () => call("openGithub", "upstream"));
 // #29-8：定制键盘 JSON 的官方说明文档（native 只认内置地址）。
 $("btnCustomDocs").addEventListener("click", () => call("openDocs"));
 

@@ -769,6 +769,7 @@ const I18N = {
     "action.appStore": "\u5728 Google Play \u67E5\u770B\u5E94\u7528",
     "action.githubRepo": "GitHub \u4ED3\u5E93",
     "action.githubIssues": "\u95EE\u9898\u53CD\u9988",
+    "action.githubUpstream": "\u5B98\u65B9\u539F\u7248\u4ED3\u5E93",
     "action.feishuGroup": "\u52A0\u5165\u98DE\u4E66\u4EA4\u6D41\u7FA4",
     "action.checkUpdate": "\u68C0\u67E5\u66F4\u65B0",
     "action.checkUpdatePlay": "\u53BB Google Play \u66F4\u65B0",
@@ -780,6 +781,7 @@ const I18N = {
     "update.failed": "\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\uFF08\u6216\u5230 GitHub Releases \u9875\u67E5\u770B\uFF09",
     "about.copyHint": "\u53CD\u9988\u95EE\u9898\u65F6\u76F4\u63A5\u7C98\u8D34\uFF1B\u590D\u5236\u5185\u5BB9\u6807\u8BB0\u4E3A\u654F\u611F\uFF0C\u4E0D\u4F1A\u8FDB\u5165\u952E\u76D8\u526A\u8D34\u677F\u5386\u53F2\u3002",
     "about.offlineHint": "\u5168\u7A0B\u79BB\u7EBF\uFF1A\u8BED\u97F3\u8BC6\u522B\u4E0E\u6587\u5B57\u5019\u9009\u90FD\u4E0D\u8054\u7F51\u3002",
+    "about.forkNote": "\u672C\u4ED3\u5E93\u6309\u4E2A\u4EBA\u4F7F\u7528\u4E60\u60EF\u5B9A\u5236\uFF0C\u4E0E\u5B98\u65B9\u539F\u7248\u6709\u6240\u4E0D\u540C\uFF1B\u68C0\u67E5\u66F4\u65B0\u9ED8\u8BA4\u8D70\u672C\u4ED3\u5E93\uFF0C\u5B98\u65B9\u539F\u7248\u66F4\u65B0\u8BF7\u89C1\u4E0A\u65B9\u94FE\u63A5\u3002",
     "about.noticesTitle": "\u7B2C\u4E09\u65B9\u8BB8\u53EF\u4E0E\u7EC4\u4EF6\u8BF4\u660E",
     "about.legalBadge": "\u8BB8\u53EF",
     "about.expandNotices": "\u5C55\u5F00\u5B8C\u6574\u8BF4\u660E",
@@ -1670,6 +1672,7 @@ const I18N = {
     "action.appStore": "View app on Google Play",
     "action.githubRepo": "GitHub repository",
     "action.githubIssues": "Report an issue",
+    "action.githubUpstream": "Official upstream repository",
     "action.feishuGroup": "Join the Feishu group",
     "action.checkUpdate": "Check for updates",
     "action.checkUpdatePlay": "Update on Google Play",
@@ -1681,6 +1684,7 @@ const I18N = {
     "update.failed": "Update check failed. Try again later, or visit GitHub Releases.",
     "about.copyHint": "Paste this when reporting a problem. The copied report is marked sensitive and is kept out of keyboard clipboard history.",
     "about.offlineHint": "Everything stays offline: voice recognition and text candidates use no network.",
+    "about.forkNote": "This fork is customized around personal usage habits and differs from the official upstream; update checks use this fork by default \u2014 see the link above for official upstream updates.",
     "about.noticesTitle": "Third-party licenses & components",
     "about.legalBadge": "Licenses",
     "about.expandNotices": "Show full notices",
@@ -4816,6 +4820,7 @@ $("btnExportDiagnostics").addEventListener("click", () => {
 });
 $("btnAppStore").addEventListener("click", () => call("openAppStore"));
 $("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
+$("btnGithubUpstream").addEventListener("click", () => call("openGithub", "upstream"));
 $("btnCustomDocs").addEventListener("click", () => call("openDocs"));
 const CK_KEYS = [
   ["esc", "Esc"],
