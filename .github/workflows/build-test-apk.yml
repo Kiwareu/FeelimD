@@ -100,14 +100,26 @@ jobs:
           node scripts/verify/mock_bridge_tests.js
 
       - name: Fixed debug keystore (when secrets are configured)
-        if: secrets.FEELIME_DEBUG_KEYSTORE != ''
+        # NOTE: `secrets` is not a valid context inside a step `if`
+        # expression (GitHub rejects the workflow at parse time), so the
+        # presence check happens in shell instead. Without the four
+        # secrets the build falls back to Gradle's default debug keystore.
+        env:
+          KEYSTORE_B64: ${{ secrets.FEELIME_DEBUG_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.FEELIME_DEBUG_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.FEELIME_DEBUG_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.FEELIME_DEBUG_KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.FEELIME_DEBUG_KEYSTORE }}" | base64 -d > /tmp/feelime-debug.keystore
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "No fixed debug keystore configured; using Gradle default debug keystore."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > /tmp/feelime-debug.keystore
           {
             echo "FEELIME_DEBUG_KEYSTORE=/tmp/feelime-debug.keystore"
-            echo "FEELIME_DEBUG_STORE_PASSWORD=${{ secrets.FEELIME_DEBUG_STORE_PASSWORD }}"
-            echo "FEELIME_DEBUG_KEY_ALIAS=${{ secrets.FEELIME_DEBUG_KEY_ALIAS }}"
-            echo "FEELIME_DEBUG_KEY_PASSWORD=${{ secrets.FEELIME_DEBUG_KEY_PASSWORD }}"
+            echo "FEELIME_DEBUG_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "FEELIME_DEBUG_KEY_ALIAS=$KEY_ALIAS"
+            echo "FEELIME_DEBUG_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
       - name: Unit tests + build direct debug APK
