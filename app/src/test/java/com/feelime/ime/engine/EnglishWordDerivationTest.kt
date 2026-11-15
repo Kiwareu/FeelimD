@@ -93,6 +93,16 @@ class EnglishWordDerivationTest {
         }
     }
 
+    /** 专有名词补充表同上（与生产侧 frequencyProperNouns 同文件）。 */
+    private fun properNounsFromFile(): List<Pair<String, String>> {
+        val f = java.io.File("src/main/assets/english-proper-nouns.txt")
+        assertTrue("english-proper-nouns.txt missing", f.isFile)
+        return f.readLines().mapNotNull { line ->
+            val parts = line.split('\t')
+            if (parts.size == 2) parts[0] to parts[1] else null
+        }
+    }
+
     @Test
     fun `内置表不含可完整切分的词`() {
         // 用真实码表资产跑一遍内置表：任何词都不应被音节表完整切分
@@ -103,19 +113,23 @@ class EnglishWordDerivationTest {
         val codesFile = java.io.File("src/main/assets/custom-phrase-codes.json")
         assertTrue("custom-phrase-codes.json missing (worktree needs app/src/modelAssets link or fresh checkout)", codesFile.isFile)
         val lines = store.englishLines(JSONObject(codesFile.readText()),
-            frequencyWords = frequencyWordsFromFile())
+            frequencyWords = frequencyWordsFromFile() + properNounsFromFile())
         val all = lines.map { it.substringBefore('\t').lowercase() }.toSet()
         assertFalse(all.isEmpty())
         assertTrue("github" in all && "ios" in all && "android" in all && "how" in all)
         assertTrue("冲突轨含用户点名的高频词", "are" in all && "time" in all)
-        // 全表词数 = DEFAULT + DAILY + COLLIDING（三表各不相交；主轨在真实
-        // 码表下零碰撞——有碰撞词会被滤掉导致总数缩水，此断言即防线）。
+        assertTrue("专有名词补充表进候选",
+            "openai" in all && "huawei" in all && "xiaomi" in all && "tesla" in all && "facebook" in all)
+        // 全表词数 = DEFAULT + DAILY + COLLIDING + 频词表 + 专名表（各不相交；
+        // 主轨在真实码表下零碰撞——有碰撞词会被滤掉导致总数缩水，此断言即防线；
+        // 专名表与任一既有表重叠也会缩水，同样拦下）。
         assertEquals(
             "表间有重复或主轨出现新的拼音碰撞死词条（应剔到 COLLIDING）",
             CustomPhraseStore.DEFAULT_ENGLISH_WORDS.size +
                 CustomPhraseStore.DAILY_ENGLISH_WORDS.size +
                 CustomPhraseStore.COLLIDING_ENGLISH_WORDS.size +
-                frequencyWordsFromFile().size, all.size,
+                frequencyWordsFromFile().size +
+                properNounsFromFile().size, all.size,
         )
     }
 }

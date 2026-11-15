@@ -1,0 +1,172 @@
+# 高频英语专有名词补充表（2026-11-16，人工核对后补）：一行 `Display\tcode`。
+# 与 english-words.txt 同格式、同通道（CustomPhraseStore.frequencyProperNouns
+# 读入后并进 englishLines 的 frequencyWords 主轨）。只收在三张内置表
+# （DEFAULT/DAILY/COLLIDING）与 english-words.txt 里都没有的码——单测
+# EnglishWordDerivationTest 的总数断言会把重复或重叠当失败拦下。
+# Display 是上屏形态（品牌原样大小写），code 是按键序列（全小写字母，
+# 多词专名连写，如 newyork；f1 的码含数字，照键序直出）。
+# 已有词一律不重复收：Google/Microsoft/Meta/ChatGPT/Claude/WeChat/伦敦/
+# 东京/北京等早已在内置表或 english-words.txt 里（部分是小写形态，
+# 大小写形态统一问题另记，不在本表改）。
+# 品牌·公司
+OpenAI	openai
+Tesla	tesla
+Facebook	facebook
+Starbucks	starbucks
+IKEA	ikea
+Coca-Cola	cocacola
+Pepsi	pepsi
+McDonald's	mcdonalds
+KFC	kfc
+Salesforce	salesforce
+HSBC	hsbc
+FedEx	fedex
+DHL	dhl
+Zara	zara
+Uniqlo	uniqlo
+MUJI	muji
+SpaceX	spacex
+Boeing	boeing
+Airbus	airbus
+Qatar Airways	qatarairways
+Hyatt	hyatt
+Booking.com	bookingcom
+# 国内品牌·应用
+Huawei	huawei
+Xiaomi	xiaomi
+OPPO	oppo
+vivo	vivo
+Alipay	alipay
+Taobao	taobao
+Baidu	baidu
+Bilibili	bilibili
+Zhihu	zhihu
+Douyin	douyin
+Meituan	meituan
+DiDi	didi
+Pinduoduo	pinduoduo
+Kuaishou	kuaishou
+Xiaohongshu	xiaohongshu
+NetEase	netease
+Tencent	tencent
+Alibaba	alibaba
+ByteDance	bytedance
+Lenovo	lenovo
+Razer	razer
+Ele.me	eleme
+Dianping	dianping
+# 地名
+New York	newyork
+Los Angeles	losangeles
+San Francisco	sanfrancisco
+Hong Kong	hongkong
+Seoul	seoul
+Shenzhen	shenzhen
+Guangzhou	guangzhou
+Kuala Lumpur	kualalumpur
+Jakarta	jakarta
+Cairo	cairo
+Osaka	osaka
+Kyoto	kyoto
+Busan	busan
+Taipei	taipei
+Chengdu	chengdu
+Hangzhou	hangzhou
+Wuhan	wuhan
+Nanjing	nanjing
+Xi'an	xian
+# 技术·开发
+Kubernetes	kubernetes
+TensorFlow	tensorflow
+PyTorch	pytorch
+Django	django
+Node.js	nodejs
+PostgreSQL	postgresql
+MongoDB	mongodb
+Kafka	kafka
+Stack Overflow	stackoverflow
+IntelliJ	intellij
+PyCharm	pycharm
+Shopify	shopify
+Stripe	stripe
+Airbnb	airbnb
+Uber	uber
+Twitch	twitch
+Dropbox	dropbox
+Evernote	evernote
+OneDrive	onedrive
+Gmail	gmail
+Bing	bing
+GraphQL	graphql
+Angular	angular
+Next.js	nextjs
+Svelte	svelte
+Xcode	xcode
+Android Studio	androidstudio
+Neovim	neovim
+Tmux	tmux
+Ansible	ansible
+Terraform	terraform
+Prometheus	prometheus
+Grafana	grafana
+Elasticsearch	elasticsearch
+RabbitMQ	rabbitmq
+Tomcat	tomcat
+Flask	flask
+FastAPI	fastapi
+Laravel	laravel
+Rails	rails
+jQuery	jquery
+Bootstrap	bootstrap
+Tailwind	tailwind
+Selenium	selenium
+Jupyter	jupyter
+Pandas	pandas
+NumPy	numpy
+OpenCV	opencv
+LangChain	langchain
+Ollama	ollama
+Logseq	logseq
+# AI
+Gemini	gemini
+Midjourney	midjourney
+Stable Diffusion	stablediffusion
+DALL-E	dalle
+Whisper	whisper
+LLaMA	llama
+Grok	grok
+Sora	sora
+Runway	runway
+Pika	pika
+Suno	suno
+ElevenLabs	elevenlabs
+# 加密货币
+Bitcoin	bitcoin
+Ethereum	ethereum
+Binance	binance
+Coinbase	coinbase
+OKX	okx
+Bybit	bybit
+USDT	usdt
+Solana	solana
+Dogecoin	dogecoin
+# 媒体·内容·生活
+Patreon	patreon
+Substack	substack
+Hacker News	hackernews
+Product Hunt	producthunt
+Pixiv	pixiv
+Uber Eats	ubereats
+DoorDash	doordash
+Coursera	coursera
+Udemy	udemy
+Duolingo	duolingo
+Khan Academy	khanacademy
+IMDb	imdb
+Rotten Tomatoes	rottentomatoes
+F1	f1
+MotoGP	motogp
+Wimbledon	wimbledon
+UNESCO	unesco
+FIFA	fifa
+CCTV	cctv

@@ -380,7 +380,7 @@ object CustomPhraseStore {
         val deriving = (if (enabled) items else emptyList()) + imported + user
         val codes = codeTable(context)
         val english = if (englishEnabled) {
-            englishLines(codes, frequencyWords = frequencyEnglishWords(context))
+            englishLines(codes, frequencyWords = frequencyEnglishWords(context) + frequencyProperNouns(context))
         } else emptyList()
         if (deriving.isEmpty() && english.isEmpty()) {
             txt.delete()
@@ -540,6 +540,24 @@ object CustomPhraseStore {
                         parts[0] to parts[1]
                     } else null
                 }.also { frequencyWordsCache = it }
+        }.getOrDefault(emptyList())
+    }
+
+    /** 高频英语专有名词补充表（assets/english-proper-nouns.txt，2026-11-16
+     *  人工核对后补）：与 frequencyEnglishWords 同格式、同通道——只收三张
+     *  内置表与 english-words.txt 里都没有的码，Display 是品牌原样大小写。
+     *  资产在 assets/ 根，不进 engine-data，故不登记 MANIFEST.json。 */
+    @Volatile private var properNounsCache: List<Pair<String, String>>? = null
+    fun frequencyProperNouns(context: Context): List<Pair<String, String>> {
+        properNounsCache?.let { return it }
+        return runCatching {
+            context.assets.open("english-proper-nouns.txt").bufferedReader().readLines()
+                .mapNotNull { line ->
+                    val parts = line.split('\t')
+                    if (parts.size == 2 && parts[0].isNotEmpty() && parts[1].isNotEmpty()) {
+                        parts[0] to parts[1]
+                    } else null
+                }.also { properNounsCache = it }
         }.getOrDefault(emptyList())
     }
 
