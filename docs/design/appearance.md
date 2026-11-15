@@ -108,6 +108,13 @@
   `#keyPopup`/`.kp-item` 卡片语言；选中格 `--accent` 填充。
 - 深浅主题验收截图：`t9.md` §2 定稿时的 preview 页 + 设备截图存档。
 
+### 7.2 剪贴板/常用语搜索行（keyboard.md §3，3.74.8）
+
+- 搜索行（`.panel-search`）= `--pill` 底 + `--icon` 放大镜 + `--text`
+  输入（13px）+ `--muted` 占位文字；× 清空钮 = `--pressed` 底小圆，
+  只在有查询词时出现。复用候选条/面板头的 pill 语言，不引新 token。
+- 深浅主题验收截图：preview 页 + 设备截图存档。
+
 ## 8. 完整设置页
 
 设置页（`assets/settings/`）与键盘同源 token、同主题机制；卡片圆角、

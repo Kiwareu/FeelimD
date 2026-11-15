@@ -322,6 +322,10 @@
         "清空": "Clear",
         "确认清空": "Confirm clear",
         "＋添加": "＋ Add",
+        // 剪贴板/常用语搜索（2026-11-16）。
+        "搜索剪贴板 / 常用语": "Search clipboard / phrases",
+        "清除搜索": "Clear search",
+        "没有找到包含「{0}」的内容": "No results for “{0}”",
         "松手结束": "Release to finish.",
         "点击任意位置结束": "Tap anywhere to finish.",
         "请说较标准的普通话。标点由本机模型自动补上，声音不会上传": "Speak fairly standard Mandarin. Punctuation is added on-device; audio is never uploaded.",
@@ -387,7 +391,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.7';
+    const KEYBOARD_VERSION = '3.74.8';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1650,6 +1654,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.clipboardItems = [];
             this.clipboardGroups = [];
             this.clipGroupFilter = 'all';
+            this.clipSearch = '';
             this.favoriteItems = [];
             this.popup = null;
             this.popupEndEvents = new WeakSet();
@@ -2298,6 +2303,29 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
                 button.addEventListener('click', () => this.openPanel(button.dataset.panelTab));
                 this.bindTouch(button);
+            });
+            // 剪贴板/常用语搜索（2026-11-16）：输入即过滤，不重建输入框
+            // 本身（renderPanel 只重建 #panelList，焦点不丢）。focus 走
+            // setPanelInput(true)，与分组名输入同一套面板输入重定向。
+            const searchInput = document.getElementById('panelSearchInput');
+            const searchClear = document.getElementById('panelSearchClear');
+            if (searchInput) {
+                searchInput.addEventListener('focus', () => this.setPanelInput(true));
+                searchInput.addEventListener('blur', () => {
+                    if (!this.phraseCardOpen()) this.setPanelInput(false);
+                });
+                searchInput.addEventListener('input', () => {
+                    this.clipSearch = searchInput.value.trim();
+                    if (searchClear) searchClear.hidden = !this.clipSearch;
+                    this.renderPanel();
+                });
+            }
+            if (searchClear) searchClear.addEventListener('click', () => {
+                if (searchInput) searchInput.value = '';
+                this.clipSearch = '';
+                searchClear.hidden = true;
+                this.renderPanel();
+                if (searchInput) searchInput.focus();
             });
             document.getElementById('hide').addEventListener('click', () => this.call(() => Native.hideKeyboard(this.token)));
             const micBtn = document.getElementById('mic');
@@ -7734,9 +7762,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const pct = Number(this.keycapFont);
             const S = (Number.isFinite(pct) ? Math.min(150, Math.max(50, pct)) : 100) / 100;
             const px = v => (Math.round(v * 100) / 100) + 'px';
-            if (H < 24) {
+            if (H < 30) {
                 // 极矮行高（横屏内容钳制可到很低）：单行形态——藏角标、
-                // 主字居中，不硬塞 9px 角标 + 双行留白。
+                // 主字居中，不硬塞 9px 角标 + 双行留白。阈值 24→30
+                // （2026-11-16 横屏重叠修复）：H 24–29 时角标仍按 9px
+                // 钉死、主字预算不足，字母行与上方数字/符号行轻微重叠。
                 root.setProperty('--cap-alt-size', '0px');
                 root.setProperty('--cap-main-size', px(Math.min(Math.min(22, H * 0.5) * S, H * 0.8)));
                 document.body.dataset.capSingle = 'on';
@@ -11694,6 +11724,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             document.getElementById('panelClear').hidden = this.panelTab !== 'clipboard';
             document.getElementById('panelManage').hidden = this.panelTab !== 'favorites';
+            // 打开/切换 tab 时清空上一次的搜索（每 tab 重新搜）。
+            this.clearPanelSearch();
             this.renderPanel();
             if (this.panelTab === 'clipboard') Native.getClipboard(this.token);
             else if (this.panelTab === 'favorites') Native.getFavorites(this.token);
@@ -11749,6 +11781,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // （setPanelInput）继续有效，不能在这里释放。
             if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
             this.panelOpen = false;
+            // 关面板清空搜索（重开从空白开始），搜索行随之隐藏。
+            this.clearPanelSearch();
             this.hwNotifyPanelHeight(); // #H 面板收起回落候选条
             document.getElementById('panelLayer').hidden = true;
             document.getElementById('candidateBar').hidden = false;
@@ -11787,6 +11821,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             el.hidden = !on;
             if (!on) return;
             el.textContent = (this.clipboardItems || []).length + ' ' + t('条');
+        }
+
+        /** 剪贴板/常用语搜索行（2026-11-16）：只在剪贴板与常用语 tab
+         * 显示，颜文字态隐藏。打开/切换 tab 时清空查询（每 tab 重新搜），
+         * 避免旧查询把新 tab 的列表滤空。 */
+        syncPanelSearch() {
+            const row = document.getElementById('panelSearch');
+            if (!row) return;
+            row.hidden = !(this.panelOpen && (this.panelTab === 'clipboard' || this.panelTab === 'favorites'));
+        }
+
+        clearPanelSearch() {
+            this.clipSearch = '';
+            const input = document.getElementById('panelSearchInput');
+            if (input) input.value = '';
+            const clear = document.getElementById('panelSearchClear');
+            if (clear) clear.hidden = true;
+            this.syncPanelSearch();
         }
 
         renderPanel() {            const list = document.getElementById('panelList');
@@ -11848,15 +11900,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (filter === '') items = items.filter(item => !item.group);
                 else if (filter && filter !== 'all') items = items.filter(item => item.group === filter);
             }
+            // 搜索（2026-11-16）：与分组筛选叠加（AND）——选了分组时只搜
+            // 该分组；不区分大小写（中文无大小写，拉丁按小写比对）。
+            const q = (this.clipSearch || '').trim();
+            if (q) {
+                const needle = q.toLowerCase();
+                items = items.filter(item => (item.text || '').toLowerCase().includes(needle));
+            }
             empty.hidden = items.length > 0;
             // 空态不铺整块列表背景（验收反馈）：列表收起、提示只占一行，
             // 其余空间透出键盘背景，不再是一大块空面板。
             if (items.length) delete layer.dataset.empty;
             else layer.dataset.empty = '1';
             if (!items.length) {
-                empty.textContent = this.panelTab === 'clipboard'
-                    ? t("剪贴板只留在这台手机上，不上传、不进云备份。条数不另设上限；全部正文大约 32MB，再大就存不下。")
-                    : t("暂无常用语，点右上角「＋添加」");
+                empty.textContent = q
+                    ? t("没有找到包含「{0}」的内容", q)
+                    : this.panelTab === 'clipboard'
+                        ? t("剪贴板只留在这台手机上，不上传、不进云备份。条数不另设上限；全部正文大约 32MB，再大就存不下。")
+                        : t("暂无常用语，点右上角「＋添加」");
                 return;
             }
             items.forEach(item => {

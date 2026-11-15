@@ -1386,8 +1386,10 @@ test('keycap waterlines keep T:G:B proportional across row heights (#55 polish)'
     equal(root.getPropertyValue('--cap-main-size'), '22px', '44px baseline main=22px');
     equal(root.getPropertyValue('--cap-bottom'), '4px', '44px baseline bottom=4px');
     // 极矮行高：单行形态（藏角标、主字居中），不硬塞双行。
-    Feelime.applyKeycapMetrics(20);
-    equal(world.document.body.dataset.capSingle, 'on', 'sub-24px rows collapse to single-line caps');
+    Feelime.applyKeycapMetrics(28);
+    equal(world.document.body.dataset.capSingle, 'on', 'sub-30px rows collapse to single-line caps');
+    Feelime.applyKeycapMetrics(32);
+    equal(world.document.body.dataset.capSingle, 'off', '30px+ rows keep the two-line cap');
 });
 
 test('floating memory: per-orientation state+geometry survive rebuild and flips (#55, 3.73.93)', {since: '3.73.93'}, () => {
@@ -3296,6 +3298,60 @@ test('panel head carries no toolbar icons; a single X closes (#39-4)', {since: '
     world.tap(world.$('favoritesButton'));
     assert(!world.$('panelLayer').hidden, 'favorites tool reopens the panel');
     world.tap(world.$('panelClose'));
+});
+
+// 剪贴板/常用语搜索（2026-11-16 用户要求）：输入即过滤，支持分组叠加、
+// 常用语 tab、清空恢复、无结果提示；切换 tab / 关面板清空查询。
+test('clipboard search filters items, combines with the group filter, clears on tab switch (3.74.8)', {since: '3.74.8'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.clipboard([
+        { id: '1', time: 1, text: '快递单号 123456', group: '购物' },
+        { id: '2', time: 2, text: '会议纪要', group: '' },
+        { id: '3', time: 3, text: '快递地址 北京市', group: '购物' },
+        { id: '4', time: 4, text: 'Hello World', group: '' },
+    ], ['购物']);
+    world.tap(world.$('clipboardButton'));
+    const rows = () => [...world.document.querySelectorAll('.panel-item')];
+    const input = () => world.document.getElementById('panelSearchInput');
+    const searchRow = () => world.document.getElementById('panelSearch');
+    // 搜索行在剪贴板 tab 显示。
+    assert(!searchRow().hidden, 'search row shows on the clipboard tab');
+    equal(rows().length, 4, 'four clipboard items listed');
+    // 输「快递」→ 只剩两条含「快递」的。
+    input().value = '快递';
+    world.dispatch(input(), 'input');
+    equal(rows().length, 2, 'search filters to matching items');
+    // 拉丁不区分大小写。
+    input().value = 'hello';
+    world.dispatch(input(), 'input');
+    equal(rows().length, 1, 'search is case-insensitive for Latin');
+    // 无结果 → 空态提示含查询词。
+    input().value = '不存在的词';
+    world.dispatch(input(), 'input');
+    equal(rows().length, 0, 'no rows when nothing matches');
+    assert(world.document.getElementById('panelEmpty').textContent.includes('不存在的词'),
+        'empty state names the query');
+    // × 清空 → 全部回来。
+    world.tap(world.document.getElementById('panelSearchClear'));
+    equal(rows().length, 4, 'clear restores all items');
+    // 搜索 + 分组叠加：先搜「快递」，再点「购物」分组 → 仍 2 条；
+    // 点「未分组」→ 0 条（两条快递都在购物组）。
+    input().value = '快递';
+    world.dispatch(input(), 'input');
+    const chips = [...world.document.querySelectorAll('.clip-chip')];
+    world.tap(chips.find(c => c.textContent === '购物'));
+    equal(rows().length, 2, 'search + group filter combine (AND)');
+    world.tap(chips.find(c => c.textContent === '未分组'));
+    equal(rows().length, 0, 'search within the ungrouped set finds nothing');
+    // 切换到常用语 tab → 查询清空、搜索行仍显示。
+    world.tap(world.document.querySelector('[data-panel-tab="favorites"]'));
+    equal(input().value, '', 'search clears on tab switch');
+    assert(!searchRow().hidden, 'search row shows on the favorites tab too');
+    // 关面板 → 查询清空、搜索行隐藏。
+    world.tap(world.$('panelClose'));
+    equal(input().value, '', 'search clears on panel close');
+    assert(searchRow().hidden, 'search row hides when the panel closes');
 });
 
 // codex P2 回归（#39-4 二轮后语义）：编辑卡接管期间 panelOpen 归零

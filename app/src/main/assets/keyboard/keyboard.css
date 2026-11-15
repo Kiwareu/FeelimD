@@ -727,6 +727,48 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     box-shadow: inset 0 1px 0 var(--glass-sheen);
 }
 .clip-groups { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 8px; }
+/* 剪贴板/常用语搜索行（2026-11-16）：面板头下方、列表上方常驻；
+ * 与候选条同材质（--pill 底），输入框透明占满，× 只在有字时出现。 */
+.panel-search {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    margin: 0 0 8px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--pill);
+    color: var(--icon);
+}
+.panel-search[hidden] { display: none; }
+.panel-search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    padding: 0;
+}
+.panel-search input::placeholder { color: var(--muted); }
+.panel-search-clear {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--pressed);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.panel-search-clear[hidden] { display: none; }
 .clip-chip, .clip-extract, .clip-group-input {
     border: 0;
     border-radius: 999px;

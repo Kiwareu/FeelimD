@@ -313,6 +313,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u6E05\u7A7A": "Clear",
     "\u786E\u8BA4\u6E05\u7A7A": "Confirm clear",
     "\uFF0B\u6DFB\u52A0": "\uFF0B Add",
+    // 剪贴板/常用语搜索（2026-11-16）。
+    "\u641C\u7D22\u526A\u8D34\u677F / \u5E38\u7528\u8BED": "Search clipboard / phrases",
+    "\u6E05\u9664\u641C\u7D22": "Clear search",
+    "\u6CA1\u6709\u627E\u5230\u5305\u542B\u300C{0}\u300D\u7684\u5185\u5BB9": "No results for \u201C{0}\u201D",
     "\u677E\u624B\u7ED3\u675F": "Release to finish.",
     "\u70B9\u51FB\u4EFB\u610F\u4F4D\u7F6E\u7ED3\u675F": "Tap anywhere to finish.",
     "\u8BF7\u8BF4\u8F83\u6807\u51C6\u7684\u666E\u901A\u8BDD\u3002\u6807\u70B9\u7531\u672C\u673A\u6A21\u578B\u81EA\u52A8\u8865\u4E0A\uFF0C\u58F0\u97F3\u4E0D\u4F1A\u4E0A\u4F20": "Speak fairly standard Mandarin. Punctuation is added on-device; audio is never uploaded.",
@@ -378,7 +382,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.74.7";
+  const KEYBOARD_VERSION = "3.74.8";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1760,6 +1764,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.clipboardItems = [];
       this.clipboardGroups = [];
       this.clipGroupFilter = "all";
+      this.clipSearch = "";
       this.favoriteItems = [];
       this.popup = null;
       this.popupEndEvents = /* @__PURE__ */ new WeakSet();
@@ -2206,6 +2211,26 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.querySelectorAll("[data-panel-tab]").forEach((button) => {
         button.addEventListener("click", () => this.openPanel(button.dataset.panelTab));
         this.bindTouch(button);
+      });
+      const searchInput = document.getElementById("panelSearchInput");
+      const searchClear = document.getElementById("panelSearchClear");
+      if (searchInput) {
+        searchInput.addEventListener("focus", () => this.setPanelInput(true));
+        searchInput.addEventListener("blur", () => {
+          if (!this.phraseCardOpen()) this.setPanelInput(false);
+        });
+        searchInput.addEventListener("input", () => {
+          this.clipSearch = searchInput.value.trim();
+          if (searchClear) searchClear.hidden = !this.clipSearch;
+          this.renderPanel();
+        });
+      }
+      if (searchClear) searchClear.addEventListener("click", () => {
+        if (searchInput) searchInput.value = "";
+        this.clipSearch = "";
+        searchClear.hidden = true;
+        this.renderPanel();
+        if (searchInput) searchInput.focus();
       });
       document.getElementById("hide").addEventListener("click", () => this.call(() => Native.hideKeyboard(this.token)));
       const micBtn = document.getElementById("mic");
@@ -6611,7 +6636,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const pct = Number(this.keycapFont);
       const S = (Number.isFinite(pct) ? Math.min(150, Math.max(50, pct)) : 100) / 100;
       const px = /* @__PURE__ */ __name((v) => Math.round(v * 100) / 100 + "px", "px");
-      if (H < 24) {
+      if (H < 30) {
         root.setProperty("--cap-alt-size", "0px");
         root.setProperty("--cap-main-size", px(Math.min(Math.min(22, H * 0.5) * S, H * 0.8)));
         document.body.dataset.capSingle = "on";
@@ -9796,6 +9821,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       });
       document.getElementById("panelClear").hidden = this.panelTab !== "clipboard";
       document.getElementById("panelManage").hidden = this.panelTab !== "favorites";
+      this.clearPanelSearch();
       this.renderPanel();
       if (this.panelTab === "clipboard") Native.getClipboard(this.token);
       else if (this.panelTab === "favorites") Native.getFavorites(this.token);
@@ -9842,6 +9868,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.armPanelClear(false);
       if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
       this.panelOpen = false;
+      this.clearPanelSearch();
       this.hwNotifyPanelHeight();
       document.getElementById("panelLayer").hidden = true;
       document.getElementById("candidateBar").hidden = false;
@@ -9873,6 +9900,22 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       el.hidden = !on;
       if (!on) return;
       el.textContent = (this.clipboardItems || []).length + " " + t("\u6761");
+    }
+    /** 剪贴板/常用语搜索行（2026-11-16）：只在剪贴板与常用语 tab
+     * 显示，颜文字态隐藏。打开/切换 tab 时清空查询（每 tab 重新搜），
+     * 避免旧查询把新 tab 的列表滤空。 */
+    syncPanelSearch() {
+      const row = document.getElementById("panelSearch");
+      if (!row) return;
+      row.hidden = !(this.panelOpen && (this.panelTab === "clipboard" || this.panelTab === "favorites"));
+    }
+    clearPanelSearch() {
+      this.clipSearch = "";
+      const input = document.getElementById("panelSearchInput");
+      if (input) input.value = "";
+      const clear = document.getElementById("panelSearchClear");
+      if (clear) clear.hidden = true;
+      this.syncPanelSearch();
     }
     renderPanel() {
       const list = document.getElementById("panelList");
@@ -9934,11 +9977,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (filter === "") items = items.filter((item) => !item.group);
         else if (filter && filter !== "all") items = items.filter((item) => item.group === filter);
       }
+      const q = (this.clipSearch || "").trim();
+      if (q) {
+        const needle = q.toLowerCase();
+        items = items.filter((item) => (item.text || "").toLowerCase().includes(needle));
+      }
       empty.hidden = items.length > 0;
       if (items.length) delete layer.dataset.empty;
       else layer.dataset.empty = "1";
       if (!items.length) {
-        empty.textContent = this.panelTab === "clipboard" ? t("\u526A\u8D34\u677F\u53EA\u7559\u5728\u8FD9\u53F0\u624B\u673A\u4E0A\uFF0C\u4E0D\u4E0A\u4F20\u3001\u4E0D\u8FDB\u4E91\u5907\u4EFD\u3002\u6761\u6570\u4E0D\u53E6\u8BBE\u4E0A\u9650\uFF1B\u5168\u90E8\u6B63\u6587\u5927\u7EA6 32MB\uFF0C\u518D\u5927\u5C31\u5B58\u4E0D\u4E0B\u3002") : t("\u6682\u65E0\u5E38\u7528\u8BED\uFF0C\u70B9\u53F3\u4E0A\u89D2\u300C\uFF0B\u6DFB\u52A0\u300D");
+        empty.textContent = q ? t("\u6CA1\u6709\u627E\u5230\u5305\u542B\u300C{0}\u300D\u7684\u5185\u5BB9", q) : this.panelTab === "clipboard" ? t("\u526A\u8D34\u677F\u53EA\u7559\u5728\u8FD9\u53F0\u624B\u673A\u4E0A\uFF0C\u4E0D\u4E0A\u4F20\u3001\u4E0D\u8FDB\u4E91\u5907\u4EFD\u3002\u6761\u6570\u4E0D\u53E6\u8BBE\u4E0A\u9650\uFF1B\u5168\u90E8\u6B63\u6587\u5927\u7EA6 32MB\uFF0C\u518D\u5927\u5C31\u5B58\u4E0D\u4E0B\u3002") : t("\u6682\u65E0\u5E38\u7528\u8BED\uFF0C\u70B9\u53F3\u4E0A\u89D2\u300C\uFF0B\u6DFB\u52A0\u300D");
         return;
       }
       items.forEach((item) => {

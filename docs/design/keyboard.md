@@ -288,6 +288,10 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   用户否决）。编辑卡（`openPanelEditor`）接管期间 `panelOpen` 归零
   （toolbar audit 不被早退挡），取消后 `openPanel('favorites')` 重开。
   `showKeyLayer` 的 `panelOpen` 让位保留作防御位。
+- **搜索行（3.74.8）**：面板头下方、列表上方常驻 `#panelSearch`
+  （剪贴板与常用语 tab 显示，颜文字态隐藏）；输入框不进 `#panelList`，
+  列表重建不销毁输入框、不丢焦点（focus 走 `setPanelInput(true)`，
+  与分组名输入同一套面板输入重定向）。
 - 每次打开都重新拉取 `getClipboard` / `getFavorites`（设置页改过数据后
   再打开即新鲜）；native 侧变化经 `onClipboard` / `onFavorites` 推送。
 - **颜文字 tab（#67）**：`kaomoji` 面板头 tab + 工具栏可编辑入栏的
@@ -300,6 +304,9 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 
 - 剪贴板项：文本预览 + 时间；点击上屏（`commitText`）并关面板。
 - 常用语项：文本 + 输入码徽标；点击上屏。
+- **搜索（3.74.8）**：输入即按正文子串过滤（不区分大小写），与分组
+  筛选叠加（AND）；无结果时空态写明查询词；× 清空恢复全部；切换 tab /
+  关面板清空查询。
 - 敏感编辑器（密码框）里面板可用但剪贴板列表为空（`getClipboard` 返回空
   数组，避免密码管理器内容出现在屏幕上）——「敏感编辑器里点选常用语仍可
   上屏」是有意行为。
