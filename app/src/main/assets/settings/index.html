@@ -226,10 +226,21 @@
     </div>
     <div class="row language-row">
       <span class="row-label">
+        <span data-i18n="input.feel.toastMs">提示停留时长</span>
+        <small data-i18n="input.feel.toastMsHint">键盘上的提示条（如「已撤销本次听写」）显示多久，300-10000 毫秒，默认 1600。</small>
+      </span>
+      <span class="range-group">
+        <output id="toastMsOut" for="toastMs" class="range-out">1600 ms</output>
+        <input type="range" id="toastMs" class="slider" min="300" max="10000" step="100" value="1600" aria-label="提示停留时长" data-i18n-aria="input.feel.toastMs" data-keywords="toast 提示 停留 时长 撤销 时间 毫秒">
+      </span>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
         <span data-i18n="input.feel.kbHeight">键盘高度</span>
         <small data-i18n="input.feel.kbHeightHint">竖屏键盘的高度；键盘上拖拽调节与此处等效。</small>
       </span>
       <span class="slider-with-action">
+        <output id="kbHeightOut" for="kbHeight" class="range-out">272 px</output>
         <input type="range" id="kbHeight" data-keywords="太高 太低 调大 调小 变小 一半 高度调整 taller shorter height" class="slider" aria-label="键盘高度" data-i18n-aria="input.feel.kbHeight">
         <button type="button" id="kbHeightReset" class="ghost-btn" data-i18n="input.feel.kbHeightReset">恢复默认</button>
       </span>
@@ -363,6 +374,7 @@
         <small data-i18n="input.feel.keySatHint">只调键帽组的色彩浓度；最左=键帽变黑白灰。</small>
       </span>
       <span class="preset-wrap">
+        <output id="keySatOut" for="keySat" class="range-out">100%</output>
         <input type="range" id="keySat" min="0" max="100" step="1" value="100" aria-label="键面饱和度" />
       </span>
     </div>
@@ -382,7 +394,10 @@
         <span data-i18n="input.feel.keyOpacity">按键不透明度</span>
         <small data-i18n="input.feel.keyOpacityHint">键帽在背景图上的透明程度，文字始终实色。</small>
       </span>
-      <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
+      <span class="range-group">
+        <output id="keyOpacityOut" for="keyOpacity" class="range-out">100%</output>
+        <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
+      </span>
     </div>
         <div class="row stack" data-keywords="预览 效果 preview">
       <span class="row-label">
@@ -455,7 +470,7 @@
     <!-- 全拼模糊音（2026-09-30 验收拆分）：input 页过长，开关整体
          移入「模糊音」三级页，本页只留入口。 -->
     <section class="card" id="sec-fuzzy-entry" aria-labelledby="fuzzyEntryTitle">
-      <div class="section-heading"><h2 id="fuzzyEntryTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">全拼模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
+      <div class="section-heading"><h2 id="fuzzyEntryTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
       <div class="rows">
         <button class="row nav-row" id="btnOpenFuzzy" type="button" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh 开关">
           <span class="row-label"><span data-i18n="input.fuzzy.manage">管理模糊音</span><small data-i18n="input.fuzzy.manageHint">分不清的音一起打：平翘舌、n/l、前后鼻音等开关。</small></span>
@@ -675,6 +690,28 @@
         </span>
         <input type="checkbox" id="doubleShiftLock" data-keywords="双击 连点 shift 大写 锁定 caps lock double tap" class="toggle">
       </label>
+      <label class="row switch-row" for="cnEnComposingGuard">
+        <span class="row-label">
+          <span data-i18n="input.feel.cnEnComposingGuard">拼音组词中禁止切换语言</span>
+          <small data-i18n="input.feel.cnEnComposingGuardHint">防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。</small>
+        </span>
+        <input type="checkbox" id="cnEnComposingGuard" data-keywords="误触 中英 切换 组词 拼音 输入中 misclick language switch composing" class="toggle">
+      </label>
+      <label class="row switch-row" for="preeditScrub">
+        <span class="row-label">
+          <span data-i18n="input.feel.preeditScrub">空格横滑移动拼音光标</span>
+          <small data-i18n="input.feel.preeditScrubHint">输入拼音时左右滑动空格键，移动拼音串内的光标方便修改错字；没有输入时仍移动正文光标。默认开启，不需要可在本行关掉。目前支持全拼与双拼（#103）。</small>
+        </span>
+        <input type="checkbox" id="preeditScrub" data-keywords="拼音 光标 空格 滑动 修改 错字 preedit caret space swipe experimental" class="toggle">
+      </label>
+
+      <label class="row switch-row" for="bottomSymSplit">
+        <span class="row-label">
+          <span data-i18n="input.feel.bottomSymSplit">底行符号/数字分键</span>
+          <small data-i18n="input.feel.bottomSymSplitHint">开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。</small>
+        </span>
+        <input type="checkbox" id="bottomSymSplit" data-keywords="底行 符号 数字 123 九宫格 分键 拆分 numpad symbols split bottom" class="toggle">
+      </label>
 
       <div class="row language-row">
         <span class="row-label">
@@ -710,7 +747,10 @@
           <span data-i18n="input.feel.keySoundVolume">按键音量</span>
           <small data-i18n="input.feel.keySoundVolumeHint">哔声、系统键击音与自定义音效共用。</small>
         </span>
-        <input type="range" id="keySoundVolume" min="0" max="100" step="5" class="slider" aria-label="按键音量" data-i18n-aria="input.feel.keySoundVolume">
+        <span class="range-group">
+          <output id="keySoundVolumeOut" for="keySoundVolume" class="range-out">60%</output>
+          <input type="range" id="keySoundVolume" min="0" max="100" step="5" class="slider" aria-label="按键音量" data-i18n-aria="input.feel.keySoundVolume">
+        </span>
       </div>
       <!-- #30-2 音效风格：默认哔声 / 系统键击音 / 自定义文件（SAF 选音频，
            拷进应用私有目录，SoundPool 预载播放）。 -->
@@ -784,11 +824,11 @@
 <div class="page" data-page="fuzzy" hidden>
   <header class="page-head">
     <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.backInput" aria-label="返回键盘与输入">‹</button>
-    <h2 class="page-title" data-i18n="page.fuzzy">全拼模糊音</h2>
+    <h2 class="page-title" data-i18n="page.fuzzy">模糊音</h2>
   </header>
   <main>
     <section class="card" id="sec-fuzzy" aria-labelledby="fuzzyTitle">
-      <div class="section-heading"><h2 id="fuzzyTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">全拼模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
+      <div class="section-heading"><h2 id="fuzzyTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
       <label class="row switch-row" for="fuzzyBit1">
         <span class="row-label"><span data-i18n="input.fuzzy.g.ping">平翘舌</span><small data-i18n="input.fuzzy.g.ping.hint">z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。</small></span>
         <input type="checkbox" id="fuzzyBit1" class="toggle" data-fuzzy-bit="1">
@@ -914,6 +954,9 @@
         <span class="save-note" id="dictBaseNote" role="status" aria-live="polite"></span>
       </div>
       <p class="hint" id="dictBaseBuilding" hidden></p>
+      <!-- 导入进度条（#95 后续）：COPYING 按源流字节、COMPILING 按产物
+           落盘步进；ETA 用 elapsed/percent 外推。 -->
+      <div class="progress" id="dictBaseProgressBar" hidden><i></i></div>
       <!-- #37 形码/音形码表特征提示：换装通道只支持拼音系码表，检测到
            大部分编码切不成拼音音节时持续警示。 -->
       <p class="hint" id="dictBaseNonPinyin" hidden data-i18n="dict.base.nonPinyin">抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。</p>
@@ -943,6 +986,7 @@
         <span class="save-note" id="flypyNote" role="status" aria-live="polite"></span>
       </div>
       <p class="hint" id="flypyBuilding" hidden></p>
+      <div class="progress" id="flypyBuildingBar" hidden><i></i></div>
     </section>
 
     <section class="card" id="sec-dict-import" aria-labelledby="dictImportTitle">
@@ -958,7 +1002,7 @@
         <button class="btn ghost-btn" id="btnClearImportedDict" type="button" hidden data-i18n="input.phrases.clearBtn">清空导入词</button>
         <span class="save-note" id="dictImportNote" role="status" aria-live="polite"></span>
       </div>
-      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码&lt;TAB&gt;位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。</p>
+      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码&lt;TAB&gt;位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；要让第三列对全部词（不只符号词）生效，文件头部声明 columns: [text, code, rank]；适合把 rime-ice 等社区词库里的自选词补进来。</p>
     </section>
 
     <!-- #54（2026-10-09 用户裁定·简化版）：候选符号词从输入页归位到
@@ -1059,6 +1103,13 @@
           <span class="row-label"><span data-i18n="voice.mic.permission">麦克风权限</span><small data-i18n="voice.mic.hint">语音输入必需，全程本地处理</small></span>
           <button class="btn" id="btnMic" type="button" data-i18n="voice.mic.action">去授权</button>
         </div>
+        <label class="row switch-row" for="voiceReadyHaptic">
+          <span class="row-label">
+            <span data-i18n="voice.readyHaptic">语音就绪震动</span>
+            <small data-i18n="voice.readyHapticHint">语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。</small>
+          </span>
+          <input type="checkbox" id="voiceReadyHaptic" data-keywords="语音 震动 加载 就绪 聆听 voice vibrate ready haptic" class="toggle">
+        </label>
       </div>
       <div class="rows">
         <label class="row" for="modelBackend">
@@ -1109,6 +1160,10 @@
         <label class="row switch-row" for="stripPeriod">
           <span class="row-label"><span data-i18n="voice.asr.stripPeriod">去掉句尾句号</span><small data-i18n="voice.asr.stripHint">问号、叹号保留；关闭后保留模型输出</small></span>
           <input type="checkbox" id="stripPeriod" class="toggle">
+        </label>
+        <label class="row switch-row" for="numItn">
+          <span class="row-label"><span data-i18n="voice.asr.numItn">数字写成阿拉伯数字</span><small data-i18n="voice.asr.numItnHint">数量、日期、金额、小数自动转换（三个 → 3个）；默认关闭</small></span>
+          <input type="checkbox" id="numItn" class="toggle">
         </label>
         <label class="row switch-row" for="asrIdleUnload">
           <span class="row-label"><span data-i18n="voice.asr.idleUnload">空闲时释放语音模型</span><small data-i18n="voice.asr.idleUnloadHint">默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载</small></span>
@@ -1378,6 +1433,27 @@
         </div>
       </div>
     </section>
+    <!-- #112 键盘符号栏定制（2026-11-15 二轮：三键盘独立入口独立页面，
+         用户裁定一页三段塞不下）。数据挂同一份定制 JSON 的 t9Strip/
+         strokeStrip/inkStrip 字段（saveCustom 对多余字段宽松，native 校验
+         只盯 rows）。 -->
+    <section class="card" aria-labelledby="ckT9Head">
+      <div class="section-heading"><h2 id="ckT9Head" data-i18n="ck.t9.title">键盘符号栏</h2></div>
+      <div class="rows">
+        <div class="row" id="ckT9StripEntry" data-keywords="T9 九宫格 符号栏 左侧 定制 排序 拖动">
+          <span class="row-label"><span data-i18n="ck.t9.entryT9">T9 九宫格符号栏</span><small id="ckT9StripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" id="ckStrokeStripEntry" data-keywords="笔画 符号栏 左侧 定制 排序 拖动">
+          <span class="row-label"><span data-i18n="ck.t9.entryStroke">笔画键盘符号栏</span><small id="ckStrokeStripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" id="ckInkStripEntry" data-keywords="手写 符号栏 滚动列 定制 排序 拖动">
+          <span class="row-label"><span data-i18n="ck.t9.entryInk">手写键盘符号栏</span><small id="ckInkStripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </section>
     <!-- 「定制」符号页（原有 tab 迁入四级页）：关闭符号页定制时整卡
          隐藏（开关在符号页内，renderCustom 按 state 显隐）。 -->
     <section class="card" id="ckSymCard" aria-labelledby="ckSymHead">
@@ -1453,6 +1529,72 @@
       <p class="hint" data-i18n="ck.lang.hint1">点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。</p>
       <div id="cklangKb" class="ck-lang-kb"></div>
       <p class="hint" data-i18n="ck.lang.hint2">分词 / 退格 / 123 / 中英 / 回车不可定制；空格长按沿用「长按空格动作」（跨键盘统一）。</p>
+    </section>
+  </main>
+</div>
+
+<!-- #112 键盘符号栏编辑页 ×3（2026-11-15 二轮：独立入口独立页面，拖动
+     排序替代 ↑↓）。列表/添加行/计数由 JS 渲染（renderStripPage(kind)）；
+     拖动会话 beginStripRowDrag（codex 方案 2026-11-15）。 -->
+<div class="page ck-strip-page" data-page="ckt9strip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitleT9">T9 符号栏</h2>
+    <button class="btn" id="ckt9Reset" type="button" data-i18n="ck.t9.resetOne">恢复默认</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hintT9">九宫格键盘空闲时左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除；打字中该列临时显示拼音音节，与符号栏互不影响。</p>
+      <div class="strip-list" id="ckt9List"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span><small id="ckt9Count"></small></span>
+        <span class="ck-row2-ctl" style="display:flex;gap:8px;">
+          <input type="text" id="ckt9AddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="ckt9AddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="page ck-strip-page" data-page="ckstrokestrip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitleStroke">笔画符号栏</h2>
+    <button class="btn" id="ckstrokeReset" type="button" data-i18n="ck.t9.resetOne">恢复默认</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hintStroke">笔画键盘左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除。</p>
+      <div class="strip-list" id="ckstrokeList"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span><small id="ckstrokeCount"></small></span>
+        <span class="ck-row2-ctl" style="display:flex;gap:8px;">
+          <input type="text" id="ckstrokeAddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="ckstrokeAddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="page ck-strip-page" data-page="ckinkstrip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitleInk">手写符号栏</h2>
+    <button class="btn" id="ckinkReset" type="button" data-i18n="ck.t9.resetOne">恢复默认</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hintInk">手写键盘右侧滚动符号列，拖动 ≡ 调整顺序，点 ✕ 删除。</p>
+      <div class="strip-list" id="ckinkList"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span><small id="ckinkCount"></small></span>
+        <span class="ck-row2-ctl" style="display:flex;gap:8px;">
+          <input type="text" id="ckinkAddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="ckinkAddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
     </section>
   </main>
 </div>
@@ -1606,7 +1748,16 @@
           <button class="btn primary" id="ckApply" type="button" data-i18n="ck.apply">确定</button>
         </div>
       </div>
+<script>window.__feelimeES = 0;</script>
 <script src="dp-data.js"></script>
 <script src="settings.js"></script>
+<!-- #90 旧 WebView 同 keyboard/index.html 的探针：settings.js 解析失败
+     （ES2020 语法被拒）时改载 esbuild chrome66 转译副本（见
+     scripts/generate-legacy-web.sh）。dp-data.js 是生成数据，语法恒旧。 -->
+<script>
+    if (!window.__feelimeES) {
+        document.write('<script src="settings.legacy.js"><\/script>');
+    }
+</script>
 </body>
 </html>

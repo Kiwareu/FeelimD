@@ -247,6 +247,24 @@ const val PREF_PANEL_OPACITY = "panel_opacity"
 const val PREF_GLASS_SKIN = "glass_skin"
 /** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
 const val PREF_KEY_BUBBLE = "key_bubble"
+/** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
+const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
+/** #103 空格横滑=组合内拼音光标（默认开，可手动关）：有组合时移 preedit
+ *  光标方便改错字母，无组合时维持移宿主光标的存量语义；第一期限
+ *  全拼/双拼（JS 侧白名单），T9/形码后续开放。 */
+const val PREF_PREEDIT_SCRUB = "feelime_preedit_scrub"
+/** 底行符号/数字分键（#113，默认关）：开启后 26 键底行左下的【123】拆成
+ *  【符号】+【123】两键——前者进符号面板、后者直达九宫格数字键盘
+ *  （存量是点=符号面板、长按=数字键盘，两段式）。 */
+const val PREF_BOTTOM_SYM_SPLIT = "feelime_bottom_sym_split"
+/** 语音就绪震动（公众号 NULL 留言，默认关）：语音模型加载完成、开始
+ *  聆听那一刻震动提示——仅「未加载→已加载」的转换震；模型已加载的
+ *  后续进入不震（JS 侧只在 loading→listening 转换时调桥）。 */
+const val PREF_VOICE_READY_HAPTIC = "voice_ready_haptic"
+
+fun readVoiceReadyHapticEnabled(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_VOICE_READY_HAPTIC, false)
 /** 气泡停留时长（验收 2026-09-24：松手立即消失看不清）。0/250/400/600ms。 */
 const val PREF_BUBBLE_LINGER = "bubble_linger_ms"
 val BUBBLE_LINGER_STEPS = intArrayOf(0, 250, 400, 600)
@@ -255,6 +273,15 @@ fun readBubbleLinger(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_BUBBLE_LINGER, 400)
         .takeIf { it in BUBBLE_LINGER_STEPS.asList() } ?: 400
+/** toast 停留时长（用户要求 2026-11-13）：300-10000ms，默认 1600。
+ *  keyNote 按键气泡不走这个 pref，仍是固定 1600ms。 */
+const val PREF_TOAST_MS = "toast_ms"
+val TOAST_MS_RANGE = 300..10000
+
+fun readToastMs(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_TOAST_MS, 1600)
+        .let { if (it in TOAST_MS_RANGE) it else 1600 }
 const val KB_HEIGHT_PORTRAIT_KEY = "keyboard_height_portrait"
 
 fun readKeyOpacity(context: Context): Int =
@@ -376,6 +403,24 @@ fun readLandscapeOpacity(context: Context): Int =
 fun readKeyBubble(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_KEY_BUBBLE, true)
+
+/** #89：默认 false——组词中切换保持 1.4.5 及之前行为，开启才拦误触。 */
+fun readCnEnComposingGuard(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_CN_EN_COMPOSING_GUARD, false)
+
+/** #103 空格横滑移拼音光标：验收通过后默认开（2026-11-13）。
+ *  只有用户在设置里显式关过才会写进 pref 的 false——老用户没动过开关
+ *  的一律拿到新默认，手动关过的保持关。 */
+fun readPreeditScrub(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_PREEDIT_SCRUB, true)
+
+/** 底行符号/数字分键（#113，默认关）。 */
+fun readBottomSymSplit(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_BOTTOM_SYM_SPLIT, false)
+
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */
 fun readKbHeightPortrait(context: Context): Int {
@@ -938,6 +983,9 @@ class SettingsBridge(
                 put("symbolRanks", JSONObject().apply {
                     state.symbolRanks.forEach { (text, rank) -> put(text, rank) }
                 })
+                // #107 全词面 rank 词面集合（声明表导入），设置页表单
+                // 回显不消费，仅随 state 透传。
+                put("rankAll", JSONArray().apply { state.rankAll.forEach { put(it) } })
                 put("symbolFreqSort", state.symbolFreqSort)
             })
             .put("userWords", JSONArray().apply {
@@ -990,7 +1038,12 @@ class SettingsBridge(
             .put("quickReturnMode", readQuickReturnMode(context))
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
+            .put("cnEnComposingGuard", readCnEnComposingGuard(context))
+            .put("preeditScrub", readPreeditScrub(context))
+            .put("bottomSymSplit", readBottomSymSplit(context))
+            .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(context))
             .put("bubbleLinger", readBubbleLinger(context))
+            .put("toastMs", readToastMs(context))
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
             // 点开开关后 pushState 一到就弹回——「开了看不出开」。
             .put("flickSwap", readFlickSwap(context))
@@ -1022,6 +1075,7 @@ class SettingsBridge(
             .put("models", modelsJson())
             .put("asr", JSONObject()
                 .put("stripPeriod", asrPrefs().getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true))
+                .put("itn", asrPrefs().getBoolean(AsrSettings.KEY_ITN, false))
                 .put("idleUnload", asrPrefs().getBoolean(AsrSettings.KEY_IDLE_UNLOAD, false))
                 .put("hotwords", asrPrefs().getString(AsrSettings.KEY_HOTWORDS, "") ?: ""))
             .put("custom", JSONObject()
@@ -2041,8 +2095,50 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 空格横滑组合内拼音光标（#103，默认开，可手动关）。 */
+    @JavascriptInterface
+    fun setPreeditScrub(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_PREEDIT_SCRUB, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 底行符号/数字分键（#113，默认关）。 */
+    @JavascriptInterface
+    fun setBottomSymSplit(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_BOTTOM_SYM_SPLIT, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     /** 按键气泡开关（issue #30-1，默认关）。 */
     @JavascriptInterface
+    fun setCnEnComposingGuard(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_CN_EN_COMPOSING_GUARD, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 语音就绪震动（公众号 NULL，默认关）。 */
+    @JavascriptInterface
+    fun setVoiceReadyHaptic(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_VOICE_READY_HAPTIC, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_KEY_BUBBLE, on).commit()
@@ -2058,6 +2154,19 @@ class SettingsBridge(
         if (ms !in BUBBLE_LINGER_STEPS.asList()) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_BUBBLE_LINGER, ms).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** toast 停留时长（300-10000ms）。越界静默夹紧回默认，不回错误：
+     *  滑杆本身已限幅，越界只可能来自旧版本写入的脏值。 */
+    @JavascriptInterface
+    fun setToastMs(ms: Int, token: String) = guarded(token) {
+        val clamped = if (ms in TOAST_MS_RANGE) ms else 1600
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_TOAST_MS, clamped).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -2252,7 +2361,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, enabled, items, imported = state.imported, user = state.user,
             englishEnabled = state.englishEnabled,
-            symbolRanks = ranks, symbolFreqSort = state.symbolFreqSort,
+            symbolRanks = ranks, rankAll = state.rankAll,
+            symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2268,7 +2378,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = state.user,
             englishEnabled = state.englishEnabled,
-            symbolRanks = state.symbolRanks, symbolFreqSort = enabled,
+            symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+            symbolFreqSort = enabled,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2285,7 +2396,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = state.user,
             englishEnabled = enabled,
-            symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
+            symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+            symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2355,7 +2467,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = items,
             englishEnabled = state.englishEnabled,
-            symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
+            symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+            symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2388,12 +2501,16 @@ class SettingsBridge(
             val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
             // #81 位置列：导入是替换式换表——旧导入词的 rank 随表清掉，
             // 手管词（items 表单）的 rank 保留，新表的 ranks 覆盖并入。
+            // #107 rankAll 同步替换：仅声明表（columns 含 rank）导入时
+            // 非空，无声明/换了普通表=清空（回到 #81 仅符号词语义）。
             val managedTexts = state.items.map { it.first }.toSet()
             val ranks = state.symbolRanks.filterKeys { it in managedTexts } + result.ranks
+            val rankAll = if (result.rankDeclared) result.ranks.keys.toSet() else emptySet()
             com.feelime.ime.engine.CustomPhraseStore.save(
                 context, state.enabled, state.items, imported = result.items, user = state.user,
                 englishEnabled = state.englishEnabled,
-                symbolRanks = ranks, symbolFreqSort = state.symbolFreqSort,
+                symbolRanks = ranks, rankAll = rankAll,
+                symbolFreqSort = state.symbolFreqSort,
             )
             context.sendBroadcast(
                 Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2429,6 +2546,7 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = emptyList(), user = state.user,
             englishEnabled = state.englishEnabled,
+            // rankAll 不透传（默认空集）：清空导入=清空声明表的词面集合。
             symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
@@ -3332,7 +3450,7 @@ class SettingsBridge(
     }
 
     @JavascriptInterface
-    fun saveAsrSettings(stripPeriod: Boolean, hotwords: String, token: String) = guarded(token) {
+    fun saveAsrSettings(stripPeriod: Boolean, itn: Boolean, hotwords: String, token: String) = guarded(token) {
         // Raw lines go to the parser (original line numbers in errors, the
         // 50-line limit counts non-empty lines before dedup) and to prefs
         // verbatim: one bad line ("姚程:0", a full-width colon) rejects the
@@ -3353,6 +3471,7 @@ class SettingsBridge(
         }
         asrPrefs().edit()
             .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
+            .putBoolean(AsrSettings.KEY_ITN, itn)
             .putString(AsrSettings.KEY_HOTWORDS, normalized)
             .commit()
         // Success receipt with the normalized text: the JS side re-syncs the
@@ -3365,6 +3484,19 @@ class SettingsBridge(
                 .put("message", t(context, "已保存", "Saved"))
                 .put("hotwords", normalized)
         )
+        pushState()
+    }
+
+    /** toggle 拨动即存的窄接口（#90 验收链）：只写两个布尔、不触碰热词
+     *  ——复用 saveAsrSettings 会让成功回执带着旧热词（hotwords 字段），
+     *  校验失败后保留的草稿被回执洗掉（codex P2），热词也随快照陈旧值
+     *  回写。热词仍走 saveAsrSettings 显式保存。 */
+    @JavascriptInterface
+    fun setAsrToggles(stripPeriod: Boolean, itn: Boolean, token: String) = guarded(token) {
+        asrPrefs().edit()
+            .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
+            .putBoolean(AsrSettings.KEY_ITN, itn)
+            .commit()
         pushState()
     }
 

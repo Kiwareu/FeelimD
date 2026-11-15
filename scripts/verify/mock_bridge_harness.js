@@ -64,6 +64,57 @@ function detachMockNode(node) {
     }
 }
 
+// —— MutationObserver 最小实现（工具栏互斥守卫的消费语义）——
+// 真实浏览器里 observer 回调在微任务时机（渲染前）执行；fake 世界
+// 用 0ms 定时任务对齐（scheduler 即 clock.setTimeout(fn, 0)，
+// advance(0) 冲洗——与 select 延迟派发同模式，同步派发会造出浏览器
+// 没有的时序）。只支持键盘页实际用到的形态：单属性 hidden 过滤 +
+// subtree。records 在派发前跨多次变更累积，回调一次收全。不做跨
+// 用例的全局去重：flush 排进的是 per-world 的 clock，旧 world 的
+// pending flush 永不被 advance，模块级 queued 标志会卡死后续所有
+// 用例的派发（首版实测教训）；flush 幂等（records 空=零成本），
+// 重复调度无害。
+const mutationObservers = [];
+
+class FakeMutationObserver {
+    constructor(callback) { this.callback = callback; this.records = []; }
+    observe(target, options) {
+        mutationObservers.push({ observer: this, target, options: options || {} });
+    }
+    disconnect() {
+        for (let i = mutationObservers.length - 1; i >= 0; i--) {
+            if (mutationObservers[i].observer === this) mutationObservers.splice(i, 1);
+        }
+    }
+    takeRecords() { const r = this.records; this.records = []; return r; }
+}
+
+function notifyHiddenMutation(el) {
+    let queued = false;
+    for (const entry of mutationObservers) {
+        const filter = entry.options.attributeFilter;
+        if (filter && !filter.includes('hidden')) continue;
+        let node = el;
+        while (node && node !== entry.target) node = node.parentNode;
+        if (node !== entry.target) continue;
+        entry.observer.records.push({ type: 'attributes', attributeName: 'hidden', target: el });
+        queued = true;
+    }
+    if (!queued) return;
+    const fire = () => {
+        for (const entry of [...mutationObservers]) {
+            if (!entry.observer.records.length) continue;
+            const records = entry.observer.records;
+            entry.observer.records = [];
+            // 不吞回调异常：守卫炸了就要炸出来（真实浏览器进
+            // window.onerror，fake 世界让错误直接显形）。
+            entry.observer.callback(records);
+        }
+    };
+    if (el.__scheduler) el.__scheduler(fire);
+    else Promise.resolve().then(fire);
+}
+
 class FakeElement {
     constructor(tagName, scheduler) {
         this.tagName = String(tagName || 'div').toUpperCase();
@@ -116,7 +167,21 @@ class FakeElement {
         // _textContent !== undefined; seeding '' would freeze every element
         // at "" and hide child text (settings.js buildModelRow regression).
         this.disabled = false;
-        this.hidden = false;
+        // hidden 走 accessor：值真正变化才派发 mutation（与真实 DOM
+        // 一致——同值重赋不触发 observer，引擎事件高频路径的幂等
+        // hidden 赋值不会刷守卫）。
+        let hiddenValue = false;
+        Object.defineProperty(this, 'hidden', {
+            get: () => hiddenValue,
+            set: value => {
+                const next = !!value;
+                if (next === hiddenValue) return;
+                hiddenValue = next;
+                notifyHiddenMutation(this);
+            },
+            configurable: true,
+            enumerable: true,
+        });
         // Form fields (panel add/edit inputs) carry a value.
         this.value = '';
         // 设置页外观预览嵌真键盘 iframe：contentWindow 只需要记录
@@ -140,6 +205,9 @@ class FakeElement {
         this._scrollLeft = 0;
     }
     get clientWidth() {
+        // 测试专用覆盖洞（#55 fit 用例：fake DOM 无布局引擎，窄卡场景
+        // 靠它喂桩宽；正常元素不受影响）。
+        if (this._clientWidthOverride != null) return this._clientWidthOverride;
         if (!this._scrollable) return 0;
         // 翻页条（.qs-pages，tile 网格）：视口宽 = 一页宽，scrollLeft
         // 以「页」为单位（2 页内容 → max 只有一页的余量）。
@@ -759,6 +827,12 @@ class MockNative {
     setKeyboardHeight(totalCssPx, token) {
         this._record('setKeyboardHeight', [totalCssPx, token]);
     }
+    setFloating(on, token) {
+        this._record('setFloating', [on, token]);
+    }
+    setFloatingRect(left, top, width, height, token) {
+        this._record('setFloatingRect', [left, top, width, height, token]);
+    }
     // design §15: the settings page's native table mirror.
     customKeys(token) {
         this._record('customKeys', [token]);
@@ -777,6 +851,10 @@ class MockNative {
     // issue #5 问题 2：按键声音/触感，开关在设置页、默认全关。
     keyFeedback(token) {
         this._record('keyFeedback', [token]);
+    }
+    // 语音就绪震动（公众号 NULL）：loading→listening 转换时 JS 回敲。
+    voiceReadyHaptic(token) {
+        this._record('voiceReadyHaptic', [token]);
     }
     setComposition(keys, token) {
         this._record('setComposition', [keys, token]);
@@ -811,6 +889,14 @@ class MockNative {
     editorAction(action, token) {
         this._record('editorAction', [action, token]);
     }
+    // #93 分享选中文字（定制键 [edit:share] 与工具栏 share 工具共用）。
+    shareSelectedText(token) {
+        this._record('shareSelectedText', [token]);
+    }
+    // #93 面板输入框的分享（JS 面板态自带选区文本）。
+    shareText(text, token) {
+        this._record('shareText', [text, token]);
+    }
     // 侧条光标四向（FeelimeService.editorCursor，#39-10 编辑面板复用）。
     editorCursor(dir, token) {
         this._record('editorCursor', [dir, token]);
@@ -825,6 +911,13 @@ class MockNative {
     }
     moveCursor(delta, token) {
         this._record('moveCursor', [delta, token]);
+    }
+    // #103 空格横滑统一入口：组合中走 gestureId 通道（native 锁定目标）。
+    scrubCursor(gestureId, steps, token) {
+        this._record('scrubCursor', [gestureId, steps, token]);
+    }
+    scrubCursorEnd(gestureId, token) {
+        this._record('scrubCursorEnd', [gestureId, token]);
     }
     // Control layer: raw host key events (keycode + meta).
     undoDeleteBeforeCursor(token) { this._record('undoDeleteBeforeCursor', [token]); }
@@ -1051,6 +1144,8 @@ class KeyboardWorld {
             Map,
             Set,
             Promise,
+            // 工具栏互斥守卫的消费通道（notifyHiddenMutation 见类注释）
+            MutationObserver: FakeMutationObserver,
         };
         sandbox.window = sandbox;
         sandbox.window.FeelimeNative = this.native;
@@ -1097,6 +1192,14 @@ class KeyboardWorld {
                 // 界面语言「选择值」（auto/zh/en）；uiLocale 是解析结果。
                 uiLanguage: 'zh',
                 theme: 'light',
+                // #103 验收后默认开（与 SettingsBridge.readPreeditScrub
+                // 的 true 默认对齐）；测「手动关」分支显式传 false。
+                preeditScrub: true,
+                // #113 底行符号/数字分键（默认关，与 readBottomSymSplit
+                // 的 false 对齐）；开态用例显式传 true。
+                bottomSymSplit: false,
+                // toast 停留时长（与 SettingsBridge.readToastMs 的 1600 默认对齐）。
+                toastMs: 1600,
                 orientation: 'portrait',
                 engineDataReady: { pinyin: true, 'double-pinyin': true, japanese: true, french: true, russian: true },
             },

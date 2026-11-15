@@ -2,6 +2,8 @@ package com.feelime.ime
 
 import android.content.Context
 import android.util.Log
+import com.feelime.ime.engine.ChineseNumberItn
+import com.feelime.ime.engine.ItnClassifier
 import com.k2fsa.sherpa.onnx.OfflinePunctuation
 import com.k2fsa.sherpa.onnx.OfflinePunctuationConfig
 import com.k2fsa.sherpa.onnx.OfflinePunctuationModelConfig
@@ -40,7 +42,23 @@ class TranscriptPostProcessor(
     fun final(text: String): String {
         val normalized = partial(text)
         if (normalized.isBlank()) return ""
-        val restored = punctuation?.addPunctuation(normalized)?.trim().orEmpty().ifBlank { normalized }
+        // 数字 ITN（#78）在标点恢复之前：识别原文里数字段以词界/句尾收束，
+        // 标点模型插逗号后句尾裸段规则（「一共十二」）会失配；模型对含
+        // 阿拉伯数字的输入同样在域内。关闭开关则原文进标点模型。
+        val itnEnabled = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
+            .getBoolean(AsrSettings.KEY_ITN, false)
+        val converted = if (itnEnabled) {
+            // 开放面分类器随语音后处理器加载（资源缺失静默降级严格 KEEP）
+            if (!ItnClassifier.loaded) {
+                ItnClassifier.load(appContext)
+                ChineseNumberItn.classifier = ItnClassifier
+            }
+            ChineseNumberItn.apply(normalized)
+        } else normalized
+        val restored = EnglishTextNormalizer.normalizeDigitPunctSpacing(
+            punctuation?.addPunctuation(converted)?.trim().orEmpty().ifBlank { converted },
+            converted,
+        )
         val stripPeriod = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
             .getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true)
         return if (stripPeriod) EnglishTextNormalizer.ensureTerminalPunctuation(restored) else restored
@@ -95,6 +113,26 @@ object EnglishTextNormalizer {
             value = pattern.replace(value, contraction)
         }
         return value
+    }
+
+    // 纯环视收集（零宽）：链式 1.2.3 的重叠 run（1.2 与 2.3）都要拿到
+    // ——普通 findAll 非重叠，第二个 run 会被第一个 match 消费掉。
+    private val digitPunctRun = Regex("(?=(\\d)([.,])(\\d))")
+
+    /** 标点模型输出归一：只恢复「标点处理前（converted）本就连续」的
+     *  数字-标点-数字串——口语标点模型把 ITN 产物 1.23 排成 "1 . 23"
+     *  （英文标点空格习惯），中文数字排版无空格。以 converted 为白名
+     *  单而不是无条件压空格：句点两侧数字也可能是相邻的两句（「他选
+     *  1 . 2个人弃权」——模型自插的英文句点），不能并成小数（codex
+     *  P2）。同构 run 多次出现一次 replace 全恢复；链式 1 . 2 . 3 由
+     *  多个 run 依次复原。 */
+    fun normalizeDigitPunctSpacing(text: String, converted: String): String {
+        var out = text
+        for (m in digitPunctRun.findAll(converted)) {
+            val (a, p, b) = m.destructured
+            out = out.replace(Regex("$a\\s*${Regex.escape(p)}\\s*$b"), "$a$p$b")
+        }
+        return out
     }
 
     fun ensureTerminalPunctuation(text: String): String {

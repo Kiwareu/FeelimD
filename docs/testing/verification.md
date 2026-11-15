@@ -142,7 +142,8 @@ bash scripts/verify/run-all.sh --list        # 列出段与 profiles
 bash scripts/verify/run-all.sh 9n 9j         # 只跑指定段（前缀匹配）
 bash scripts/verify/run-all.sh --from 9g     # 从某段跑到尾
 bash scripts/verify/run-all.sh --resume      # 跳过状态文件里已绿的段
-bash scripts/verify/run-all.sh --profile quick   # 按改动面选段
+bash scripts/verify/run-all.sh --profile daily   # 日常档（固定核心 ~10min）
+bash scripts/verify/run-all.sh --profile quick   # 按改动面选层
 FEELIME_GATE_NO_RESET=1 bash scripts/verify/run-all.sh  # 调试：跳过基线复位
 # 另有 FEELIME_GATE_RETRIES=<n>（失败段自动重试次数）与 FEELIME_GATE_NO_RESET
 ```
@@ -150,21 +151,52 @@ FEELIME_GATE_NO_RESET=1 bash scripts/verify/run-all.sh  # 调试：跳过基线�
 段选择按 label 前缀匹配，可选中包括本地段在内的任意段，未知段名
 直接报错退出；`--resume` 对所有段生效。状态文件
 `/tmp/feelime-gate-state-<serial>.json` 记录 APK sha + git sha + 工作区
-指纹，换 APK/换 commit/改工作区自动作废（已绿的段重新验才算数）。
-qemu 死亡或单段重试耗尽时 gate 响亮退出，修复/重启后用 `--resume`
-续跑，不再整跑报废。
+指纹（哈希每个脏文件的内容，同文件继续改也会翻转），换 APK/换
+commit/改工作区自动作废（已绿的段重新验才算数）。qemu 死亡或单段
+重试耗尽时 gate 响亮退出（EXIT trap 补打本轮耗时汇总），修复/重启后
+用 `--resume` 续跑，不再整跑报废。段重试前会先 sweep（清 prefs+pin），
+失败态不带入重跑。ASR fixture 缺失时该段记 BLOCKED：不落 done、
+不算绿，补齐后 `--resume` 会重跑。
 
-profiles（按改动面选层，普通批次用 quick ≈ 30min，全量留给发版前）：
+profiles（2026-11-14 codex 方案落地：所有 profile 自动含本地三段——
+「改资产先跑 mock」从纪律变机制；日常默认 `daily` 档固定核心 ~10min，
+预算=核心 596s + 按 diff 映射追加专项 ≤180s + 波动 ≤120s）：
 
 | profile | 段 |
 | --- | --- |
-| quick | base、extended、feel-degrade、input-prefs、panel、height-card |
-| input | base、feel-degrade、input-prefs、t9、appearance、stroke |
-| keyboard-js | base、extended、caps-flick、keymap、pool |
-| native-engine | base、extended、backspace、delete |
-| kotlin-service | base、editor、feel-degrade、resource |
-| voice | gesture、voice-hold、fn-voice、asr |
-| resources | resource |
+| daily | 本地三层 + base、gesture、editor、panel、control-layer |
+| quick | 本地三层 + base、extended、feel-degrade、input-prefs、panel、height-card |
+| input | 本地三层 + base、feel-degrade、input-prefs、t9、appearance、stroke、handwriting |
+| keyboard-js | 本地三层 + base、extended、caps-flick、keymap、pool |
+| native-engine | 本地三层 + base、extended、backspace、delete |
+| kotlin-service | 本地三层 + base、editor、feel-degrade、handwriting、resource |
+| voice | 本地三层 + gesture、voice-hold、fn-voice、asr |
+| resources | 本地三层 + resource |
+
+diff → 追加专项映射表（profile 是起点，按改动面在预算内追加）：
+
+| 改动面 | 追加专项 |
+| --- | --- |
+| keyboard.js 输入/候选/触摸共享代码 | 候选池(9d)、回放(9m)、caps-flick(9a)；涉及模式分支再加 t9/stroke/handwriting |
+| keyboard.css / index.html | appearance(9q)、height-card(9j)、control-layer(9e) |
+| 设置页 / SettingsBridge / 偏好存储 | input-prefs(9o)、appearance(9q)、height-card(9j)、phrase-codes(9k) |
+| TextInputCoordinator / 引擎适配 / schema 数据 | extended(7)、keymap(9c)、delete(9h)；数据类型决定加 t9/stroke |
+| FeelimeService / InputConnection / 编辑器生命周期 | editor-modes(9l)、backspace(9g)、ctrl-switch(9f) |
+| 语音会话 / 模型 / ASR 参数 | voice-hold(6b)、asr(11)；性能相关在 ace 真机跑五跑 |
+| 手写 / ORT | handwriting(9s)；诊断/发布跑崩溃导出 |
+| 构建 / manifest / 打包资产 | firstlaunch/upgrade 专项 + resource(10) |
+| 共享夹具（fv_common/device_verify） | 所有依赖场景；稳定前完整回归 |
+| 纯文档 | 仅本地检查 |
+
+两条硬边界：keyboard.js / FeelimeService 这类大文件不能凭几行关键词
+推断精确影响面，映射表第一版保守（未知路径默认扩大验证并说明）；
+30 段之外的发布首启/升级/生产语音等专项仍要按需进入，「跑满 30 段」
+不代表覆盖所有功能。专项预算超 3 分钟就升整层 profile，不为档位
+截断必需测试。
+
+跑完的尾表 `per-segment wall time` 按耗时降序列出各段墙钟（`--resume`
+跳过的段不计）；最慢段是下一轮套件优化的对象，retry summary 里
+retry-only 绿的段按 flaky 线索记录并治本。
 
 ### run-all 步骤
 
@@ -325,7 +357,9 @@ table 实测词频错位到 51.7% 命中）。重编链路（host，无需 NDK�
 4. T9：先 `scripts/generate-t9-syllables.py`（读新 `table.txt` 重写
    keyboard.js 内联块，KEYBOARD_VERSION 两处 bump），再
    `FEELIME_T9_DEPLOYER=… FEELIME_T9_SHARED=… scripts/generate-t9-schema.py
-   --compile`（顺带更新 engine-data MANIFEST）。
+   --compile`（顺带更新 engine-data MANIFEST）；模糊变体矩阵用
+   `--fuzzy-all`（31 个 `luna_pinyin_t9_fuzzy_m{mask}.prism.bin` +
+   部署模板，#73）。
 5. 双拼键位图：`scripts/generate-keyboard-data.py`（prism.txt 派生，
    mock 有 golden 校验）。
 6. `assets/engine-data/MANIFEST.json` 全量重算 sha/bytes；
@@ -422,6 +456,31 @@ ASCII fixture 上复现 `b uy sv`；新路径（只读迭代器 + hint 取材 fa
 全帧正确。注意：探针的 snapshot 会读取 top5/spanN 候选（触发惰性生成），
 「none 模式」不是零读取 burst 对照。
 
+
+## 发版证据账本（--release-evidence，2026-11-15）
+
+发版不再从零重跑全量门禁（v1.4.10 实测白烧 63min）。段级证据持久化在
+`~/.config/feelime/gate-evidence.jsonl`（repo 外，跨 commit 有效；run-all.sh
+每段跑绿自动 `gate-evidence.py record`），发版入口一键判定：
+
+```bash
+bash scripts/verify/run-all.sh --release-evidence   # 不碰设备
+# FRESH=有效证据；STALE=diff 触发须补跑；WEEKLY_DUE=设备段 7 天未跑
+# 退出 0=READY；退出 4=NOT-READY（列出须补跑段）
+```
+
+有效性规则（`gate-trigger-map.json`，保守优先）：取该段最近一次 PASS 的
+commit（须为 HEAD 祖先），其到 HEAD 的 diff 命中该段触发面即 STALE。
+全局触发（任何段失效）：`app/src/main/java/**`、`scripts/verify/**`、
+gradle 配置、`test-fixtures/**`；段级触发按资产域（keyboard assets 触发
+键盘行为段、settings assets 触发设置页段）；白名单（docs/md/发布脚本）
+不触发；`app/build.gradle.kts` 仅动 versionCode/versionName 行的 bump
+commit 不触发。**代码与证据相同才复用**：日期相同不构成证据，branch 上
+绿过不等于 main 上绿过（记账记的是跑绿时的 git_sha，非祖先记录作废）。
+
+与 /tmp 中断续跑 state 的区别：state 绑 apk/git/tree 指纹、跨 commit 即
+作废，只服务断点续跑；证据账本才是发版决策依据。9l 在 AVD 是
+KNOWN-ENV-SKIP（不记绿），归属真机验证。
 
 ## 发布产物门闸（--verify-sha）
 

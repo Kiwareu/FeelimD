@@ -186,14 +186,16 @@ class BaseDictFilesTest {
             BaseDictFiles.CORE_SCHEMAS,
             BaseDictFiles.baseCompileSchemas(fuzzyMask = 0, flypyInstalled = false),
         )
-        // 模糊音开 m19：核心 + 1 变体。
+        // 模糊音开 m19：核心 + 全拼/T9 各 1 变体（issue #73）。
         assertEquals(
-            BaseDictFiles.CORE_SCHEMAS + "luna_pinyin_fuzzy_m19",
+            BaseDictFiles.CORE_SCHEMAS + listOf("luna_pinyin_fuzzy_m19", "luna_pinyin_t9_fuzzy_m19"),
             BaseDictFiles.baseCompileSchemas(fuzzyMask = 19, flypyInstalled = false),
         )
         // + flypy 联动。
         assertEquals(
-            BaseDictFiles.CORE_SCHEMAS + "luna_pinyin_fuzzy_m19" + BaseDictFiles.FLYPY_SCHEMA,
+            BaseDictFiles.CORE_SCHEMAS +
+                listOf("luna_pinyin_fuzzy_m19", "luna_pinyin_t9_fuzzy_m19") +
+                BaseDictFiles.FLYPY_SCHEMA,
             BaseDictFiles.baseCompileSchemas(fuzzyMask = 19, flypyInstalled = true),
         )
         assertEquals(
@@ -204,30 +206,8 @@ class BaseDictFilesTest {
             BaseDictFiles.CORE_SCHEMAS + BaseDictFiles.FLYPY_SCHEMA,
             BaseDictFiles.flypyCompileSchemas(baseCustom = true),
         )
-        // #35 T9 内存门（词条量 + 可用内存双门；万象 2.7M 实测 RSS 爬到
-        // 6.9GB+ 被系统 SIGKILL）。
-        assertEquals(
-            BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + "luna_pinyin_fuzzy_m19",
-            BaseDictFiles.baseCompileSchemas(
-                fuzzyMask = 19, flypyInstalled = false, includeT9 = false,
-            ),
-        )
-        assertEquals(
-            BaseDictFiles.CORE_SCHEMAS,
-            BaseDictFiles.baseCompileSchemas(
-                fuzzyMask = 0, flypyInstalled = false, includeT9 = true),
-        )
-        assertEquals(
-            BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + BaseDictFiles.FLYPY_SCHEMA,
-            BaseDictFiles.flypyCompileSchemas(baseCustom = true, includeT9 = false),
-        )
-        // t9Eligible 双门边界：词条上限、内存按 4KB/词条。
-        assertEquals(false, BaseDictFiles.t9Eligible(BaseDictFiles.T9_MAX_ENTRIES + 1, Long.MAX_VALUE))
-        assertEquals(true, BaseDictFiles.t9Eligible(BaseDictFiles.T9_MAX_ENTRIES, Long.MAX_VALUE))
-        // 600k 词条 × 4KB = 2.4GB：可用 2GB 不够。
-        assertEquals(false, BaseDictFiles.t9Eligible(600_000, 2_000_000_000L))
-        assertEquals(true, BaseDictFiles.t9Eligible(500_000, 2_500_000_000L))
-        assertEquals(false, BaseDictFiles.t9Eligible(0, Long.MAX_VALUE))
+        // #95 T9 内存门整体移除（根因修正见 BaseDictFiles 注释）：清单恒含
+        // luna_pinyin_t9，t9Eligible 双门与 includeT9 参数已删。
 
         // #35 双拼/T9 纯拼音子伞：dictionary 行只动 translator 的精确匹配。
         val dpSchema = BaseDictFiles.rewriteDictionary(
@@ -282,6 +262,118 @@ class BaseDictFilesTest {
         menu:
           page_size: 8  # 候选词个数
     """.trimIndent()
+
+    /** T9 模糊模板（issue #73）：模糊行在 algebra 开头，后跟保护级联与
+     *  xlit——结构对齐 generate-t9-schema.py 的 hybrid_speller 产出。 */
+    private val t9Template = """
+        __build_info:
+          rime_version: 1.17.0
+        schema:
+          schema_id: luna_pinyin_t9_fuzzy
+          version: "0.31"
+        speller:
+          algebra:
+            - "derive/^([zcs])h/${'$'}1/"
+            - "derive/^([zcs])([^h])/${'$'}1h${'$'}2/"
+            - "derive/^n/l/"
+            - "derive/^l/n/"
+            - "derive/^f/h/"
+            - "derive/^h/f/"
+            - "derive/^r/l/"
+            - "derive/^l/r/"
+            - "derive/ang${'$'}/an/"
+            - "derive/an${'$'}/ang/"
+            - "derive/eng${'$'}/en/"
+            - "derive/en${'$'}/eng/"
+            - "derive/ing${'$'}/in/"
+            - "derive/in${'$'}/ing/"
+            - "derive/^(.*)a(.*)${'$'}/${'$'}1A${'$'}2/"
+            - "derive/^a(.*)${'$'}/A${'$'}1/"
+            - "derive/^(.*)z(.*)${'$'}/${'$'}1Z${'$'}2/"
+            - "xlit/abcdefghijklmnopqrstuvwxyz/22233344455566677778889999/"
+            - "xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
+          alphabet: abcdefghijklmnopqrstuvwxyz23456789
+        translator:
+          dictionary: luna_pinyin
+          prism: luna_pinyin_t9_fuzzy
+    """.trimIndent()
+
+    @Test
+    fun t9VariantMask1KeepsCascadeAndDropsOtherGroups() {
+        val out = BaseDictFiles.t9VariantSchema(t9Template, 1)
+        assertTrue(out.contains("schema_id: luna_pinyin_t9_fuzzy_m1"))
+        assertTrue(out.contains("prism: luna_pinyin_t9_fuzzy_m1"))
+        assertTrue(!out.contains("prism: luna_pinyin_t9_fuzzy\n"))
+        // 平翘舌保留
+        assertTrue(out.contains("- \"derive/^([zcs])h/${'$'}1/\""))
+        // 其它模糊组剔除
+        assertTrue(!out.contains("derive/^n/l/"))
+        assertTrue(!out.contains("derive/^f/h/"))
+        assertTrue(!out.contains("derive/ang${'$'}/an/"))
+        // 保护级联与两条 xlit 原样保留（模糊行过滤不得误伤非模糊规则）
+        assertTrue(out.contains("- \"derive/^(.*)a(.*)${'$'}/${'$'}1A${'$'}2/\""))
+        assertTrue(out.contains("xlit/abcdefghijklmnopqrstuvwxyz/22233344455566677778889999/"))
+        assertTrue(out.contains("xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"))
+    }
+
+    @Test
+    fun t9VariantMask31KeepsAllGroups() {
+        val out = BaseDictFiles.t9VariantSchema(t9Template, 31)
+        assertTrue(out.contains("schema_id: luna_pinyin_t9_fuzzy_m31"))
+        assertTrue(out.contains("- \"derive/^l/r/\""))
+        assertTrue(out.contains("- \"derive/in${'$'}/ing/\""))
+        // 2^k 级联全量在
+        assertTrue(out.contains("- \"derive/^(.*)z(.*)${'$'}/${'$'}1Z${'$'}2/\""))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun t9VariantRejectsZeroMask() {
+        BaseDictFiles.t9VariantSchema(t9Template, 0)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun t9VariantRejectsOverflowMask() {
+        BaseDictFiles.t9VariantSchema(t9Template, 32)
+    }
+
+    /** codex #4 实锤教训：部署模板资产曾是「schema_id 带 _m1 + 只含一组
+     *  模糊规则」的残次品，手写 fixture 掩盖了它。直接读真实资产跑全部
+     *  31 个 mask——缺组会让 t9VariantSchema 的防呆 require 响亮失败。 */
+    @Test
+    fun t9VariantSchemaWorksAgainstRealAssetTemplate() {
+        var dir = java.io.File(System.getProperty("user.dir") ?: ".")
+        var asset: java.io.File? = null
+        repeat(5) {
+            val f = java.io.File(dir, "src/main/assets/engine-data/rime/luna_pinyin_t9_fuzzy.schema.yaml")
+            if (f.isFile) { asset = f; return@repeat }
+            dir = dir.parentFile ?: return@repeat
+        }
+        org.junit.Assume.assumeNotNull(asset)
+        val template = asset!!.readText()
+        assertTrue(template.contains("schema_id: luna_pinyin_t9_fuzzy\n"))
+        assertTrue(template.contains("derive/^n/l/"))
+        assertTrue(template.contains("derive/ang${'$'}/an/"))
+        for (mask in 1..31) {
+            val out = BaseDictFiles.t9VariantSchema(template, mask)
+            assertTrue("mask=$mask", out.contains("schema_id: luna_pinyin_t9_fuzzy_m$mask"))
+        }
+    }
+
+    @Test
+    fun fuzzyVariantOfNamesBothSchemaFamilies() {
+        assertEquals("luna_pinyin_fuzzy_m19", BaseDictFiles.fuzzyVariantOf("luna_pinyin_fuzzy", 19))
+        assertEquals("luna_pinyin_t9_fuzzy_m19", BaseDictFiles.t9FuzzyVariant(19))
+        assertEquals(null, BaseDictFiles.t9FuzzyVariant(0))
+    }
+
+    @Test
+    fun baseCompileSchemasCarriesT9Fuzzy() {
+        val withT9 = BaseDictFiles.baseCompileSchemas(19, flypyInstalled = false)
+        assertTrue(withT9.contains("luna_pinyin_t9_fuzzy_m19"))
+        // 掩码 0 时无任何模糊变体
+        val off = BaseDictFiles.baseCompileSchemas(0, flypyInstalled = false)
+        assertTrue(!off.contains("fuzzy_m"))
+    }
 
     @Test
     fun variantMask1OnlyCarriesPingzhaoshe() {

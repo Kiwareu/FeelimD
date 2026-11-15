@@ -48,6 +48,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      * main thread; one scrub call handles its whole bounded delta. */
     private val cursorQueryExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private lateinit var engine: AsrEngine
+    /** 语音就绪震动（公众号 NULL）已消费过的真加载时间戳：与
+     *  AsrEngine.lastHardLoadAtMs 比对，每次真加载至多震一次。 */
+    private val lastVoiceReadyHapticLoadMs = java.util.concurrent.atomic.AtomicLong(0L)
     /** 手写识别（design/handwriting.md）：独立于 EngineCoordinator，见 §5.1。 */
     private var handwritingEngine: InkEngine? = null
     private lateinit var editorPort: InputConnectionEditorPort
@@ -284,6 +287,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     // it - so editor writes must be redirected back into the panel input.
     @Volatile private var panelInputActive = false
     private var panelComposeSupported = false
+    /** #93 分享选区查询在途标记（仅主线程读写）：慢宿主下合并连点，
+     *  防止排队查询拖垮共享 executor 上的光标/退格查询（codex 复审
+     *  P2-2）。 */
+    private var shareQueryActive = false
     /** #85：键盘页带 onImeGesture* 直连处理器（版本 ≥3.73.79）。 */
     private var panelGestureSupported = false
     private var panelInputRequested = false
@@ -291,6 +298,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private var panelSession = 0
     private var pendingPanelSelection: Triple<Int, Int, Int>? = null
     private var hostSelectionStart = -1
+    /** #94 选区变化序号（主线程单调递增）：选区 A→B→A 回到同坐标也
+     *  能被察觉——异步选区查询的回包要坐标+序号都与锚点一致才接受
+     *  结果（codex 复审 P1：首尾坐标相等挡不住 ABA）。 */
+    private var hostSelectionSeq = 0L
     private var hostSelectionEnd = -1
 
     // Bridge handshake state (design section 5.3). A fresh random token is
@@ -310,6 +321,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      *  full=完整键盘高度（面板需要）。只在 hwCandidatesFormActive 分支
      *  参与高度，其余形态自然忽略。 */
     @Volatile private var hwPanelHeightState = "candidates"
+
+    /** #92 形态变化检测：hwCandidatesFormActive() 的上次快照（null=尚
+     *  未初始化，首条状态推不触发重排）。 */
+    @Volatile private var hwCandidatesFormLast: Boolean? = null
 
     /** #H 状态快照缓存（design §5.4，codex 评审 P1-8）：keyboardReady
      *  重推最后一次引擎状态——新页（热更重载）接管时池/组合非空，
@@ -333,6 +348,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     // band is transparent and NOT touchable until this flips (see
     // onComputeInsets).
     private var overlayOpen = false
+    // #55 悬浮键盘：画布模式（IME 窗口铺满可用区、零占位 REGION 触摸）。
+    // floatingRect 是 JS 上报的卡片矩形（css px，WebView 口径）。
+    private var floatingActive = false
+    private var floatingRect: android.graphics.RectF? = null
     // Last notified bottom safe area; never used as the current measurement.
     private var lastSafeBottom = -1
     // #39：最近一次已采纳的挖孔侧安全区（onBottomInsetChanged 比较键之一）。
@@ -582,8 +601,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                         imported = state.imported, user = state.user,
                         englishEnabled = state.englishEnabled,
                         // #81 review P1：恢复重派生透传位次与开关，否则
-                        // 刚恢复的配置被这次 save 清掉。
-                        symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
+                        // 刚恢复的配置被这次 save 清掉。#107 rankAll 同理。
+                        symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+                        symbolFreqSort = state.symbolFreqSort,
                     )
                 }
                 sendBroadcast(
@@ -926,6 +946,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     )
                     .put("hasPreviousPage", event.state.hasPreviousPage)
                     .put("hasNextPage", event.state.hasNextPage)
+                    // #103 光标双域（-1=不支持，JS 不渲染插入符）：
+                    // inputCaret=原始输入码位置（候选池身份参与键），
+                    // preeditCaret=显示串 UTF-16 偏移（插入符落点）。
+                    .put("inputCaret", event.state.inputCaret)
+                    .put("preeditCaret", event.state.preeditCaret)
                 event.degrade?.let {
                     payload
                         .put("degraded", true)
@@ -978,6 +1003,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     "pushState rev=${event.revision} composing=${event.state.composing} view=${System.identityHashCode(keyboardView)}")
                 lastStatePayloadJson = payload.toString()
                 evaluate("window.Feelime && window.Feelime.onEngineState && window.Feelime.onEngineState($lastStatePayloadJson)")
+                // #92 hwkb 形态重测量缺口：窗口高度按「hwkb 候选条形态
+                //  × 面板状态」两个维度算，但重测量通知只有面板状态桥
+                // （hwPanelHeight，candidates/ctrl/full 两端去重）。模式
+                // 切换改变形态时（手写/T9/笔画↔全拼/双拼），前后面板
+                // 状态同名（都是 candidates）→ 桥被去重跳过 → native 不
+                // 重测，窗口保持旧高度（键区已藏、面板收不回）。状态
+                // 推送点是所有模式变化（菜单/快捷切换/降级/密码框
+                // Direct）的汇聚口，在此按「有效形态变化」补一次重测量
+                // ——布尔不变不触发，无逐帧重排。JS 侧 onEngineState 的
+                // 重评估兜不住桥去重，native 自查才与高度职责同层。
+                val hwFormNow = hwCandidatesFormActive()
+                if (hwFormNow != hwCandidatesFormLast) {
+                    hwCandidatesFormLast = hwFormNow
+                    hwMain.post { (keyboardView?.parent as? View)?.requestLayout() }
+                }
+                // #92b→#104：DIRECT 整窗收起块已删（1.4.7 用户反馈：候选
+                // /工具条一并消失）——DIRECT 现并入候选条档（见
+                // hwCandidatesFormActive），窗口恒显、只换高度，不再有
+                // hideSelf/showSelf 往返。
                 // 中文联想（docs/design/association.md §3）：只在 commit 事件
                 // 上计算并推送，键盘保留现有联想直到组合开始。
                 val committed = event.state.commit
@@ -1041,11 +1085,19 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     override fun onCreateInputView(): View {
         pageToken = newToken()
         pageReady = false
+        // #55 页面换代（冷启/热更重载）：新 JS 实例的悬浮态是内存态
+        // false——native 侧必须同步复位，否则新页按停靠渲染而窗口仍
+        // 整屏测量（codex review P1：巨大停靠键盘）。
+        floatingActive = false
+        floatingRect = null
         // #H：页面换代（冷启动/热更重载）——硬键能力声明复位，新页
         // 重新握手+上报后才接管（design §6）；面板高度态一并回落
         // （design §7：换页由 hello 重推触发 JS 重算）。
         jsHwKeys = false
         hwPanelHeightState = "candidates"
+        // #92：页面换代后形态快照一并失效——新页首条状态推重新对账
+        // （null 只触发一次重排，幂等）。
+        hwCandidatesFormLast = null
         val active = KeyboardUpdateCenter.activeKeyboard(this)
         servedRevision = active.revision
         assetStore = KeyboardAssetStore(active.dir)
@@ -1139,7 +1191,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     /** #H 显示策略三档（design §7）：candidates/full 保持恒显（现行为，
      *  回归风险最小——初版恒显覆写疑似防 AVD/厂商硬键盘误报）；follow
-     *  走 super（系统「硬键盘时显示屏幕键盘」开关生效）。 */
+     *  走 super（系统「硬键盘时显示屏幕键盘」开关生效）。
+     *  #92b→#104 演进：DIRECT 曾整体收窗（#92b），用户反馈过狠——英文
+     *  直出时工具条/候选条档仍应可见（En 指示可点回中文）。现 DIRECT
+     *  由 hwCandidatesFormActive 并入候选条档（窗口恒显、高度=档位），
+     *  本评估不再特判 DIRECT，#92b 的 pageReady 闸（防冷启动拦掉
+     *  onCreateInputView → 握手死环）随之退役。 */
     override fun onEvaluateInputViewShown(): Boolean =
         when (com.feelime.ime.readHwkbForm(this)) {
             "follow" -> super.onEvaluateInputViewShown()
@@ -1228,6 +1285,32 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      */
     override fun onComputeInsets(outInsets: android.inputmethodservice.InputMethodService.Insets) {
         super.onComputeInsets(outInsets)
+        if (floatingActive) {
+            // #55 悬浮：零占位（insets=decor 高 → 宿主可用区不受限，
+            // 不能设 0——那表达整窗从顶占用），触摸只保留卡片∪把手
+            // （REGION 模式，窗口坐标系：css×density + WebView 窗口偏移，
+            // codex review P1：MATCH_PARENT 不保证与窗口原点重合）。
+            val decorH = window?.window?.decorView?.height ?: 0
+            outInsets.contentTopInsets = decorH
+            outInsets.visibleTopInsets = decorH
+            outInsets.touchableInsets =
+                android.inputmethodservice.InputMethodService.Insets.TOUCHABLE_INSETS_REGION
+            val rect = floatingRect
+            if (rect != null && decorH > 0) {
+                val density = resources.displayMetrics.density
+                val origin = IntArray(2)
+                keyboardView?.getLocationInWindow(origin)
+                // touchableRegion 是 final 字段（API 30 实测赋值=
+                // IllegalAccessError 崩 service）——只能改其内容。
+                outInsets.touchableRegion.set(
+                    (origin[0] + rect.left * density).toInt(),
+                    (origin[1] + rect.top * density).toInt(),
+                    (origin[0] + rect.right * density).toInt(),
+                    (origin[1] + rect.bottom * density).toInt(),
+                )
+            }
+            return
+        }
         val band = floatBandPx()
         if (band <= 0) return
         outInsets.contentTopInsets = band
@@ -1430,6 +1513,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         candidatesStart: Int,
         candidatesEnd: Int,
     ) {
+        val prevSelStart = hostSelectionStart
+        val prevSelEnd = hostSelectionEnd
         super.onUpdateSelection(
             oldSelStart,
             oldSelEnd,
@@ -1467,6 +1552,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         if (::coordinator.isInitialized && !panelInputActive) {
             coordinator.onEditorSelectionChanged(oldSelStart, oldSelEnd, newSelStart, newSelEnd)
         }
+        // #94：只在跟踪值真的变化时递增（hostSelectionSeq 见声明处注释）。
+        if (hostSelectionStart != prevSelStart || hostSelectionEnd != prevSelEnd) {
+            hostSelectionSeq += 1
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -1474,6 +1563,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         inputConnectionGeneration += 1
         // #H：视图隐藏作废按压归属与 Shift 武装（design §5.2——组合与
         // 输入会话不在此结束，hwPendingSwitch 保留给重新显示后续跑）。
+        // （#104 后 DIRECT 不再自动收窗，这里只剩真隐藏路径——用户收起
+        // /切走/降级——按压归属照清。）
         hwClearKeyState()
         // 键盘已收起：在途手势会话一并作废（延迟删除丢弃）。
         endBackspaceGestureSession(executeQueued = false)
@@ -1620,6 +1711,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // （design §7：换页由 hello 重推触发 JS 重算）。
         jsHwKeys = false
         hwPanelHeightState = "candidates"
+        // #92：页面换代后形态快照一并失效——新页首条状态推重新对账
+        // （null 只触发一次重排，幂等）。
+        hwCandidatesFormLast = null
         Diagnostics.log("bridge", "pageLoad at=reload view=${System.identityHashCode(keyboardView)}")
         keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
@@ -1689,8 +1783,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         voiceCancelRequested = false
         acceptAsrResults = true
         currentPartial = ""
+        // 例行的 loading 态推送只发生在引擎未热时（真加载要给用户看
+        // 「正在加载」）；已热时跳过——例行等待只有 ~100ms，推 loading
+        // 只会让浮层「闪一下」还看不清内容（用户实测反馈）。冷启动
+        // 的 loading 仍由 ensureRecognizer 的 onLoading 推。
         state = VoiceState.LOADING
-        pushState()
+        if (!engine.isWarm()) pushState()
         coordinator.beginVoiceSession(
             isCurrent = { inputConnectionGeneration == editorGeneration },
         ) {
@@ -1705,21 +1803,108 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     finishPendingVoiceStart(requestId)
                     return@onMain
                 }
-                voiceStartPending = false
-                val selected = runCatching { editorPort.selectedText() }.getOrNull()
+                // 三态：已知空（start==end>=0）/ 已知非空 / 未知（-1——
+                // 宿主 EditorInfo 没给有效坐标）。采样点必须在热身排队
+                // 结束后（codex 复审 P1：排队期间回放按键/提交组合会改
+                // 变选区，提前采样会把新选区当空选区流式替换丢原文）。
+                // 有选区才查——rollback 还原选区文本要用；未知不查也
+                // 不流式（codex P1：未知态无法证明选区为空，流式替换会
+                // 在取消时删掉取不回来的原文，走缓冲模式）。
                 val selectionKnownNonEmpty =
                     hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
                         hostSelectionEnd != hostSelectionStart
-                voiceSession = VoiceSession(
-                    editorGeneration = inputConnectionGeneration,
-                    originalSelection = if (selected != null) selected
-                    else if (selectionKnownNonEmpty) null
-                    else "",
-                    // A null selected-text result plus a known non-empty
-                    // selection cannot be safely replaced by a composing span.
-                    streamToEditor = selected != null || !selectionKnownNonEmpty,
-                )
-                engine.start()
+                val selectionKnownEmpty =
+                    hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
+                        hostSelectionStart == hostSelectionEnd
+                if (!selectionKnownNonEmpty) {
+                    voiceStartPending = false
+                    voiceSession = VoiceSession(
+                        editorGeneration = inputConnectionGeneration,
+                        originalSelection = "",
+                        streamToEditor = selectionKnownEmpty,
+                    )
+                    engine.start()
+                    return@onMain
+                }
+                // #94：选区 IPC 必须离开主线程（工程约定，#93 同进程互
+                // 等定罪的同款存量）——本应用设置页与 IME 同进程时主
+                // 线程直查互等卡满 2s 超时，跨进程慢宿主同样卡。查询期
+                // 间 voiceStartPending 保持 true：stop/cancel/换届的既有
+                // 作废路径原样生效，回包终检后照旧走配对的
+                // finishPendingVoiceStart 收尾（beginVoiceSession 已发生，
+                // endVoiceSession 不会落空——codex 复审 P2）。
+                fun startWithSelection(selected: String?) {
+                    voiceStartPending = false
+                    // 三态用此刻的最新坐标重导：selected 只在「查询期间
+                    // 坐标+序号都没动」时可信（ABA 防护，漂移即弃）。
+                    val stillNonEmpty =
+                        hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
+                            hostSelectionEnd != hostSelectionStart
+                    val knownEmpty =
+                        hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
+                            hostSelectionStart == hostSelectionEnd
+                    voiceSession = VoiceSession(
+                        editorGeneration = inputConnectionGeneration,
+                        originalSelection = if (selected != null) selected
+                        else if (stillNonEmpty) null
+                        else "",
+                        // A null selected-text result plus a known non-empty
+                        // selection cannot be safely replaced by a composing span.
+                        streamToEditor = selected != null || knownEmpty,
+                    )
+                    engine.start()
+                }
+
+                fun querySelectionThenStart(attempt: Int) {
+                    val connection = currentInputConnection
+                    val hwGeneration = hwInputGeneration
+                    val selStart = hostSelectionStart
+                    val selEnd = hostSelectionEnd
+                    val selSeq = hostSelectionSeq
+                    cursorQueryExecutor.execute {
+                        val selected = runCatching {
+                            connection?.getSelectedText(0)?.toString()
+                        }.getOrNull()
+                        onMain {
+                            // 迟到作废终检先行（codex 复审 P2：已取消/换届/
+                            // 销毁的请求不得再追加查询——销毁后 executor 已
+                            // shutdownNow，重查会 RejectedExecutionException
+                            // 落到主线程）。finishPendingVoiceStart 内含
+                            // editor 守卫，配对收尾。
+                            if (!voiceStartPending || voiceStartRequestId != requestId) return@onMain
+                            if (requestId != voiceRequestId ||
+                                !acceptAsrResults || state != VoiceState.LOADING
+                            ) {
+                                finishPendingVoiceStart(requestId)
+                                return@onMain
+                            }
+                            if (inputConnectionGeneration != editorGeneration ||
+                                hwInputGeneration != hwGeneration
+                            ) {
+                                finishPendingVoiceStart(requestId)
+                                return@onMain
+                            }
+                            // 查询期间选区漂移（坐标或序号）：结果对应的可
+                            // 能是旧选区，作废重查一次（新坐标+新序号为
+                            // 锚）；再不稳则弃用查询结果——非空选区走缓冲
+                            // 模式（不流式不丢原文），最新坐标已知空时仍
+                            // 可流式（无原文可丢）。序号防 A→B→A 同坐标
+                            // 假阴性。
+                            if (hostSelectionSeq != selSeq ||
+                                hostSelectionStart != selStart || hostSelectionEnd != selEnd
+                            ) {
+                                if (attempt < 1) {
+                                    querySelectionThenStart(attempt + 1)
+                                } else {
+                                    startWithSelection(null)
+                                }
+                                return@onMain
+                            }
+                            startWithSelection(selected)
+                        }
+                    }
+                }
+                querySelectionThenStart(0)
             }
         }
     }
@@ -1832,6 +2017,28 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      * A normal editor without full snapshots is reconstructed from its text
      * around the known host selection before falling back to native arrows.
      */
+    // #103 scrub 手势目标锁定表（gestureId → 是否锁定组合内光标）：
+    // accessOrder LRU，8 条上限兜底 JS 漏发 scrubCursorEnd 的泄漏。
+    private val scrubTargets = object : LinkedHashMap<String, Boolean>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>) = size > 8
+    }
+
+    /** 首批判定并锁定：开关开（2026-11-13 起默认开）+ 模式白名单（第一期全拼/双拼）+
+     *  当前有组合 → 锁 preedit；否则锁宿主。手势期内不重判（组合态
+     *  漂移/回声滞后不改变目标）。 */
+    private fun scrubCursorLockedToPreedit(gestureId: String): Boolean =
+        synchronized(scrubTargets) {
+            scrubTargets.getOrPut(gestureId) {
+                com.feelime.ime.readPreeditScrub(this) &&
+                    coordinator.currentMode in PREEDIT_SCRUB_MODES &&
+                    coordinator.composingLive
+            }
+        }
+
+    private fun endScrubGesture(gestureId: String) {
+        synchronized(scrubTargets) { scrubTargets.remove(gestureId) }
+    }
+
     private fun moveCursorWithinEditor(delta: Int) = onMain {
         val connection = currentInputConnection ?: return@onMain
         val info = currentInputEditorInfo
@@ -2136,6 +2343,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         return if (night == android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"
     }
 
+    // ---- #103 空格横滑组合光标：模式白名单（第一期）----
+    // T9（数字转拼音的显示映射）与 stroke（笔画汉字显示）的显示域坐
+    // 标换算未做，先不放开；FLYPY 音形码同批后续评估。
+    private val PREEDIT_SCRUB_MODES = setOf(
+        com.feelime.ime.engine.InputMode.PINYIN,
+        com.feelime.ime.engine.InputMode.DOUBLE_PINYIN,
+    )
+
     // ---- #H 硬件键盘决策表（design §2，六轮评审定稿）----
     /** 接硬字符的模式（design §2）：T9/笔画是触摸形态（字母无意义）、
      *  手写走识别器、DIRECT=IME 不碰文本。LOADING 的 pendingEngine 期间
@@ -2167,11 +2382,23 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     /** hwkb 候选条形态激活（design §5）：native 侧近似（JS 的 body class
      *  是渲染真相，本判定供窗口高度；mode 双方同源于 state 推送，误差
-     *  窗口=一帧高度抖动，模式切换时 onEngineState 重评估兜住）。 */
+     *  窗口=一帧高度抖动，模式切换时 onEngineState 重评估兜住）。
+     *  #104（1.4.7 反馈）：DIRECT 并入候选条档——英文直出时窗口不再
+     *  整体收起（#92b 的做法把工具条/候选条一并藏掉），改为保留候选
+     *  条档（工具条+En 指示可见，仅无键区）。档位为 full 的用户切英文
+     *  仍显示完整键盘（其主动选择），follow 走系统判定，均不受影响。
+     *  降级 DIRECT 例外：降级提示/重试入口在完整键盘上，必须保住载体
+     *  （JS 侧 applyHwForm 同判据——this.degrade.active）。 */
     private fun hwCandidatesFormActive(): Boolean =
         hwKeyboardAttached() &&
             com.feelime.ime.readHwkbForm(this) == "candidates" &&
-            coordinator.currentMode in hwCharModes
+            (
+                coordinator.currentMode in hwCharModes ||
+                    (
+                        coordinator.currentMode == com.feelime.ime.engine.InputMode.DIRECT &&
+                            coordinator.engineDegrade == null
+                    )
+            )
 
     /** 候选条形态高度（design §5）：preedit band + candidateBar(40px)
      *  + 安全区/底部留白，与用户保存的完整键盘高度分离（不进持久化，
@@ -2433,7 +2660,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     }
 
     /** #H 生命周期清理（design §5.2）：输入会话边界/销毁清全部硬键状态。
-     *  不提交组合——隐藏视图/切走 IME 的组合保留策略与现状一致。 */
+     *  不提交组合——隐藏视图/切走 IME 的组合保留策略与现状一致。
+     *  （#92b 的 clearArm=false 例外随 DIRECT 自动收窗机制一并移除。） */
     private fun hwClearKeyState() {
         hwKeyOwnership.clear()
         hwPressedKeys.clear()
@@ -2533,6 +2761,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 put("symbolRanks", org.json.JSONObject().apply {
                     phraseState.symbolRanks.forEach { (text, rank) -> put(text, rank) }
                 })
+                // #107 声明表（columns 含 rank）的全词面 rank 词面集合。
+                put("rankAll", org.json.JSONArray().apply {
+                    phraseState.rankAll.forEach { put(it) }
+                })
                 put("symbolFreqSort", phraseState.symbolFreqSort)
             }
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(this))
@@ -2574,7 +2806,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("panelOpacity", readPanelOpacity(this))
             .put("glassSkin", readGlassSkin(this))
             .put("keyBubble", readKeyBubble(this))
+            .put("cnEnComposingGuard", readCnEnComposingGuard(this))
+            .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
+            .put("bottomSymSplit", com.feelime.ime.readBottomSymSplit(this))
             .put("bubbleLinger", readBubbleLinger(this))
+            .put("toastMs", readToastMs(this))
             // #39 横屏三级页三项 + 挖孔安全区实测值（css px，竖屏恒 0）。
             // safeSide 只有横屏需要（SHORT_EDGES 铺进挖孔区后键区让位用），
             // 与安全区开关分开下发：开关管要不要让，insets 管让多少。
@@ -2607,6 +2843,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             // 开/关状态要跟原生偏好走（设置页改动同样经这里回读）。
             .put("keySound", readKeySoundEnabled(this))
             .put("keyHaptic", readKeyHapticEnabled(this))
+            // 语音就绪震动（公众号 NULL，默认关）：JS 在 loading→listening
+            // 转换时回敲本桥。
+            .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(this))
             .put(
                 "engineDataReady",
                 JSONObject().apply {
@@ -3213,6 +3452,135 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             }
         }
 
+        /** #93 分享选中文字（定制键 [edit:share] 与工具栏 share 工具共
+         *  用）：读当前选区 → 系统 ACTION_SEND 面板（text/plain 是分享
+         *  生态最低公约数，微信/翻译/备忘录等全支持）。键盘可见时 IME
+         *  有可见窗口，属后台启动豁免场景（Gboard 同款路径）。
+         *  - 密码类编辑框显式拒绝（codex 评审 P1-2）：AOSP 的
+         *    BaseInputConnection 对密码 TextView 同样返回明文选区，
+         *    不能指望 getSelectedText 拒答。
+         *  - 无选区/读不到：toast 提示先选中，反馈走键盘页 showToast
+         *    （与 JS 侧同一 UI，双语）。
+         *  - IC 查询必须离开主线程（ace 实测定罪，#93 复盘）：查询经
+         *    RemoteInputConnection 派发到宿主 App 主线程执行——设置页
+         *    WebView 与 IME 同进程同主线程时形成互等，getSelectedText/
+         *    getExtractedText 各等满 2s 超时返回 null（logcat
+         *    RemoteInputConnection 警告实录），真选区也被报成空。
+         *    AVD 的 IMM 行为不同测不出此面。与光标/退格手势路径同款走
+         *    cursorQueryExecutor：主线程空出来才能执行派发，病态外宿
+         *    主也只剩后台慢、不再冻结键盘（codex 评审 P2-1 一并根治）。
+         *  - 在途合并（codex 复审 P2-2）：单线程 executor 与光标/退格
+         *    查询共享，慢宿主一次最坏 ~4s，连点会排队拖累它们——在途
+         *    时直接忽略后续点击，终态回主线程释放标记。
+         *  - EXTRA_TEXT 钳 100k 字符（binder 事务 ~1MB 上限的稳妥值，
+         *    防长文 TransactionTooLargeException 整发失败）。 */
+        @JavascriptInterface
+        fun shareSelectedText(token: String) = guarded(token, limited = false) {
+            onMain {
+                fun toast(zh: String, en: String) {
+                    val msg = com.feelime.ime.t(applicationContext, zh, en)
+                        .replace("\\", "\\\\").replace("'", "\\'")
+                        .replace("\n", "\\n")
+                    evaluate(
+                        "window.Feelime && window.Feelime.showToast && " +
+                            "window.Feelime.showToast('$msg')",
+                    )
+                }
+                if (isSensitiveEditor()) {
+                    toast("此输入框不支持分享", "Sharing is unavailable in this field")
+                    return@onMain
+                }
+                val connection = currentInputConnection ?: run {
+                    toast("请先选中要分享的文字", "Select some text to share first")
+                    return@onMain
+                }
+                if (shareQueryActive) return@onMain
+                shareQueryActive = true
+                val generation = inputConnectionGeneration
+                // onFinishInput/onUnbindInput 只换届 hwInputGeneration
+                // （inputConnectionGeneration 不动），解绑窗口内在途结果
+                // 必须一并作废（codex 复审 P2-1）。
+                val hwGeneration = hwInputGeneration
+                cursorQueryExecutor.execute {
+                    val selected = readSelectedText(connection)
+                    onMain {
+                        shareQueryActive = false
+                        // 查询期间编辑器已换届/解绑：旧选区不属于当前
+                        // 输入框，静默放弃——提示语与新现场对不上。
+                        if (inputConnectionGeneration != generation ||
+                            hwInputGeneration != hwGeneration
+                        ) return@onMain
+                        if (selected.isNullOrEmpty()) {
+                            toast("请先选中要分享的文字", "Select some text to share first")
+                        } else {
+                            shareTextInternal(selected, ::toast)
+                        }
+                    }
+                }
+            }
+        }
+
+        /** #93 面板输入框的分享（codex 评审 P1-1）：键盘内嵌输入框（常用
+         *  语编辑卡等）激活时，编辑改道在桥层而非 Android InputConnection
+         *  层——currentInputConnection 仍指向宿主编辑框，直接读会分享错
+         *  对象。JS 侧在面板态自行取面板字段选区走本桥。空文本拒绝（与
+         *  宿主路径同一口径）。 */
+        @JavascriptInterface
+        fun shareText(text: String, token: String) = guarded(token, limited = false) {
+            if (text.isEmpty() || text.length > MAX_JSON_CHARS) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            onMain {
+                fun toast(zh: String, en: String) {
+                    val msg = com.feelime.ime.t(applicationContext, zh, en)
+                        .replace("\\", "\\\\").replace("'", "\\'")
+                        .replace("\n", "\\n")
+                    evaluate(
+                        "window.Feelime && window.Feelime.showToast && " +
+                            "window.Feelime.showToast('$msg')",
+                    )
+                }
+                shareTextInternal(text, ::toast)
+            }
+        }
+
+        /** #93 读选区：部分宿主对 getSelectedText 返回 null（同进程宿主
+         *  两者都会被互等超时成 null，见 shareSelectedText 注释），因此
+         *  空结果再用 getExtractedText 的选区切片兜底（预编辑回显依赖
+         *  它，WebView 宿主支持普遍）。折叠选区/两者都拿不到返回 null，
+         *  由调用方提示。必须在主线程外调用（调用方传入主线程捕获的
+         *  connection，规避同进程互等死锁）。 */
+        private fun readSelectedText(ic: android.view.inputmethod.InputConnection): String? {
+            runCatching { ic.getSelectedText(0) }.getOrNull()?.let {
+                if (it.isNotEmpty()) return it.toString()
+            }
+            return runCatching {
+                val ext = ic.getExtractedText(
+                    android.view.inputmethod.ExtractedTextRequest(), 0,
+                ) ?: return@runCatching null
+                val text = ext.text ?: return@runCatching null
+                val s = minOf(ext.selectionStart, ext.selectionEnd).coerceIn(0, text.length)
+                val e = maxOf(ext.selectionStart, ext.selectionEnd).coerceIn(0, text.length)
+                if (s == e) null else text.substring(s, e)
+            }.getOrNull()
+        }
+
+        /** shareSelectedText/shareText 的公共执行体：钳长 + ACTION_SEND。 */
+        private fun shareTextInternal(rawText: String, toast: (String, String) -> Unit) {
+            val text = if (rawText.length > 100_000) rawText.substring(0, 100_000) else rawText
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TEXT, text)
+            }
+            val chooser = android.content.Intent.createChooser(
+                send,
+                com.feelime.ime.t(applicationContext, "分享文字", "Share text"),
+            ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+            val started = runCatching { startActivity(chooser) }.isSuccess
+            if (!started) toast("无法打开分享面板", "Could not open the share panel")
+        }
+
         /** #85 上滑删光标前全部：走 coordinator/editor port（码点删不发
          *  键事件，词撤销作废、终端宿主降级语义集中在
          *  TextInputCoordinator.deleteAllBeforeCursor）。选区裁决传原始
@@ -3272,6 +3640,21 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         fun keyFeedback(token: String) = guarded(token, limited = false) {
             if (readKeyHapticEnabled(this@FeelimeService)) playKeyHaptic()
             if (readKeySoundEnabled(this@FeelimeService)) playKeySound()
+        }
+
+        /** 语音就绪震动（公众号 NULL）：模型加载完成转聆听那一刻的提示震，
+         *  独立于按键震动开关；震感曲线复用 playKeyHaptic（跟用户的强度档）。
+         *  只对「新一次真加载」震——startVoice 每次都例行走 loading 态
+         *  （等 mic/引擎 warm-up），模型已在内存的再次进入不震（用户
+         *  实测「再次进入仍震」）；空闲卸载后的重载算新加载，会震。 */
+        @JavascriptInterface
+        fun voiceReadyHaptic(token: String) = guarded(token, limited = false) {
+            if (!readVoiceReadyHapticEnabled(this@FeelimeService)) return@guarded
+            val loaded = engine.lastHardLoadAtMs
+            if (loaded > 0L && loaded != lastVoiceReadyHapticLoadMs.get()) {
+                lastVoiceReadyHapticLoadMs.set(loaded)
+                playKeyHaptic()
+            }
         }
 
         private fun playKeyHaptic() {
@@ -3440,6 +3823,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 }
                 "keyBubble" -> {
                     keyboardPrefs.edit().putBoolean(PREF_KEY_BUBBLE, value == "1" || value == "true").commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "cnEnComposingGuard" -> {
+                    // #89 键盘页内嵌快捷设置同源（setQuickPref 布尔只认 1/0）
+                    keyboardPrefs.edit().putBoolean(PREF_CN_EN_COMPOSING_GUARD, value == "1" || value == "true").commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "preeditScrub" -> {
+                    // #103（默认开，可手动关）：空格横滑组合内拼音光标
+                    keyboardPrefs.edit().putBoolean(PREF_PREEDIT_SCRUB, value == "1" || value == "true").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "themeMode" -> {
@@ -3670,6 +4063,30 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             moveCursorWithinEditor(delta)
         }
 
+        // #103 空格横滑统一入口（默认开，可手动关）：组合中=组合内拼音
+        // 光标（首批判定后按 gestureId 锁定到手势结束——组合中途结束/
+        // 状态回声滞后时，后续批次不得转投宿主光标）；非组合=宿主光标
+        // （存量 moveCursor 语义）。模式白名单第一期全拼/双拼（T9/形码
+        // 的显示坐标映射后续开放）。scrubCursorEnd 释放锁定；漏发由
+        // LRU 上限兜底（手势串行，8 条绰绰有余）。
+        @JavascriptInterface
+        fun scrubCursor(gestureId: String, steps: Int, token: String) = guarded(token, limited = false) {
+            if (steps == 0 || steps < -MAX_CURSOR_DELTA || steps > MAX_CURSOR_DELTA) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            if (::coordinator.isInitialized && scrubCursorLockedToPreedit(gestureId)) {
+                coordinator.movePreeditCursor(steps)
+            } else {
+                moveCursorWithinEditor(steps)
+            }
+        }
+
+        @JavascriptInterface
+        fun scrubCursorEnd(gestureId: String, token: String) = guarded(token, limited = false) {
+            endScrubGesture(gestureId)
+        }
+
         /**
          * Control-layer combos (Ctrl+C, Alt+., Ctrl+Shift+V, ...)
          * reach the HOST editor as raw key events - terminals and editors own
@@ -3836,14 +4253,30 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             if (next == null || !ready) {
                 rejectedCalls += 1
                 if (next != null && !ready) {
-                    pushState(
-                        message = t(
-                            this@FeelimeService,
-                            "该输入法正在准备语言数据，请稍后再试",
-                            "Language data is still being prepared. Try again shortly",
-                        ),
-                        messageCode = "ENGINE_DATA_PREPARING",
-                    )
+                    // #95：旧版本的大词库门跳编过 T9（门已随编码域过滤移除，
+                    // 见 BaseDictFiles 注释），残留 t9Skipped 状态与「准备中」
+                    // 混同一句「请稍后再试」会误导用户干等——重新导入即恢复。
+                    if (next == com.feelime.ime.engine.InputMode.T9 &&
+                        com.feelime.ime.engine.BaseDictInstaller.isT9Skipped(this@FeelimeService)
+                    ) {
+                        pushState(
+                            message = t(
+                                this@FeelimeService,
+                                "此词库由旧版本导入时跳过了九宫格编译；在设置的词库页重新导入该词库即可恢复",
+                                "This dictionary was imported by an older version that skipped 9-key compilation. Re-import it on the Lexicon page in Settings to restore the 9-key mode",
+                            ),
+                            messageCode = "BASE_T9_SKIPPED",
+                        )
+                    } else {
+                        pushState(
+                            message = t(
+                                this@FeelimeService,
+                                "该输入法正在准备语言数据，请稍后再试",
+                                "Language data is still being prepared. Try again shortly",
+                            ),
+                            messageCode = "ENGINE_DATA_PREPARING",
+                        )
+                    }
                 }
                 return@guarded
             }
@@ -3900,6 +4333,29 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         @JavascriptInterface
         fun setKeyboardHeight(heightCssPx: Int, token: String) =
             guarded(token, limited = false) { setKeyboardHeightInternal(heightCssPx, immediate = false) }
+
+        /** #55 悬浮键盘开关（spike）：切画布模式并强制重测窗口。 */
+        @JavascriptInterface
+        fun setFloating(on: Boolean, token: String) {
+            guarded(token, limited = false) {
+                if (floatingActive != on) {
+                    floatingActive = on
+                    if (!on) floatingRect = null
+                    onMain {
+                        inputViewHost?.requestLayout()
+                        keyboardView?.requestApplyInsets()
+                    }
+                }
+            }
+        }
+
+        /** #55 悬浮卡片矩形上报（css px）：驱动 touchableRegion。 */
+        @JavascriptInterface
+        fun setFloatingRect(left: Float, top: Float, width: Float, height: Float, token: String) =
+            guarded(token, limited = false) {
+                floatingRect = android.graphics.RectF(left, top, left + width, top + height)
+                onMain { keyboardView?.requestApplyInsets() }
+            }
 
         /** 高度卡「保存」按钮的显式提交：立即落盘。debounce 的 300ms
          *  窗口内收起键盘，IME 进程会被冻结/杀，pending 的 flush 永不
@@ -4545,8 +5001,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             wm?.maximumWindowMetrics?.bounds?.height() ?: resources.displayMetrics.heightPixels
         } else {
             val real = android.util.DisplayMetrics()
+            // Context.getDisplay 在 <30 是 greylist test-api（codex P2：
+            // 官方清单当前放行，但属非 SDK 依赖，ROM 收紧即崩）——低版本
+            // 走公开的 WindowManager.defaultDisplay。
             @Suppress("DEPRECATION")
-            display?.getRealMetrics(real)
+            getSystemService(android.view.WindowManager::class.java)?.defaultDisplay?.getRealMetrics(real)
             if (real.heightPixels > 0) real.heightPixels else resources.displayMetrics.heightPixels
         }
     }
@@ -5017,7 +5476,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
  // The view carries the transparent popup band on
             // top; onComputeInsets keeps the app sized to the keyboard
             // alone (contentTopInsets = band).
-            val total = height + floatBandPx()
+            // #55 悬浮：画布铺满真屏可用区（卡片在画布内浮动，REGION
+            // 触摸限定卡片矩形——宿主零占位）。
+            val total = if (floatingActive) {
+                realHeightPixels()
+            } else {
+                height + floatBandPx()
+            }
             // Height settled at a new value: tell the JS once more AFTER the
             // layout. Hello's deferred re-derives land at arbitrary offsets
             // from this measure and can bake a mid-flight row budget that

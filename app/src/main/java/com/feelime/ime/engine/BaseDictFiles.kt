@@ -110,38 +110,33 @@ object BaseDictFiles {
 
     /** 模糊音变体 schema id（mask≠0 时进编译清单）。 */
     fun fuzzyVariant(mask: Int): String? =
-        if (mask in 1..31) "${FuzzyPinyin.SCHEMA_ID}_m$mask" else null
+        fuzzyVariantOf(FuzzyPinyin.SCHEMA_ID, mask)
 
-    /** T9 进清单的词条上限：T9 的「首末字母保护级联」（design/t9.md §1，
-     *  26 字母 × derive）把每词条拼写数乘 ~8，prism 内存随词条数线性放大
-     *  ——万象 Lite（2.7M 词条）真机实测 T9 段 RSS 一路爬到 6.9GB+ 直到
-     *  系统内存枯竭被 Athena SIGKILL（其余 5 项全程 ≤1.2GB）。超限词典
-     *  跳过 T9（模式自动不可用），内置与中小词库不受影响。 */
-    const val T9_MAX_ENTRIES = 600_000
+    /** 模糊变体名（schemaId = luna_pinyin_fuzzy / luna_pinyin_t9_fuzzy）。 */
+    fun fuzzyVariantOf(schemaId: String, mask: Int): String? =
+        if (mask in 1..31) "${schemaId}_m$mask" else null
 
-    /** T9 每词条的编译内存估算（含余量）：实测 6.9GB/2.7M ≈ 2.6KB/词条，
-     *  按 4KB 留余量。与词条上限双门：低配机（可用内存小）在更小的
-     *  词条数就会跳过 T9（codex 后整体 review F）。 */
-    const val T9_BYTES_PER_ENTRY = 4_000L
+    /** T9 模糊变体（issue #73）：与全拼同掩码；custom 基底按需补编。 */
+    fun t9FuzzyVariant(mask: Int): String? =
+        fuzzyVariantOf(FuzzyPinyin.T9_SCHEMA_ID, mask)
 
-    /** T9 编译资格 = 词条上限 + 可用内存双门。availBytes 传
-     *  ActivityManager.MemoryInfo.availMem。 */
-    fun t9Eligible(entries: Int, availBytes: Long): Boolean =
-        entries in 1..T9_MAX_ENTRIES && availBytes > entries * T9_BYTES_PER_ENTRY
+    // #95 根因修正，T9 内存门（t9Eligible 双门）整体移除：门基于「T9
+    // prism 内存随词条数线性放大」的旧定罪——实际 librime 的 prism 输入
+    // 是去重音节表而非词条，当年爆炸是英文/脏编码混进 syllabary 被保护
+    // 级联指数展开（host 实测：rime-ice 192 万词条，旧 schema T9 段
+    // +1.38GB/4 分钟；schema 加编码域 erase 过滤后 T9 段增量≈0）。t9
+    // Skipped 状态机制保留（兼容存量导入状态的下发与提示）。
 
     /** #35 延迟编译版换装清单：核心 6 项 + 当前模糊音组合 1 项（若开）
      *  + flypy 联动（#20：音形码表已导入时同场，见 [flypyCompileSchemas]）。
      *  其余 30 个变体在用户切换模糊音组合时按需补编（FuzzyPinyin
-     *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。
-     *  includeT9 由调用方按 [t9Eligible] 判定后传入。 */
+     *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。 */
     fun baseCompileSchemas(
         fuzzyMask: Int,
         flypyInstalled: Boolean,
-        includeT9: Boolean = true,
     ): List<String> {
-        val core = if (includeT9) CORE_SCHEMAS
-            else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
-        return core + listOfNotNull(fuzzyVariant(fuzzyMask)) +
+        // issue #73：T9 模糊变体与全拼变体同场。
+        return CORE_SCHEMAS + listOfNotNull(fuzzyVariant(fuzzyMask), t9FuzzyVariant(fuzzyMask)) +
             listOfNotNull(FLYPY_SCHEMA.takeIf { flypyInstalled })
     }
 
@@ -151,13 +146,9 @@ object BaseDictFiles {
      *  ⚠ custom 基底 + flypy 组合的真机行为待验收实测（变体 schema 源
      *  在基底安装成功后已被清理，SchemaUpdate 找不到源时的行为要
      *  眼见为实）。 */
-    fun flypyCompileSchemas(baseCustom: Boolean, includeT9: Boolean = true): List<String> {
+    fun flypyCompileSchemas(baseCustom: Boolean): List<String> {
         if (!baseCustom) return listOf(FLYPY_SCHEMA)
-        // T9 内存门同 baseCompileSchemas：大基底跳过（否则 flypy 导入的
-        // maintenance 会补建 t9 prism，同样的内存炸弹）。
-        val core = if (includeT9) CORE_SCHEMAS
-            else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
-        return core + FLYPY_SCHEMA
+        return CORE_SCHEMAS + FLYPY_SCHEMA
     }
 
     /** #35：tables = 落进 [SOURCE_DIR] 的词条表文件名（zip 多表导入；
@@ -350,6 +341,55 @@ object BaseDictFiles {
         return rewriteLine(rewritten, "schema_id", variantId)
             .let { rewriteLine(it, "prism", variantId) }
     }
+
+    /** T9 模糊变体 schema（issue #73）：T9 模板的模糊行在 algebra 开头
+     *  （保护级联之前——级联的大写化会让模糊正则失配），按掩码过滤
+     *  algebra 段内的已知模糊行，schema_id/prism 重写为 _m{N}。 */
+    fun t9VariantSchema(template: String, mask: Int): String {
+        require(mask in MASK_MIN..MASK_MAX) { "mask out of range: $mask" }
+        val variantId = "${FuzzyPinyin.T9_SCHEMA_ID}_m$mask"
+        val out = StringBuilder()
+        var inAlgebra = false
+        var keptFuzzy = 0
+        for (line in template.lines()) {
+            val trimmed = line.trimEnd()
+            // 缩进无关判定：真实 T9 schema 是 2 空格列表项，测试 fixture 与
+            // 可能的格式变体是 4 空格——按「列表项形态」识别而非字面缩进。
+            if (trimmed == "  algebra:") inAlgebra = true
+            else if (inAlgebra && !ALGEBRA_ITEM.matches(trimmed)) inAlgebra = false
+            val rule = if (inAlgebra) t9AlgebraRule(trimmed) else null
+            if (rule != null && KNOWN_FUZZY_BITS.containsKey(rule)) {
+                if (mask and KNOWN_FUZZY_BITS.getValue(rule) != 0) {
+                    out.append(line).append('\n')
+                    keptFuzzy += 1
+                }
+                continue
+            }
+            out.append(line).append('\n')
+        }
+        // 防呆（codex 实锤教训：模板曾是只带一组的 _m1 资产，过滤其它
+        // mask 时静默得零模糊规则、编出「假变体」）：留下的模糊行数必须
+        // 等于该 mask 应有的全部行，缺组当场响亮。
+        val expected = KNOWN_FUZZY_BITS.values.count { mask and it != 0 }
+        require(keptFuzzy == expected) {
+            "t9 fuzzy template incomplete: kept=$keptFuzzy expected=$expected (mask=$mask)"
+        }
+        val rewritten = out.toString()
+        return rewriteLine(rewritten, "schema_id", variantId)
+            .let { rewriteLine(it, "prism", variantId) }
+    }
+
+    private val ALGEBRA_ITEM = Regex("""^\s*-\s+.*$""")
+
+    /** algebra 列表行 `- "<rule>"` 的规则文本；非该形态返回 null。 */
+    private fun t9AlgebraRule(line: String): String? {
+        val m = Regex("""^\s*- "([^"]+)"\s*$""").find(line) ?: return null
+        return m.groupValues[1]
+    }
+
+    /** 模糊规则串到位掩码的映射（与 GROUPS 同源；T9/全拼模板通用）。 */
+    private val KNOWN_FUZZY_BITS: Map<String, Int> =
+        GROUPS.flatMap { (bit, rules) -> rules.map { it to bit } }.toMap()
 
     /** 改写段内 2 空格缩进的单值行（schema_id/prism；只动第一个匹配）。 */
     private fun rewriteLine(text: String, key: String, value: String): String {

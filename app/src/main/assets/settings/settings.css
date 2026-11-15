@@ -89,7 +89,8 @@ html.theme-light {
 body::before {
     content: "";
     position: fixed;
-    inset: 0 0 auto 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: auto; left: 0;
     /* 24px 下限：个别 WebView 在 edge-to-edge 下报 inset-top=0（AVD
      *  实录），内容会顶进窗口顶部的系统触摸死区——按钮可见但点不动
      *  （9j 门禁 tap 失灵的根因）。真机 inset>24 时无变化。
@@ -104,7 +105,8 @@ body::before {
 body::after {
     content: "";
     position: fixed;
-    inset: auto 0 0 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: auto; right: 0; bottom: 0; left: 0;
     height: calc(max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)) + 10px);
     background: linear-gradient(transparent, var(--bg));
     pointer-events: none;
@@ -253,7 +255,6 @@ main { max-width: 680px; margin: 0 auto; }
 .section-heading {
     display: flex;
     align-items: baseline;
-    gap: 8px;
     margin-bottom: 8px;
 }
 
@@ -370,12 +371,18 @@ h3 { margin: 0; font-size: 14px; font-weight: 650; }
 
 /* --- rows / status ---------------------------------------------------- */
 
+/* #90 兼容：上四处 flex gap（84+）改子元素 margin 等价模拟——旧
+ * WebView 忽略 gap 声明后标题/行内控件/主副文字全部紧贴。 */
+.section-heading > * + * { margin-left: 8px; }
+.row > * + * { margin-left: 10px; }
+.row-label > * + * { margin-top: 1px; }
+.row.stack > * + * { margin-left: 0; margin-top: 8px; }
+
 .rows { display: block; }
 
 .row {
     display: flex;
     align-items: center;
-    gap: 10px;
     min-height: 48px;
     padding: 6px 0;
     border-bottom: 1px solid var(--line);
@@ -400,7 +407,6 @@ h3 { margin: 0; font-size: 14px; font-weight: 650; }
     display: flex;
     flex: 1;
     flex-direction: column;
-    gap: 1px;
     min-width: 0;
     font-size: 14px;
 }
@@ -512,6 +518,9 @@ textarea { resize: vertical; min-height: 96px; font-family: var(--mono); font-si
 }
 
 .toggle {
+    /* #90 旧 WebView：无前缀 appearance 是 84+，被忽略时原生 checkbox
+     * 方框勾号会叠画在 ::after 圆滑块上——webkit 前缀任意版本都在。 */
+    -webkit-appearance: none;
     appearance: none;
     flex: 0 0 46px;
     width: 46px;
@@ -543,6 +552,38 @@ textarea { resize: vertical; min-height: 96px; font-family: var(--mono); font-si
 .toggle:checked::after { background: var(--accent-ink); transform: translateX(20px); }
 .toggle:active { background: var(--pressed); }
 .toggle:checked:active { background: #18ad7c; }
+
+/* 定制键编辑器里的紧凑勾选框（角标联动上滑）：.toggle 是 46×26 的
+   整行级滑块，塞进编辑器行又大又突兀（用户实测吐槽）；这里同款
+   appearance 方案（#90 旧 WebView 的 webkit 前缀教训同 toggle 注释）
+   收成 20×20 方块，选中态 accent 填底 + L 形勾（border 旋转画法，
+   不依赖字体字形）。 */
+.ck-check {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 6px;
+    background: var(--pill);
+    position: relative;
+    transition: background .15s ease, border-color .15s ease;
+}
+.ck-check:checked { border-color: var(--accent); background: var(--accent); }
+.ck-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 5.5px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.ck-check:active { background: var(--pressed); }
 
 .actions {
     display: flex;
@@ -909,7 +950,7 @@ details summary {
 .preset-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 /* 色调/饱和度行上下两行布局（用户验收五轮）：文字全宽在上、滑条+色板
  * 全宽在下——右侧竖排会把说明文案挤成窄条。 */
-.row.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.row.stack { flex-direction: column; align-items: stretch; }
 .row.stack .row-label { flex: none; }
 .row.stack .preset-wrap { align-items: stretch; }
 .row.stack .preset-wrap input[type="range"],
@@ -1095,7 +1136,10 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
  * 页底内容，用户两轮实录）。body 底 padding 兜 safe area。 */
 .page[data-page="customkeys"],
 .page[data-page="cksymbol"],
-.page[data-page="cklang"] {
+.page[data-page="cklang"],
+.page[data-page="ckt9strip"],
+.page[data-page="ckstrokestrip"],
+.page[data-page="ckinkstrip"] {
     display: flex; flex-direction: column;
     height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
 }
@@ -1153,18 +1197,24 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
  * 与其他页左对齐不一致——用户实录）：显式拉满。 */
 .page[data-page="customkeys"] > .page-head,
 .page[data-page="cksymbol"] > .page-head,
-.page[data-page="cklang"] > .page-head { width: 100%; }
+.page[data-page="cklang"] > .page-head,
+.page[data-page="ckt9strip"] > .page-head,
+.page[data-page="ckstrokestrip"] > .page-head,
+.page[data-page="ckinkstrip"] > .page-head { width: 100%; }
 .page[data-page="customkeys"] > main,
 .page[data-page="cksymbol"] > main,
-.page[data-page="cklang"] > main {
+.page[data-page="cklang"] > main,
+.page[data-page="ckt9strip"] > main,
+.page[data-page="ckstrokestrip"] > main,
+.page[data-page="ckinkstrip"] > main {
     flex: 1; min-height: 0; overflow-y: auto;
     width: 100%; max-width: 680px; margin: 0 auto;
     padding-bottom: 4px;
 }
 /* ===== #39-12 编辑 popup（bottom sheet）+ 保存条 + 统一控件 ===== */
-.ck-modal { position: fixed; inset: 0; z-index: 60; }
+.ck-modal { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 60; }
 .ck-modal[hidden] { display: none; }
-.ck-modal-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .45); }
+.ck-modal-mask { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0, 0, 0, .45); }
 .ck-modal-sheet {
     position: absolute; left: 0; right: 0; bottom: 0;
     background: var(--card, #fff); color: inherit;
@@ -1245,6 +1295,84 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
     -webkit-appearance: none; appearance: none;
     background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 10px center; }
+/* 角标字段下面的附属选项行（「上滑直接输入角标内容」）：
+   根因是 ckField 给控件挂 .ck-row2-ctl（flex:1，本文件后定义同优先级
+   覆盖 .ck-check 的 flex），checkbox 被拉成全宽长条——真机观感即绿长条。
+   方案 A（codex 2026-11-15）：整行浅底选项行、18×18 方框靠左、整行可点
+   （ckField 本就生成 label，点文字/空白即切换），min-height 44px，
+   长文案不再挤 84px 标签列。控件尺寸用高优先级选择器钉死。 */
+.ck-row2.ck-hint-option {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-height: 44px;
+    margin: 4px 0 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel);
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.ck-hint-option > .ck-row2-label {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--card-text);
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+/* 显式覆盖 ckField 添加的伸展规则 */
+.ck-hint-option > .ck-check.ck-row2-ctl {
+    -webkit-appearance: none;
+    appearance: none;
+    order: -1;
+    display: block;
+    flex: 0 0 18px;
+    box-sizing: border-box;
+    width: 18px;
+    min-width: 18px;
+    max-width: 18px;
+    height: 18px;
+    margin: 0 10px 0 0;
+    padding: 0;
+    border: 1.5px solid var(--muted);
+    border-radius: 4px;
+    background: var(--pill);
+    position: relative;
+    cursor: pointer;
+    transition: none;
+}
+.ck-hint-option > .ck-check:checked {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+.ck-hint-option > .ck-check:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    box-sizing: content-box;
+    width: 5px;
+    height: 9px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.ck-hint-option:active {
+    background: var(--pressed);
+}
+.ck-hint-option:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+.ck-hint-option > .ck-check:focus {
+    outline: none;
+}
 .ck-mode-seg { margin: 4px 0 10px; }
 /* 「常用」起点区（新建 popup 顶部，点开展开） */
 .ck-common { margin: 2px 0 8px; }
@@ -1376,3 +1504,40 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
 .dict-slot .slot-label small { color: var(--muted, #888); }
 .dict-slot .slot-del { flex: none; border: 0; background: none; color: #dc2626;
     font-size: 13px; padding: 6px 10px; cursor: pointer; }
+
+/* ===== #112 符号栏编辑页（2026-11-15 二轮：拖动排序） ===== */
+/* 拖柄：复用键盘选择页 ≡ 的视觉，触摸区扩到 44px（codex 方案：图形紧凑、
+ * 热区不妥协）；只对拖柄关 touch-action——列表保持原生纵向滚动。 */
+.ck-strip-handle {
+    min-width: 44px;
+    min-height: 44px;
+    touch-action: none;
+    cursor: grab;
+}
+.ck-strip-row {
+    touch-action: pan-y;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.ck-strip-row > * + * { margin-left: 8px; }
+/* 拖动中的原行=等高占位（内容隐藏+虚线框），浮动预览（ghost）跟随指针。 */
+.ck-strip-row.dragging {
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
+}
+.ck-strip-row.dragging > *:not(.ck-strip-handle) { visibility: hidden; }
+.ck-strip-ghost {
+    position: fixed;
+    z-index: 40;
+    pointer-events: none;
+    background: var(--pill, #3d3d3d);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+    padding: 8px 14px;
+    font-size: 20px;
+}
+.ck-strip-row .strip-glyph {
+    font-size: 20px;
+    min-width: 1.6em;
+}

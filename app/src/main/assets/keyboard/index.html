@@ -319,6 +319,9 @@
         <div id="symGrid"></div>
         <div id="symCatBar">
             <button class="kb-key kb-special" data-action="letters">ABC</button>
+            <!-- #113 二轮（用户 2026-11-15）：符号层也留 123 直达数字九宫格
+                 （数字层的「符号」键反向闭环），不再绕回主键盘。 -->
+            <button class="kb-key kb-special" data-action="numpad">123</button>
             <div id="symCats"></div>
             <!-- ⌫ 由 setup 注入（specialKey repeat，占换行键原位）：
                  符号层不设换行——换行走 ABC 回主键盘（2026-10-28 用户定案）。 -->
@@ -393,6 +396,9 @@
                     <path d="M19 12a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12h-2z"/>
                 </svg>
             </div>
+            <!-- 引擎加载态（含首次模型加载）专属旋转圆环：与麦克风脉冲
+                 （=可以开始说话的信号）严格区分，见 [data-state="loading"]。 -->
+            <div class="vc-spinner" aria-hidden="true"></div>
             <div id="voiceStatus" data-i18n="正在聆听…">正在聆听…</div>
             <div id="partialText" aria-live="polite"></div>
             <div id="levelBar"><i></i></div>
@@ -435,6 +441,16 @@
          #keyPopup 之前，避免改变既有兄弟序号（弹层几何测试依赖它）。 -->
     <div id="glassField" aria-hidden="true"></div>
 </main>
+<script>window.__feelimeES = 0;</script>
 <script src="keyboard.js?v=__KB_VERSION__"></script>
+<!-- #90 旧 WebView（出厂 Chromium <80：Android 9/10、BOOX 类）在解析
+     期拒绝 ES2020 语法，keyboard.js 整文件不执行且不报可捕获错误——
+     flag 未置位即改载 esbuild chrome66 转译副本（见
+     scripts/generate-legacy-web.sh，改动 keyboard.js 后必须重生成）。 -->
+<script>
+    if (!window.__feelimeES) {
+        document.write('<script src="keyboard.legacy.js?v=__KB_VERSION__"><\/script>');
+    }
+</script>
 </body>
 </html>

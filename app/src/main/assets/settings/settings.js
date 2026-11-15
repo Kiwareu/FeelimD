@@ -5,12 +5,38 @@
  * dictionary. User text, URLs, JSON, model titles, and device names are
  * always rendered as received. */
 "use strict";
+// #90 旧 WebView 探针 flag（同 keyboard.js）：本文件执行到此说明现代
+// 语法可解析，index.html 不加载 settings.legacy.js。
+window.__feelimeES = 1;
 // Chrome 86 才有 replaceChildren；Android 11 出厂 WebView 83 上设置页同样
 // 整页渲染中断（#88 同根因）。guard 版 polyfill 对新 WebView 零影响。
 if (typeof Element !== 'undefined' && !Element.prototype.replaceChildren) {
     Element.prototype.replaceChildren = function (...nodes) {
         this.textContent = '';
         for (const n of nodes) this.append(n);
+    };
+}
+// #90 Android 9 兼容带：fromEntries 是 Chrome 73，旧 WebView 上缺位即
+// 整段功能崩。guard 版 polyfill 零影响新机。
+if (!Object.fromEntries) {
+    Object.fromEntries = function (entries) {
+        const out = {};
+        for (const [k, v] of entries) out[k] = v;
+        return out;
+    };
+}
+if (!Array.prototype.flat) {
+    Array.prototype.flat = function (depth) {
+        const d = depth === undefined ? 1 : Math.floor(depth);
+        const out = [];
+        const walk = (arr, level) => {
+            for (const v of arr) {
+                if (level > 0 && Array.isArray(v)) walk(v, level - 1);
+                else out.push(v);
+            }
+        };
+        walk(this, d);
+        return out;
     };
 }
 let keySoundVolumeTimer = 0;
@@ -24,6 +50,13 @@ let pendingModelConsent = null;
 let lastModelError = null;
 
 const $ = id => document.getElementById(id);
+
+// #106 滑杆数值回显：input 拖动与 state 回显两条路共用；output 元素
+// 缺席（旧 HTML 缓存）时静默跳过。
+const rangeOut = (id, text) => {
+    const out = $(id + "Out");
+    if (out) out.textContent = text;
+};
 
 // 键盘选择（验收 2026-09-24）：与键盘 MODES 一致；默认菜单 = round-6 五项。
 const KEYBOARD_MODES = [
@@ -52,6 +85,8 @@ const CK_EDIT_OPS = [
     ['clear', 'ck.op.clear'], ['cursorLeft', 'ck.op.cursorLeft'],
     ['cursorRight', 'ck.op.cursorRight'], ['lineStart', 'ck.op.lineStart'],
     ['lineEnd', 'ck.op.lineEnd'],
+    // #93 分享选中文字：系统分享面板（与键盘 [edit:share]/工具栏同源）。
+    ['share', 'ck.op.share'],
 ];
 // 语言键盘四级页的布局数据（rows/角标与 keyboard.js LAYOUTS 同源摘要：
 // 角标取 alts 的首值；底行固定 [123][，][空格][中/英][⏎]，逗号键可
@@ -151,13 +186,13 @@ const I18N = {
         "dict.badge": "叠加",
         "dict.import.title": "导入词库",
         "dict.import.enable": "rime 词库文件（.dict.yaml）",
-        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入，上限 5000 条。第三列只对纯符号词生效（1-9 指定候选位次，不填默认第 3 位）；注意 rime 词库的第三列原本是权重——会被当作位置解释，超过 9 按 9 处理，建议导入前删掉或改写该列。",
+        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入，上限 5000 条。第三列（1-9 候选位次）默认只对纯符号词生效；要让全部词（汉字/字母/Emoji）都按第三列定位次，在文件头部加一行声明 columns: [text, code, rank]。注意未声明的 rime 词库第三列原本是权重——会被当作位置解释，超过 9 按 9 处理，建议导入前删掉或改写该列。",
         "dict.userwords.title": "自造词",
         "dict.userwords.enable": "手动维护的常用词",
         "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，或长按候选点「收入自造词」。也可以导入 rime 词库。适合名字和行话。只存在本机，最多 200 条。",
         "dict.userwords.manage": "管理词条",
         "page.userwords": "自造词",
-        "page.fuzzy": "全拼模糊音",
+        "page.fuzzy": "模糊音",
         "page.keyboards": "键盘选择",
         "userwords.list.title": "词条",
         "userwords.list.empty": "还没有词条，在下方添加。",
@@ -187,7 +222,7 @@ const I18N = {
         "dict.base.builtinNote": "内置 rime-frost 词库",
         "dict.base.entries": "{0} 词条",
         "dict.base.nonPinyin": "抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。",
-        "dict.base.t9Skip": "此词库词条较多：编译九宫格（T9）词库的内存开销超出本机承受（会被系统中止），本次导入跳过了九宫格，拼音/双拼不受影响；换更小的词库或恢复内置后九宫格即恢复。",
+        "dict.base.t9Skip": "此词库由旧版本导入：当时的内存保护跳过了九宫格编译（新版本已根治，不再跳过），拼音/双拼不受影响；重新导入该词库即可恢复九宫格。",
         "dict.base.toned": "此词库的编码带声调（疑似完整版，如万象拼音 Base）：键盘打不出声调符号，很多字将无法命中，请改用去声调的 Lite 版（或换回内置词库）。",
         "flypy.title": "音形码表",
         "flypy.badge": "音形",
@@ -199,8 +234,21 @@ const I18N = {
         "flypy.building": "正在处理音形码表…",
         "dict.base.stageCopy": "正在读取词库文件…",
         "dict.base.stageActivate": "正在切换词库…",
+        "dict.base.stageAnalyze": "正在分析词表特性…",
         "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
-        "dict.base.elapsed": "已编译 {0} 秒",
+        "dict.base.elapsed": "已用时 {0} 秒",
+        "dict.base.readingPct": "读取词表 {0}%（{1}/{2}）",
+        "dict.base.compilingStep": "编译 {0}/{1}，正在编：{2}",
+        "dict.base.compilingFinalize": "编译 {0}/{1}，收尾中",
+        "dict.base.compilingCount": "编译 {0}/{1}",
+        "dict.base.canLeave": "可离开此页",
+        "dict.base.etaSec": "约 {0} 秒后完成",
+        "dict.base.etaMin": "约 {0} 分钟后完成",
+        "dict.base.part.main": "主词表",
+        "dict.base.part.t9": "九宫格",
+        "dict.base.part.dp": "双拼",
+        "dict.base.part.fuzzy": "模糊音",
+        "dict.base.part.flypy": "音形",
         "dict.base.switching": "当前生效 {0}，正在切换到 {1}：",
         "page.appearance": "外观",
         "themeMode.auto": "跟随系统",
@@ -210,9 +258,9 @@ const I18N = {
         "page.update": "键盘热更新",
         "page.about": "关于",
         "page.test": "输入测试",
-        "input.fuzzy.title": "全拼模糊音",
+        "input.fuzzy.title": "模糊音",
         "input.fuzzy.manage": "管理模糊音",
-        "input.fuzzy.manageHint": "分不清的音一起打：平翘舌、n/l、前后鼻音等开关。",
+        "input.fuzzy.manageHint": "分不清的音一起打：作用于全拼与九宫格 T9（双拼除外）。",
         "input.fuzzy.badge": "输入",
         "input.fuzzy.g.ping": "平翘舌",
         "input.fuzzy.g.ping.hint": "z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。",
@@ -328,6 +376,29 @@ const I18N = {
         "ck.f.mode.panel": "面板",
         "ck.f.kind": "类型",
         "ck.lang.title": "语言键盘",
+        "ck.t9.title": "键盘符号栏",
+        "ck.t9.entryT9": "T9 九宫格符号栏",
+        "ck.t9.entryStroke": "笔画键盘符号栏",
+        "ck.t9.entryInk": "手写键盘符号栏",
+        "ck.t9.pageTitleT9": "T9 符号栏",
+        "ck.t9.pageTitleStroke": "笔画符号栏",
+        "ck.t9.pageTitleInk": "手写符号栏",
+        "ck.t9.hintT9": "九宫格键盘空闲时左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除；打字中该列临时显示拼音音节，与符号栏互不影响。",
+        "ck.t9.hintStroke": "笔画键盘左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除。",
+        "ck.t9.hintInk": "手写键盘右侧滚动符号列，拖动 ≡ 调整顺序，点 ✕ 删除。",
+        "ck.t9.drag": "拖动排序",
+        "ck.t9.resetConfirm": "恢复此符号栏的默认内容和顺序？",
+        "ck.t9.lastOne": "至少保留一个符号",
+        "ck.t9.resetOne": "恢复默认",
+        "ck.t9.addLabel": "添加符号",
+        "ck.t9.addPlaceholder": "符号",
+        "ck.t9.addBtn": "添加",
+        "ck.t9.limitHint": "最多 24 个符号",
+        "ck.t9.up": "上移",
+        "ck.t9.down": "下移",
+        "ck.t9.remove": "删除",
+        "ck.t9.defaultSummary": "默认",
+        "ck.t9.sameAsDefault": "与默认相同",
         "ck.lang.pinyin": "全拼键盘",
         "ck.lang.dp": "双拼键盘",
         "ck.lang.english": "英文键盘",
@@ -346,6 +417,7 @@ const I18N = {
         "ck.lang.lockPunct": "输出逗号， · 单击与长按固定",
         "ck.lang.alt": "角标",
         "ck.lang.altPlaceholder": "默认：{0}",
+        "ck.lang.altAsUp": "上滑直接输入角标内容",
         "ck.lang.slotUp": "↗ 上滑",
         "ck.lang.slotDown": "↘ 下滑",
         "ck.lang.defUp": "键盘默认 · 大写 {0}",
@@ -366,6 +438,7 @@ const I18N = {
         "ck.op.copy": "复制",
         "ck.op.paste": "粘贴",
         "ck.op.selectAll": "全选",
+    "ck.op.share": "分享选中文字",
         "ck.op.clear": "清空编辑框",
         "ck.op.cursorLeft": "光标左移一词",
         "ck.op.cursorRight": "光标右移一词",
@@ -452,6 +525,8 @@ const I18N = {
         "input.keyboards.saved": "已保存，键盘即时生效",
         "input.feel.bubbleLinger": "气泡停留时长",
         "input.feel.bubbleLingerHint": "松手后气泡多停留一会儿再消失，看得清按了什么；0 为立即消失。",
+        "input.feel.toastMs": "提示停留时长",
+        "input.feel.toastMsHint": "键盘上的提示条（如「已撤销本次听写」）显示多久，300-10000 毫秒，默认 1600。",
         "search.placeholder": "搜索设置：高度、气泡、双拼、词库…",
         "search.noResults": "没有匹配的设置项",
         "action.saveCustom": "保存定制",
@@ -499,6 +574,8 @@ const I18N = {
         "voice.asr.idleUnload": "空闲时释放语音模型",
         "voice.asr.idleUnloadHint": "默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载",
         "voice.asr.stripHint": "问号、叹号保留；关闭后保留模型输出",
+        "voice.asr.numItn": "数字写成阿拉伯数字",
+        "voice.asr.numItnHint": "数量、日期、金额、小数自动转换（三个 → 3个）；默认关闭",
         "voice.asr.hotwordsLabel": "热词（一行一个，可填中文或英文；识别优先考虑这些词）",
         "voice.asr.hotwordsWeightHint": "某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20（最多一位小数），不填用默认力度；数字过大可能出现重复词或误识别其他词，调小即可。",
         "voice.asr.hotwordsPlaceholder": "例如：\n倪妮\n姚程:10 ← 总识别错时加权重\nGPU",
@@ -836,6 +913,14 @@ const I18N = {
         "privacy.badge": "本机",
         "privacy.note": "按键、候选、语音和壁纸都只留在这台手机上。Feelime 不上传输入内容，也不带统计上报。语音模型是随安装包或你手动下载的离线模型。诊断开关只在你打开之后记录引擎事件，不含你打过的字。",
         "input.feel.keyBubble": "按键气泡",
+        "input.feel.cnEnComposingGuard": "拼音组词中禁止切换语言",
+        "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
+        "input.feel.preeditScrub": "空格横滑移动拼音光标",
+        "input.feel.preeditScrubHint": "输入拼音时左右滑动空格键，移动拼音串内的光标方便修改错字；没有输入时仍移动正文光标。默认开启，不需要可在本行关掉。目前支持全拼与双拼（#103）。",
+        "input.feel.bottomSymSplit": "底行符号/数字分键",
+        "input.feel.bottomSymSplitHint": "开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。",
+        "voice.readyHaptic": "语音就绪震动",
+        "voice.readyHapticHint": "语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。",
         "input.feel.keyBubbleHint": "按下按键时在键帽正上方放大显示所按的字符，松手后停留一会儿再消失（默认开启）。",
         "entry.appearance.title": "外观与皮肤",
         "entry.appearance.subtitle": "液态玻璃 · 配色 · 壁纸",
@@ -1003,13 +1088,13 @@ const I18N = {
         "dict.badge": "Overlay",
         "dict.import.title": "Import a dictionary",
         "dict.import.enable": "rime dictionary file (.dict.yaml)",
-        "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice.",
+        "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice. The optional 3rd column (candidate rank 1-9) only applies to symbol words unless the file header declares columns: [text, code, rank].",
         "dict.userwords.title": "User words",
         "dict.userwords.enable": "Hand-maintained words",
         "dict.userwords.hint": "Add word + pinyin pairs, or long-press a candidate and choose Save to my words. Rime dictionaries can be imported on this page. On this phone only, up to 200 entries.",
         "dict.userwords.manage": "Manage words",
         "page.userwords": "User words",
-        "page.fuzzy": "Fuzzy pinyin",
+        "page.fuzzy": "Fuzzy input",
         "page.keyboards": "Keyboard selection",
         "userwords.list.title": "Words",
         "userwords.list.empty": "No words yet - add one below.",
@@ -1039,7 +1124,7 @@ const I18N = {
         "dict.base.builtinNote": "Bundled rime-frost dictionary",
         "dict.base.entries": "{0} entries",
         "dict.base.nonPinyin": "A large share of codes in this dictionary are not pinyin syllable sequences (shape-code layout): characters may not be reachable by typing their pronunciation. Dedicated shape-code schema support may come later.",
-        "dict.base.t9Skip": "This dictionary has many entries: compiling the T9 (9-key) prism would exceed this device's available memory, so the 9-key mode was skipped for this import. Pinyin and double-pinyin are unaffected; a smaller dictionary or the built-in one restores it.",
+        "dict.base.t9Skip": "This dictionary was imported by an older version whose memory guard skipped 9-key compilation (since fixed; it no longer skips). Pinyin and double-pinyin are unaffected; re-importing the dictionary restores the 9-key mode.",
         "dict.base.toned": "Codes in this dictionary carry tone marks (likely the full variant, e.g. wanxiang Base): tones are not typeable on this keyboard, so many entries will never match. Use the tone-free Lite variant (or restore the built-in).",
         "flypy.title": "Shape-code table",
         "flypy.badge": "Shape",
@@ -1051,8 +1136,21 @@ const I18N = {
         "flypy.building": "Processing the shape-code table…",
         "dict.base.stageCopy": "Reading the dictionary file…",
         "dict.base.stageActivate": "Switching dictionary…",
+        "dict.base.stageAnalyze": "Analyzing the dictionary…",
         "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
         "dict.base.elapsed": "{0}s elapsed",
+        "dict.base.readingPct": "Reading {0}% ({1}/{2})",
+        "dict.base.compilingStep": "Compiling {0}/{1}, now: {2}",
+        "dict.base.compilingFinalize": "Compiling {0}/{1}, finalizing",
+        "dict.base.compilingCount": "Compiling {0}/{1}",
+        "dict.base.canLeave": "you can leave this page",
+        "dict.base.etaSec": "about {0}s remaining",
+        "dict.base.etaMin": "about {0} min remaining",
+        "dict.base.part.main": "main table",
+        "dict.base.part.t9": "9-key",
+        "dict.base.part.dp": "double pinyin",
+        "dict.base.part.fuzzy": "fuzzy variants",
+        "dict.base.part.flypy": "shape-code",
         "dict.base.switching": "Active: {0}, switching to {1}: ",
         "page.appearance": "Appearance",
         "themeMode.auto": "Follow system",
@@ -1062,9 +1160,9 @@ const I18N = {
         "page.update": "Keyboard updates",
         "page.about": "About",
         "page.test": "Input test",
-        "input.fuzzy.title": "Full-pinyin fuzzy",
+        "input.fuzzy.title": "Fuzzy input",
         "input.fuzzy.manage": "Manage fuzzy pinyin",
-        "input.fuzzy.manageHint": "Type confusable sounds interchangeably: z/zh, n/l, nasal endings and more.",
+        "input.fuzzy.manageHint": "Type confusable sounds interchangeably (z/zh, n/l, nasal endings). Applies to full pinyin and T9, not double pinyin.",
         "input.fuzzy.badge": "Input",
         "input.fuzzy.g.ping": "Retroflex z/zh, c/ch, s/sh",
         "input.fuzzy.g.ping.hint": "Typing zang also matches 张, typing zhang also matches 脏.",
@@ -1184,6 +1282,29 @@ const I18N = {
         "ck.f.mode.panel": "Panel",
         "ck.f.kind": "Type",
         "ck.lang.title": "Language keyboards",
+        "ck.t9.title": "Keyboard symbol strips",
+        "ck.t9.entryT9": "T9 nine-key strip",
+        "ck.t9.entryStroke": "Stroke keyboard strip",
+        "ck.t9.entryInk": "Handwriting strip",
+        "ck.t9.pageTitleT9": "T9 strip",
+        "ck.t9.pageTitleStroke": "Stroke strip",
+        "ck.t9.pageTitleInk": "Handwriting strip",
+        "ck.t9.hintT9": "Symbols in the left column of the nine-key keyboard when idle. Drag ≡ to reorder, tap ✕ to remove; while typing the column shows pinyin syllables instead.",
+        "ck.t9.hintStroke": "Symbols in the stroke keyboard's left column. Drag ≡ to reorder, tap ✕ to remove.",
+        "ck.t9.hintInk": "Symbols in the handwriting keyboard's scrolling column. Drag ≡ to reorder, tap ✕ to remove.",
+        "ck.t9.drag": "Drag to reorder",
+        "ck.t9.resetConfirm": "Restore the default symbols and order for this strip?",
+        "ck.t9.lastOne": "Keep at least one symbol",
+        "ck.t9.resetOne": "Reset",
+        "ck.t9.addLabel": "Add symbol",
+        "ck.t9.addPlaceholder": "Symbol",
+        "ck.t9.addBtn": "Add",
+        "ck.t9.limitHint": "Up to 24 symbols",
+        "ck.t9.up": "Move up",
+        "ck.t9.down": "Move down",
+        "ck.t9.remove": "Remove",
+        "ck.t9.defaultSummary": "Default",
+        "ck.t9.sameAsDefault": "Same as default",
         "ck.lang.pinyin": "Pinyin (26-key)",
         "ck.lang.dp": "Double Pinyin",
         "ck.lang.english": "English",
@@ -1202,6 +1323,7 @@ const I18N = {
         "ck.lang.lockPunct": "Types comma · tap & long-press fixed",
         "ck.lang.alt": "Hint",
         "ck.lang.altPlaceholder": "Default: {0}",
+        "ck.lang.altAsUp": "Swipe up to type the hint",
         "ck.lang.slotUp": "↗ Flick up",
         "ck.lang.slotDown": "↘ Flick down",
         "ck.lang.defUp": "Default · uppercase {0}",
@@ -1222,6 +1344,7 @@ const I18N = {
         "ck.op.copy": "Copy",
         "ck.op.paste": "Paste",
         "ck.op.selectAll": "Select all",
+    "ck.op.share": "Share selected text",
         "ck.op.clear": "Clear editor",
         "ck.op.cursorLeft": "Cursor left by word",
         "ck.op.cursorRight": "Cursor right by word",
@@ -1304,6 +1427,8 @@ const I18N = {
         "input.keyboards.saved": "Saved; the keyboard applies it immediately",
         "input.feel.bubbleLinger": "Bubble linger",
         "input.feel.bubbleLingerHint": "How long the bubble stays after release; 0 hides it instantly.",
+        "input.feel.toastMs": "Toast duration",
+        "input.feel.toastMsHint": "How long on-keyboard notices stay up, 300-10000 ms; default 1600.",
         "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon…",
         "search.noResults": "No matching settings",
         "action.saveCustom": "Save custom layout",
@@ -1349,6 +1474,8 @@ const I18N = {
         "voice.asr.idleUnload": "Release speech models when idle",
         "voice.asr.idleUnloadHint": "Off by default. Release after 5 idle minutes; the next recording reloads the models.",
         "voice.asr.stripHint": "Question and exclamation marks stay; turn off to keep model output unchanged",
+        "voice.asr.numItn": "Write numbers as digits",
+        "voice.asr.numItnHint": "Quantities, dates, amounts and decimals convert automatically (三个 → 3个); off by default",
         "voice.asr.hotwordsLabel": "Hotwords (one per line; Chinese or English; recognition gives these words priority)",
         "voice.asr.hotwordsWeightHint": "A word keeps being misrecognized? Append \":number\" for a stronger pull, e.g. 姚程:10. Range 1-20 (one decimal at most), omitted = default strength; too high may duplicate the word or misrecognize others - lower it then.",
         "voice.asr.hotwordsPlaceholder": "For example:\n倪妮\n姚程:10 ← stronger pull when misrecognized\nGPU",
@@ -1678,6 +1805,14 @@ const I18N = {
         "privacy.badge": "On device",
         "privacy.note": "Keystrokes, candidates, voice, and wallpapers stay on this phone. Feelime does not upload what you type and does not include analytics. Voice models ship with the app or are downloaded by you. Diagnostics, if you turn them on, record engine events and not the text you typed.",
         "input.feel.keyBubble": "Key bubble",
+        "input.feel.cnEnComposingGuard": "Block language switch while composing",
+        "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
+        "input.feel.preeditScrub": "Space swipe moves pinyin caret",
+        "input.feel.preeditScrubHint": "While composing, swipe the space key sideways to move the caret inside the pinyin string for quick edits; with no composition it still moves the text caret. On by default; turn it off from this row. Pinyin & double-pinyin only for now (#103).",
+        "input.feel.bottomSymSplit": "Split bottom symbols/digits key",
+        "input.feel.bottomSymSplitHint": "Splits the bottom-left [123] key into [Symbols] and [123]: symbols opens the symbol panel, 123 goes straight to the number pad. Off by default; when off, tapping 123 opens symbols and long-press opens the number pad (#113).",
+        "voice.readyHaptic": "Vibrate when voice is ready",
+        "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
         "input.feel.keyBubbleHint": "Enlarge the pressed character right above the keycap and linger briefly after release (on by default).",
         "entry.appearance.title": "Look & skins",
         "entry.appearance.subtitle": "Liquid glass · Colors · Wallpaper",
@@ -1798,7 +1933,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -2056,12 +2191,14 @@ window.FeelimeSettings = {
             case "dictBaseError":
                 setNote("dictBaseNote", event.message || "");
                 $("dictBaseBuilding").hidden = true;
+                setDictBar("dictBaseProgressBar", null);
                 dictBasePending = null;
                 break;
             case "flypyDone":
             case "flypyError":
                 setNote("flypyNote", event.message || "");
                 $("flypyBuilding").hidden = true;
+                setDictBar("flypyBuildingBar", null);
                 break;
             case "dpSchemeError":
                 setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
@@ -2147,12 +2284,14 @@ let currentPage = "home";
 const pageScrolls = {};
 
 function showPage(name) {
+    // 拖动会话不能跨页存活：先取消（回滚），再走既有切换流程。
+    if (typeof cancelStripDrag === "function") cancelStripDrag();
     if (!PAGES.includes(name)) return;
     // #39-12 定制按键页：脏态离开先弹页内确认（改完退出没保存都不
     // 知道——用户验收实录；不用 confirm：WebChromeClient 不处理时恒
     // false 会把用户锁死）。收口在本函数里——包装外层函数会漏掉已
     // 导出的旧引用。ckEnter 同理在进页时统一触发。
-    const CK_FAMILY = ["customkeys", "cksymbol", "cklang"];
+    const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"];
     if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage)
         && !CK_FAMILY.includes(name) && ckDirty) {
         ckLeaveTarget = name;
@@ -2195,12 +2334,17 @@ function showPage(name) {
     // 动作）：DOM 随当前页移动（page = header + 滚动 main + 保存条的
     // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
     // 隐藏，脏态由离开确认兜底。
-    if (name === "cksymbol" || name === "cklang") {
+    if (["cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"].includes(name)) {
+        // 深链直达（focusSetting/URL）没经过 ckEnter→ckLoad，rows=null：
+        // 此时「保存全部」的整包会把已有定制覆盖掉（codex review P1——
+        // rows 保底 [] 的前提是「草稿已加载」，未加载≠空表）。
+        if (!ckRows) ckLoad();
         const bar = document.getElementById("ckSaveBar");
         const pageEl = document.querySelector('[data-page="' + name + '"]');
         if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
     }
     if (name === "cklang") renderLangKb(ckLangCurrent);
+    if (CK_STRIP_PAGES[name]) renderStripPage(CK_STRIP_PAGES[name]);
     if (name === "customkeys" && !wasCustomkeys && typeof refreshLangCounts === "function") {
         refreshLangCounts();
     }
@@ -2685,11 +2829,16 @@ function renderFeel(state) {
             keySatShown = hasKeySat ? Math.round(ks) : themeSatShown;
             keySatInput.value = String(keySatShown);
         }
+        rangeOut("keySat", keySatShown + "%");
         keySatInput.oninput = () => {
             // 拖动键面滑条=脱离跟随（同 keyHue）。
             keySatFollow = false;
             const v = Number(keySatInput.value);
-            if (Number.isFinite(v)) { keySatShown = Math.max(0, Math.min(100, Math.round(v))); updateThemePreview(); }
+            if (Number.isFinite(v)) {
+                keySatShown = Math.max(0, Math.min(100, Math.round(v)));
+                rangeOut("keySat", keySatShown + "%");
+                updateThemePreview();
+            }
         };
         keySatInput.onchange = () => {
             const v = Math.round(Number(keySatInput.value));
@@ -2702,6 +2851,14 @@ function renderFeel(state) {
         const opPct = Math.max(5, Math.min(100, Number(state.keyOpacity ?? 74)));
         pvKeyAlpha = opPct / 100;
         opacity.value = String(opPct);
+        rangeOut("keyOpacity", opPct + "%");
+    }
+    // toast 停留时长回显（300-10000ms；脏值夹回默认，与 readToastMs 同口径）。
+    const toastMsInput = $("toastMs");
+    if (toastMsInput) {
+        const ms = Math.max(300, Math.min(10000, Number(state.toastMs ?? 1600)));
+        toastMsInput.value = String(ms);
+        rangeOut("toastMs", ms + " ms");
     }
     const pvBg = (imgKey, srcKey) => (state[srcKey] && state[srcKey] !== "none" && state[imgKey])
         ? `url("${state[imgKey].startsWith('https://feelime.local/keyboard/background/')
@@ -2739,6 +2896,14 @@ function renderFeel(state) {
     });
     const bubble = $("keyBubble");
     if (bubble) bubble.checked = state.keyBubble === true;
+    const guard = $("cnEnComposingGuard");
+    if (guard) guard.checked = state.cnEnComposingGuard === true;
+    const scrub = $("preeditScrub");
+    if (scrub) scrub.checked = state.preeditScrub === true;
+    const symSplit = $("bottomSymSplit");
+    if (symSplit) symSplit.checked = state.bottomSymSplit === true;
+    const vrh = $("voiceReadyHaptic");
+    if (vrh) vrh.checked = state.voiceReadyHaptic === true;
     const lingerSel = $("bubbleLinger");
     if (lingerSel && document.activeElement !== lingerSel) {
         lingerSel.value = String(state.bubbleLinger ?? 400);
@@ -2754,6 +2919,7 @@ function renderFeel(state) {
         const saved = Number(state.kbHeightPortrait ?? 0);
         kbHeight.value = String(saved >= min ? saved : 272);
         kbHeight.dataset.default = "272";
+        rangeOut("kbHeight", kbHeight.value + " px");
     }
     // 背景图两组回显：source = none/builtin/custom（custom 选项按需挂载）。
     [["bgImageLight", "bgImageLightSource"], ["bgImageDark", "bgImageDarkSource"]].forEach(([id, key]) => {
@@ -2785,6 +2951,7 @@ function renderFeel(state) {
     setToggle("keySound", state.keySound);
     const vol = $("keySoundVolume");
     if (vol && document.activeElement !== vol) vol.value = String(state.keySoundVolume ?? 60);
+    if (vol) rangeOut("keySoundVolume", vol.value + "%");
     setSelect("keyHapticStrength", String(state.keyHapticStrength ?? 1), ["0", "1", "2"]);
     // #30-2 音效风格回读：custom 需文件在（native 已保证不悬空），文件行
     // 仅在选了 custom 或已有文件时露出。
@@ -3183,6 +3350,7 @@ function renderAsr(state) {
     if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
     if (document.activeElement !== field && !asrHotwordsDirty) field.value = asr.hotwords || "";
     if (document.activeElement !== $("stripPeriod")) $("stripPeriod").checked = !!asr.stripPeriod;
+    if (document.activeElement !== $("numItn")) $("numItn").checked = asr.itn === true;
 }
 
 function renderCustom(state) {
@@ -3726,13 +3894,86 @@ $("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));
 $("btnImportDict").addEventListener("click", () => call("openDictDocument"));
 $("btnBaseDictPick").addEventListener("click", () => call("openBaseDictDocument"));
 
-/** 基底编译是黑盒（librime maintenance），无百分比——用阶段 + 已耗时
- *  提示；用户可离开页面，完成/失败由 dictBaseDone/dictBaseError 收尾。 */
-function dictBaseStageText(stage, elapsedMs) {
+/** 导入进度呈现：Kotlin 侧两个真实信号——COPYING 按源流字节比、
+ *  COMPILING 按 staging 产物落盘计数（librime 无逐 schema 回调）。
+ *  progress = {percent?, done, total, detail?}；ETA 用 elapsed/percent
+ *  比例外推（自校准：慢机已耗时长 → 剩余估计自动变长），早期（<8% 或
+ *  <3s）外推噪声大不显示。无 progress 的路径（模糊音补编等）回退
+ *  原阶段文案。完成/失败由 dictBaseDone/dictBaseError 收尾。 */
+function dictCompileTargetName(id) {
+    if (!id) return "";
+    if (id === "luna_pinyin") return t("dict.base.part.main");
+    if (id === "luna_pinyin_t9") return t("dict.base.part.t9");
+    if (id === "flypy") return t("dict.base.part.flypy");
+    // includes 而非 startsWith：ziranma_double_pinyin 等带前缀变体。
+    if (id.includes("double_pinyin")) return t("dict.base.part.dp");
+    if (id.startsWith("luna_pinyin_fuzzy")) return t("dict.base.part.fuzzy");
+    return id;
+}
+
+/** 主产物（table）落地前不给 ETA——该段占编译 ~70% 且 percent 不动，
+ *  比例外推会随 elapsed 单调上修（ace 实录 23s→「约 5 分钟」），越等
+ *  越焦虑；table 落地后剩余段外推准（实录误差 <15s）。 */
+function dictEtaText(elapsedMs, percent, done) {
+    if (!percent || percent >= 95 || !done) return "";
+    const elapsed = elapsedMs || 0;
+    if (percent < 8 || elapsed < 3000) return "";
+    const etaSec = Math.round(elapsed / percent * (100 - percent) / 1000);
+    if (etaSec < 5) return "";
+    return etaSec >= 90
+        ? t("dict.base.etaMin", [Math.max(1, Math.round(etaSec / 60))])
+        : t("dict.base.etaSec", [etaSec]);
+}
+
+function dictHasPercent(progress) {
+    return !!(progress && typeof progress.percent === "number"
+        && progress.total > 0);
+}
+
+function dictBaseStageText(stage, elapsedMs, progress) {
     if (stage === "ACTIVATING") return t("dict.base.stageActivate");
     const seconds = Math.round((elapsedMs || 0) / 1000);
-    const label = stage === "COPYING" ? t("dict.base.stageCopy") : t("dict.base.stageCompile");
-    return stage === "COPYING" ? label : `${label}（${t("dict.base.elapsed", [seconds])}）`;
+    if (stage === "ANALYZING") {
+        return `${t("dict.base.stageAnalyze")}（${t("dict.base.elapsed", [seconds])}）`;
+    }
+    if (stage === "COPYING") {
+        if (dictHasPercent(progress)) {
+            // 文案用真实文件读取比（progress.percent 是含编译段的整条
+            // 权重位置，直接展示会被误读成「只读了 14% 的文件」）。
+            const frac = Math.min(100, Math.round(progress.done / progress.total * 100));
+            const parts = [t("dict.base.readingPct", [frac,
+                mb(progress.done), mb(progress.total)])];
+            const eta = dictEtaText(elapsedMs, progress.percent, progress.done);
+            if (eta) parts.push(eta);
+            return parts.join(" · ");
+        }
+        return t("dict.base.stageCopy");
+    }
+    if (dictHasPercent(progress)) {
+        const target = dictCompileTargetName(progress.detail);
+        // detail 空 = 0/N（不知道 librime 在编哪项，别冒「正在编」）
+        // 或 N/N（收尾/校验中）。
+        const bits = [target
+            ? t("dict.base.compilingStep", [progress.done, progress.total, target])
+            : progress.done >= progress.total
+                ? t("dict.base.compilingFinalize", [progress.done, progress.total])
+                : t("dict.base.compilingCount", [progress.done, progress.total])];
+        bits.push(t("dict.base.elapsed", [seconds]));
+        bits.push(dictEtaText(elapsedMs, progress.percent, progress.done)
+            || t("dict.base.canLeave"));
+        return bits.join(" · ");
+    }
+    const label = t("dict.base.stageCompile");
+    return `${label}（${t("dict.base.elapsed", [seconds])}）`;
+}
+
+/** 进度条显隐/宽度（percent 缺失时整体隐藏，如 ACTIVATING 或补编）。 */
+function setDictBar(barId, progress) {
+    const bar = $(barId);
+    if (!bar) return;
+    const pct = dictHasPercent(progress) ? progress.percent : null;
+    bar.hidden = pct == null;
+    if (pct != null) bar.firstElementChild.style.width = `${pct}%`;
 }
 
 /** 切换目标（用户点选的 radio 值）：编译期间文案必须标出「实际生效 +
@@ -3742,7 +3983,7 @@ function dictBaseStageText(stage, elapsedMs) {
 let dictBasePending = null;
 
 function dictBaseBuildingText(base) {
-    const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+    const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
     const target = base.building && (base.targetSlot || dictBasePending);
     if (!target) return stage;
     let label = null;
@@ -3762,7 +4003,9 @@ function dictBaseBuildingText(base) {
 function onDictBaseProgress(event) {
     if (event.operation === "flypy") {
         $("flypyBuilding").hidden = false;
-        $("flypyBuilding").textContent = dictBaseStageText(event.stage, event.elapsedMs);
+        $("flypyBuilding").textContent = dictBaseStageText(
+            event.stage, event.elapsedMs, event.progress);
+        setDictBar("flypyBuildingBar", event.progress);
         return;
     }
     const building = $("dictBaseBuilding");
@@ -3771,8 +4014,10 @@ function onDictBaseProgress(event) {
         ...(lastState && lastState.baseDict),
         stage: event.stage,
         elapsedMs: event.elapsedMs,
+        progress: event.progress,
         building: true,
     });
+    setDictBar("dictBaseProgressBar", event.progress);
 }
 
 /** state.baseDict: {mode, building, stage, elapsedMs, name, installedAt}——
@@ -3861,6 +4106,8 @@ function renderDictBase(state) {
     if (t9skip) t9skip.hidden = !base.t9Skipped;
     $("btnBaseDictPick").disabled = !!base.building;
     $("dictBaseBuilding").hidden = !base.building || base.operation === "flypy";
+    setDictBar("dictBaseProgressBar",
+        base.building && base.operation !== "flypy" ? base.progress : null);
     if (base.building && base.operation !== "flypy") {
         $("dictBaseBuilding").textContent = dictBaseBuildingText(base);
     }
@@ -3895,9 +4142,11 @@ function renderFlypy(state) {
     $("btnFlypyPick").disabled = !!base.building;
     const building = $("flypyBuilding");
     building.hidden = !base.building || base.operation !== "flypy";
+    setDictBar("flypyBuildingBar",
+        base.building && base.operation === "flypy" ? base.progress : null);
     if (base.building && base.operation === "flypy") {
         building.textContent =
-            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
     }
 }
 /** 清空导入词的两击确认（#39 补充建议）：WebView 无原生 confirm
@@ -4236,6 +4485,11 @@ $("candidateFont").addEventListener("input", event => {
     $("candidateFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
 });
 $("candidateFont").addEventListener("change", event => call("setCandidateFont", parseInt(event.target.value, 10)));
+// toast 停留时长：交互口径同候选字号（拖动实时读数，松手落盘一次）。
+$("toastMs").addEventListener("input", event => {
+    rangeOut("toastMs", `${parseInt(event.target.value, 10)} ms`);
+});
+$("toastMs").addEventListener("change", event => call("setToastMs", parseInt(event.target.value, 10)));
 // #70 键帽字号：交互口径同候选字号（拖动实时读数，松手落盘）。
 $("keycapFont").addEventListener("input", event => {
     $("keycapFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
@@ -4267,7 +4521,11 @@ $("keyOpacity").addEventListener("input", event => {
     keyOpacityDirty = true;
     // 拖动实时进预览（用户验收五轮）：不透明度直接影响键帽半透观感。
     const v = parseInt(event.target.value, 10);
-    if (Number.isFinite(v)) { pvKeyAlpha = Math.max(0, Math.min(1, v / 100)); updateThemePreview(); }
+    if (Number.isFinite(v)) {
+        pvKeyAlpha = Math.max(0, Math.min(1, v / 100));
+        rangeOut("keyOpacity", v + "%");
+        updateThemePreview();
+    }
 });
 $("keyOpacity").addEventListener("change", event => {
     if (!keyOpacityDirty) return;
@@ -4289,6 +4547,10 @@ $("keyOpacity").addEventListener("change", event => {
 // 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
 // 底下弹出的预览键盘。
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
+$("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
+$("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
+$("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));
+$("voiceReadyHaptic").addEventListener("change", event => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", event => {
     call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
 });
@@ -4296,6 +4558,7 @@ $("bubbleLinger").addEventListener("change", event => {
 let kbHeightDirty = false;
 $("kbHeight").addEventListener("input", event => {
     kbHeightDirty = true;
+    rangeOut("kbHeight", event.target.value + " px");
 });
 $("kbHeight").addEventListener("change", event => {
     if (!kbHeightDirty) return;
@@ -4305,6 +4568,7 @@ $("kbHeight").addEventListener("change", event => {
 $("kbHeightReset").addEventListener("click", () => {
     const slider = $("kbHeight");
     slider.value = slider.dataset.default || "272";
+    rangeOut("kbHeight", slider.value + " px");
     call("setKbHeight", 0);
 });
 // 背景图两组（亮/暗）：「选择图片…」打开文件选择器，选完压到 720px 宽
@@ -4392,9 +4656,17 @@ $("modelConsentConfirm").addEventListener("click", () => {
 let asrHotwordsSubmitted = null;
 $("asrIdleUnload").addEventListener("change", event => call("setAsrIdleUnload", event.target.checked));
 $("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
+// toggle 拨动即生效（与 #39-2 同案：此前只随「保存识别设置」提交，拨了
+// 不点保存=从未落盘，重进被回读洗回旧值——1.4.3 验收实录）。走窄接口
+// setAsrToggles：不携带热词（codex P2：复用 saveAsrSettings 的成功回执带
+// hotwords 字段，会把校验失败后保留的草稿洗成旧值；快照热词也会陈旧回写）。
+$("stripPeriod").addEventListener("change", event =>
+    call("setAsrToggles", event.target.checked, $("numItn").checked));
+$("numItn").addEventListener("change", event =>
+    call("setAsrToggles", $("stripPeriod").checked, event.target.checked));
 $("btnSaveAsr").addEventListener("click", () => {
     asrHotwordsSubmitted = $("hotwords").value;
-    call("saveAsrSettings", $("stripPeriod").checked, $("hotwords").value);
+    call("saveAsrSettings", $("stripPeriod").checked, $("numItn").checked, $("hotwords").value);
     setNote("asrNote", t("note.saved"));
 });
 
@@ -4466,6 +4738,7 @@ $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateT
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
 
 $("keySoundVolume").addEventListener("input", event => {
+    rangeOut("keySoundVolume", event.target.value + "%");
     clearTimeout(keySoundVolumeTimer);
     keySoundVolumeTimer = setTimeout(
         () => call("setKeySoundVolume", Number(event.target.value)), 250);
@@ -4858,6 +5131,7 @@ const CK_QUICK = [
     { t: "存", tap: "[ctrl+s]", color: "h210" },
     { t: "复制", tap: "[ctrl+c]" }, { t: "粘贴", tap: "[ctrl+v]" },
     { t: "剪切", tap: "[ctrl+x]" }, { t: "全选", tap: "[ctrl+a]" },
+    { t: "分享", tap: "[edit:share]", color: "purple", note: "把选中的文字分享给其他应用" },
     { t: "撤销", tap: "[ctrl+z]" },
     { t: "邮箱", tap: "me@example.com", span: 2 },
     { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
@@ -4893,6 +5167,9 @@ let ckDirty = false;
 // 同一脏态草稿、保存条随子页各自触发提交（分页保存）。来源是 customJson
 // textarea 的 JSON（state 推送或用户粘贴），编辑器改动写回草稿。
 let ckLangKeys = {};
+// #112 符号栏草稿（T9/笔画/手写三栏）：null=未定制（用键盘内置默认）；
+// 数组=已定制。字段名与键盘端 sideCharsList 的映射一一对应。
+let ckStrips = { t9: null, stroke: null, ink: null };
 let ckLeaveTarget = null;   // 脏态离开确认的目标页
 
 /** 脏态驱动的保存条：变更必须让用户看得见（用户验收实录）。
@@ -5013,6 +5290,12 @@ function ckLoad() {
         // 语言键盘定制段同步进草稿（rows 为空模板时 langKeys 仍独立生效）。
         ckLangKeys = parsed && parsed.langKeys && typeof parsed.langKeys === "object"
             && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
+        // #112 符号栏三段：数组才进草稿（null=未定制，用键盘内置默认）。
+        ckStrips = {
+            t9: parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null,
+            stroke: parsed && Array.isArray(parsed.strokeStrip) ? parsed.strokeStrip.slice() : null,
+            ink: parsed && Array.isArray(parsed.inkStrip) ? parsed.inkStrip.slice() : null,
+        };
     } catch (_) { /* textarea 空/坏 JSON → 模板 */ }
     if (!rows || !rows.some(row => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
     ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
@@ -5559,6 +5842,10 @@ function ckLangSlotParse(tap) {
  *  CK_MODES；槽 draft 存 d.up/d.down（各是 ckTapParse 形态）。 */
 function ckBuildLangKeyForm(body, d) {
     const isPunct = d.langKey === ".";
+    // 角标联动判定提函数体级：角标块（checkbox 挂点）与槽循环后的
+    // 手动编辑刷新点都要用（codex review P2：派生态只在重建时算，
+    // 手动编辑上滑文本后 checkbox/摘要停在旧态）。
+    const altUpLinked = () => d.up.mode === "text" && d.up.text === (d.alt || "");
     const lock = document.createElement("div");
     lock.className = "ck-row2 ck-row2-bare";
     lock.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">'
@@ -5574,8 +5861,40 @@ function ckBuildLangKeyForm(body, d) {
         const defAlt = ckLangDefaultAlt(d.langLay, d.langKey);
         alt.placeholder = t("ck.lang.altPlaceholder").replace("{0}", defAlt);
         alt.maxLength = 3;
-        alt.addEventListener("input", () => { d.alt = alt.value.trim(); });
+        // 上滑=文本角标联动（2026-11-14 需求）：勾选即把上滑槽设为
+        // 文本模式输入角标内容，取消则回到键盘默认；勾着时改角标，
+        // 上滑文本跟随。勾选态派生自「上滑是文本且内容==角标」
+        // （altUpLinked 提在函数体级），不另存联动标志——手动把上滑
+        // 改成别的（或改文本内容），复选框自然弹起，联动解除。
+        alt.addEventListener("input", () => {
+            const wasLinked = altUpLinked(); // 以改前的角标判断是否联动中
+            d.alt = alt.value.trim();
+            if (!wasLinked) return;
+            // 原地改 d.up.text，不替换对象——ckBuildAction 的 text 输入
+            // 监听闭包捕获原对象，替换后手动编辑上滑文本会写进孤儿对象
+            // 丢失（codex review P2）。
+            d.up.text = d.alt;
+            // 上滑槽直通刷新，不 ckBuildForm 重建——角标框正在输入，
+            // 重建会清焦点打断输入（实测改角标后上滑文本框停在旧值）。
+            const upSec = body.querySelector(".ck-lang-sec");
+            const upText = upSec && upSec.querySelector("input.ck-input");
+            if (upText) upText.value = d.alt;
+            const upCur = upSec && upSec.querySelector(".ck-lang-sec-cur");
+            if (upCur) {
+                upCur.textContent = d.alt;
+                upCur.classList.add("set");
+            }
+        });
         body.append(ckField(t("ck.lang.alt"), alt));
+        const altUp = document.createElement("input");
+        altUp.type = "checkbox";
+        altUp.className = "ck-check";
+        altUp.checked = altUpLinked();
+        altUp.addEventListener("change", () => {
+            d.up = altUp.checked ? { mode: "text", text: d.alt || "" } : { mode: "def" };
+            ckBuildForm();
+        });
+        body.append(ckField(t("ck.lang.altAsUp"), altUp, "ck-hint-option"));
     }
 
     for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
@@ -5588,10 +5907,15 @@ function ckBuildLangKeyForm(body, d) {
         const cur = document.createElement("span");
         cur.className = "ck-lang-sec-cur";
         const refreshCur = () => {
-            const tap = ckTapFromDraft(d[slot]);
-            cur.textContent = tap ? tap : t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
-                .replace("{0}", d.langKey.toUpperCase());
-            cur.classList.toggle("set", !!tap);
+            // 三态摘要（codex review P2）：「关闭」序列化为空串，
+            // 只看串空会把显式关闭显示成「键盘默认」。
+            const m = d[slot].mode;
+            cur.textContent = m === "none" ? t("ck.f.mode.none")
+                : m === "def"
+                    ? t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
+                        .replace("{0}", d.langKey.toUpperCase())
+                    : ckTapFromDraft(d[slot]);
+            cur.classList.toggle("set", m !== "def");
         };
         head.append(title, cur);
         sec.append(head);
@@ -5630,7 +5954,22 @@ function ckBuildLangKeyForm(body, d) {
             // 槽 draft 直通：ckBuildAction 的监听写到 d[slot] 上。
             ckBuildAction(holder, d[slot]);
         }
+        refreshCur(); // 存量死码激活：头部「当前值」摘要从未初始化过
         body.append(sec);
+
+        if (slot === "up" && !isPunct && d.up.mode === "text") {
+            // 手动编辑上滑文本：派生勾选态与摘要原地刷新（codex review
+            // P2——派生只在重建时算，手改后 checkbox/摘要停在旧态）。
+            // text 型控件 id 恒 ckText（ckBuildAction）且 modal 内唯一，
+            // document 级取（fake DOM 的组合/id 选择器不可靠）。
+            const upText = document.getElementById("ckText");
+            if (upText) upText.addEventListener("input", () => {
+                const cb = [...body.querySelectorAll("input")]
+                    .find(el => el.type === "checkbox");
+                if (cb) cb.checked = altUpLinked();
+                refreshCur();
+            });
+        }
     }
 }
 
@@ -6171,7 +6510,11 @@ $("ckApply").addEventListener("click", () => {
         for (const slot of ["up", "down"]) {
             const m = d[slot] ? d[slot].mode : "def";
             if (m === "def") continue;
-            cell[slot] = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            const dsl = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            // 非空模式序列化出空串（text 空文本——角标联动勾了没填角标
+            // 的形态）当「未设置」不落，别降级成「关闭」语义。
+            if (m !== "none" && !dsl) continue;
+            cell[slot] = dsl;
         }
         if (Object.keys(cell).length) table[key] = cell;
         else delete table[key];
@@ -6333,6 +6676,287 @@ document.querySelectorAll("[data-cklang]").forEach(row => {
     });
 });
 document.getElementById("ckSymbolEntry").addEventListener("click", () => showPage("cksymbol"));
+document.getElementById("ckT9StripEntry").addEventListener("click", () => showPage("ckt9strip"));
+document.getElementById("ckStrokeStripEntry").addEventListener("click", () => showPage("ckstrokestrip"));
+document.getElementById("ckInkStripEntry").addEventListener("click", () => showPage("ckinkstrip"));
+
+/* ===== #112 键盘符号栏（2026-11-15 二轮：三键盘独立页面+拖动排序） =====
+ * 信息架构（codex 方案）：customkeys 三行入口 → 三个独立编辑页
+ * （ckt9strip/ckstrokestrip/ckinkstrip），路由映射 CK_STRIP_PAGES；
+ * 单 kind 渲染（不猜 currentKind）。排序=拖柄拖动（beginStripRowDrag：
+ * host capture+指针 y 落点直接映射+浮起 ghost+边缘自动滚动+中断回滚），
+ * 删除 ✕（最后一项禁删——键盘端空表=回默认的语义矛盾）、添加固定尾部、
+ * 恢复默认页内确认。草稿与保存沿用 ck 家族：编辑写 ckStrips[kind]+
+ * ckMarkDirty(true)，统一保存条提交整包（跨页未保存修改一并生效——
+ * CK 家族既有语义，不为此引入独立保存事务）。 */
+const T9_STRIP_DEFAULT = ['，', '。', '？', '！', '；', '：', '、',
+    '“', '”', '（', '）', '《', '》', '…', '·', '—'];
+const INK_STRIP_DEFAULT = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
+const T9_STRIP_MAX = 24;
+const STRIP_KINDS = [
+    { kind: "t9", page: "ckt9strip", field: "t9Strip",
+      titleKey: "ck.t9.pageTitleT9", hintKey: "ck.t9.hintT9", def: T9_STRIP_DEFAULT },
+    { kind: "stroke", page: "ckstrokestrip", field: "strokeStrip",
+      titleKey: "ck.t9.pageTitleStroke", hintKey: "ck.t9.hintStroke", def: T9_STRIP_DEFAULT },
+    { kind: "ink", page: "ckinkstrip", field: "inkStrip",
+      titleKey: "ck.t9.pageTitleInk", hintKey: "ck.t9.hintInk", def: INK_STRIP_DEFAULT },
+];
+const CK_STRIP_PAGES = {};
+STRIP_KINDS.forEach(cfg => { CK_STRIP_PAGES[cfg.page] = cfg.kind; });
+const stripCfg = kind => STRIP_KINDS.find(k => k.kind === kind);
+function stripDraft(kind) {
+    return ckStrips[kind] ? ckStrips[kind].slice() : stripCfg(kind).def.slice();
+}
+function sameStrip(a, b) {
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+function stripSummaryText(kind) {
+    const cur = ckStrips[kind];
+    if (!cur) return t("ck.t9.defaultSummary");
+    return sameStrip(cur, stripCfg(kind).def)
+        ? t("ck.t9.sameAsDefault") : `${cur.length}`;
+}
+function refreshStripSummary() {
+    for (const cfg of STRIP_KINDS) {
+        const el = document.getElementById(`ck${cfg.kind === "t9" ? "T9" : cfg.kind === "stroke" ? "Stroke" : "Ink"}StripSummary`);
+        if (el) el.textContent = stripSummaryText(cfg.kind);
+    }
+}
+function updateStripControls(kind) {
+    const count = document.getElementById(`ck${kind}Count`);
+    if (count) count.textContent = `${stripDraft(kind).length} / ${T9_STRIP_MAX}`;
+}
+/** 提交草稿；与现值相同不制造新脏态（拖回原位/恢复时已等于默认）。 */
+function commitStrip(kind, next) {
+    if (sameStrip(stripDraft(kind), next)) return false;
+    ckStrips[kind] = next.slice();
+    ckMarkDirty(true);
+    refreshStripSummary();
+    updateStripControls(kind);
+    return true;
+}
+function renderStripList(kind) {
+    const host = document.getElementById(`ck${kind}List`);
+    if (!host) return;
+    const cur = stripDraft(kind);
+    host.replaceChildren();
+    cur.forEach((sym, i) => {
+        const row = document.createElement("div");
+        row.className = "row ck-strip-row";
+        row.dataset.stripValue = sym;
+        // 拖柄（≈ 键盘选择页 ≡ 的形态，热区 44px）。
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "btn small kb-drag ck-strip-handle";
+        handle.textContent = "≡";
+        handle.setAttribute("aria-label", t("ck.t9.drag"));
+        handle.addEventListener("pointerdown", e => beginStripRowDrag(e, kind, row));
+        row.append(handle);
+        const label = document.createElement("span");
+        label.className = "row-label";
+        const big = document.createElement("span");
+        big.className = "strip-glyph";
+        big.textContent = sym;
+        label.append(big);
+        row.append(label);
+        // 删除：捕获 row 而非渲染下标（拖动后下标失效会删错项）。
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "btn";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("ck.t9.remove"));
+        del.addEventListener("click", () => removeStripRow(kind, row));
+        if (cur.length <= 1) {
+            del.disabled = true;   // 键盘端空表=回默认，删空会语义矛盾
+            del.setAttribute("title", t("ck.t9.lastOne"));
+        }
+        row.append(del);
+        host.append(row);
+    });
+    updateStripControls(kind);
+}
+function renderStripPage(kind) {
+    renderStripList(kind);
+    refreshStripSummary();
+}
+function removeStripRow(kind, row) {
+    if (stripDrag) return;
+    const host = row.parentElement;
+    const index = Array.from(host.children).indexOf(row);
+    const next = stripDraft(kind);
+    if (index < 0 || next.length <= 1) return;
+    next.splice(index, 1);
+    if (commitStrip(kind, next)) renderStripList(kind);
+}
+// 三页的添加与恢复（固定 id 前缀 ck<kind>）。
+for (const cfg of STRIP_KINDS) {
+    const kind = cfg.kind;
+    const addBtn = document.getElementById(`ck${kind}AddBtn`);
+    const input = document.getElementById(`ck${kind}AddInput`);
+    if (addBtn) addBtn.addEventListener("click", () => {
+        const v = (input.value || "").trim();
+        if (!v) return;
+        const d = stripDraft(kind);
+        if (d.length >= T9_STRIP_MAX) { setNote("ckSaveNote", t("ck.t9.limitHint")); return; }
+        d.push(v);
+        input.value = "";
+        if (commitStrip(kind, d)) renderStripList(kind);
+        // 添加后列表重建，输入框是静态 HTML 不受影响（焦点保留，连续添加）。
+        input.focus();
+    });
+    // Enter 提交；composition 会话中的 Enter（中文选词确认）不提交。
+    if (input) input.addEventListener("keydown", ev => {
+        if (ev.key !== "Enter" || ev.isComposing) return;
+        addBtn.click();
+    });
+    const reset = document.getElementById(`ck${kind === "t9" ? "t9" : kind}Reset`);
+    if (reset) reset.addEventListener("click", () => {
+        const cur = stripDraft(kind);
+        if (sameStrip(cur, cfg.def)) { setNote("ckSaveNote", t("ck.t9.sameAsDefault")); return; }
+        if (window.confirm(t("ck.t9.resetConfirm"))) {
+            if (commitStrip(kind, cfg.def.slice())) renderStripList(kind);
+            setNote("ckSaveNote", t("ck.lang.resetDone"));
+        }
+    });
+}
+
+/* ---- 拖动会话（codex 方案 2026-11-15：保留 beginKbRowDrag 两条经验——
+ * capture/move 挂不移动的 host；指针 y 落点直接映射跨多行。新增：6px
+ * 误触阈值、浮起 ghost+原行占位、main 边缘自动滚动、中断（cancel/丢
+ * capture/切页/resize）回滚到拖动前顺序、松手仅在顺序确有变化时提交。） */
+let stripDrag = null;
+function beginStripRowDrag(e, kind, row) {
+    if (stripDrag || e.isPrimary === false) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    const host = row.parentElement;
+    if (!host) return;
+    const s = stripDrag = {
+        kind, row, host,
+        scroller: row.closest("main") || document.body,
+        pid: e.pointerId,
+        startY: e.clientY,
+        y: e.clientY,
+        x: e.clientX,
+        originalRows: Array.from(host.children),
+        before: stripDraft(kind),
+        active: false,
+        done: false,
+        ghost: null,
+        raf: 0,
+        lastT: 0,
+    };
+    const move = ev => { if (ev.pointerId === s.pid) moveStripDrag(s, ev); };
+    const finish = ev => {
+        if (ev.pointerId !== s.pid && ev.type !== "lostpointercapture") return;
+        finishStripDrag(s, ev.type === "pointerup");
+    };
+    s.unbind = () => {
+        host.removeEventListener("pointermove", move);
+        host.removeEventListener("pointerup", finish);
+        host.removeEventListener("pointercancel", finish);
+        host.removeEventListener("lostpointercapture", finish);
+    };
+    host.addEventListener("pointermove", move);
+    host.addEventListener("pointerup", finish);
+    host.addEventListener("pointercancel", finish);
+    host.addEventListener("lostpointercapture", finish);
+    try { host.setPointerCapture(s.pid); }
+    catch (_) { finishStripDrag(s, false); }
+}
+function moveStripDrag(s, ev) {
+    if (s.done) return;
+    s.y = ev.clientY;
+    s.x = ev.clientX;
+    if (!s.active && Math.abs(s.y - s.startY) < 6) return;
+    if (!s.active) {
+        s.active = true;
+        s.row.classList.add("dragging");
+        // 浮起预览：只挂符号文本，不克隆按钮（避免重复焦点/aria）。
+        s.ghost = document.createElement("div");
+        s.ghost.className = "ck-strip-ghost";
+        s.ghost.textContent = s.row.dataset.stripValue;
+        document.body.append(s.ghost);
+        const rc = s.row.getBoundingClientRect();
+        s.ghostOffX = s.x - rc.left;
+        s.ghostOffY = s.y - rc.top;
+        startStripAutoScroll(s);
+    }
+    placeStripRow(s);
+    updateStripGhost(s);
+}
+function placeStripRow(s) {
+    const siblings = Array.from(s.host.children).filter(n => n !== s.row);
+    let anchor = null;
+    for (const sib of siblings) {
+        const rc = sib.getBoundingClientRect();
+        if (s.y < rc.top + rc.height / 2) { anchor = sib; break; }
+    }
+    const inPlace = anchor ? s.row.nextElementSibling === anchor
+        : s.host.lastElementChild === s.row;
+    if (!inPlace) s.host.insertBefore(s.row, anchor);
+}
+function updateStripGhost(s) {
+    if (!s.ghost) return;
+    s.ghost.style.left = (s.x - s.ghostOffX) + "px";
+    s.ghost.style.top = (s.y - s.ghostOffY) + "px";
+}
+// 边缘自动滚动：指针进入 main 上下 ~40px 区域时按帧推进；指针停住不动
+// 也要继续（无 pointermove 时的持续滚动），rAF 循环内自驱。
+function startStripAutoScroll(s) {
+    const EDGE = 40, SPEED = 480;
+    // sandbox（mock settings）无 performance：Date.now 兜底（dt<=0 防御
+    // 会让同步 rAF 环境的自动滚动自停，这里只是取初值）。
+    s.lastT = (typeof performance !== "undefined" && performance.now)
+        ? performance.now() : Date.now();
+    const tick = now => {
+        if (s.done) return;
+        const dt = Math.min(32, now - s.lastT);
+        // dt<=0 或 NaN（同步 rAF/回调参数与初值时钟不同源的测试环境）自停：
+        // 防 fake DOM 的立即执行 rAF 同步无限递归；真实浏览器 rAF 异步
+        // dt 恒为正不受影响。
+        if (!(dt > 0)) return;
+        s.lastT = now;
+        const rc = s.scroller.getBoundingClientRect();
+        let dy = 0;
+        if (s.y < rc.top + EDGE) dy = -SPEED * dt / 1000;
+        else if (s.y > rc.bottom - EDGE) dy = SPEED * dt / 1000;
+        if (dy) {
+            s.scroller.scrollTop += dy;
+            placeStripRow(s);
+        }
+        s.raf = requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+}
+function finishStripDrag(s, accept) {
+    if (!s || s.done) return;
+    s.done = true;   // 防 release 触发的 lostpointercapture 二次进入
+    if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(s.raf);
+    s.unbind();
+    try { s.host.releasePointerCapture(s.pid); } catch (_) { /* 无捕获 */ }
+    const next = Array.from(s.host.children).map(r => r.dataset.stripValue);
+    if (!accept) {
+        // 回滚：按拖动前顺序原样放回（originalRows 引用即原节点）。
+        s.originalRows.forEach(r => s.host.append(r));
+    }
+    s.row.classList.remove("dragging");
+    if (s.ghost) { s.ghost.remove(); s.ghost = null; }
+    stripDrag = null;
+    if (accept && s.active && !sameStrip(s.before, next)) {
+        // DOM 已是目标顺序，直接写草稿不重画。
+        ckStrips[s.kind] = next.slice();
+        ckMarkDirty(true);
+        refreshStripSummary();
+        updateStripControls(s.kind);
+    }
+}
+// 中断源：切页/页面隐藏/旋转（拖动中 DOM 重建会把状态打烂）。
+function cancelStripDrag() {
+    if (stripDrag) finishStripDrag(stripDrag, false);
+}
+document.addEventListener("visibilitychange", cancelStripDrag);
+window.addEventListener("resize", cancelStripDrag);
 document.getElementById("cklangReset").addEventListener("click", () => {
     delete ckLangKeys[ckLangCurrent];
     renderLangKb(ckLangCurrent);
@@ -6347,8 +6971,18 @@ document.getElementById("cklangReset").addEventListener("click", () => {
  * textarea 内容不带 langKeys，会把语言键盘定制静默清掉；textarea 也不
  * 随编辑器改动刷新，「高级」看到的不是当前实际（验收实录）。 */
 function ckPackJson() {
-    const pack = { version: 1, rows: ckRows };
+    // rows 保底空数组：只定制语言键盘（rows 从未播种）时包是
+    // {"version":1,"rows":null,"langKeys":…}，native saveCustom 的
+    // rows==null 校验会整包拒绝（INVALID_CUSTOM_JSON，静默 toast 在
+    // 控制台看不到）——语言键盘定制在真机上保存假死。空数组与
+    // 「没有定制键行」同义。
+    const pack = { version: 1, rows: ckRows || [] };
     if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
+    // #112 符号栏三段：null=未定制（键盘用内置默认）；空数组=显式清空
+    // 会退回默认（键盘端空表 fallback 默认，与「空 rows=无定制键行」同义）。
+    if (ckStrips.t9) pack.t9Strip = ckStrips.t9.slice();
+    if (ckStrips.stroke) pack.strokeStrip = ckStrips.stroke.slice();
+    if (ckStrips.ink) pack.inkStrip = ckStrips.ink.slice();
     return pack;
 }
 /** 最近一次投影/保存写进 textarea 的串：区分「textarea 手上有更新」

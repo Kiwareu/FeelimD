@@ -15,6 +15,7 @@ const path = require('path');
 const vm = require('vm');
 
 const { loadDocument } = require('./mock_bridge_harness.js');
+require('./check_legacy_web'); // #90 legacy WebView 产物一致性 gate
 
 const ROOT = path.resolve(__dirname, '../..');
 const HTML_PATH = path.join(ROOT, 'app/src/main/assets/settings/index.html');
@@ -85,6 +86,7 @@ class MockSettingsNative {
     cancelModelDownload(...a) { this._rec('cancelModelDownload', a); }
     deleteModel(...a) { this._rec('deleteModel', a); }
     saveAsrSettings(...a) { this._rec('saveAsrSettings', a); }
+    setAsrToggles(...a) { this._rec('setAsrToggles', a); }
     setAsrIdleUnload(...a) { this._rec('setAsrIdleUnload', a); }
     importBgImage(...a) { this._rec('importBgImage', a); }
     saveCustom(...a) { this._rec('saveCustom', a); }
@@ -143,7 +145,11 @@ class MockSettingsNative {
     setGlassRadius(...a) { this._rec('setGlassRadius', a); }
     setPanelOpacity(...a) { this._rec('setPanelOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
+    setCnEnComposingGuard(...a) { this._rec('setCnEnComposingGuard', a); }
+    setVoiceReadyHaptic(...a) { this._rec('setVoiceReadyHaptic', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
+    setToastMs(...a) { this._rec('setToastMs', a); }
+    setBottomSymSplit(...a) { this._rec('setBottomSymSplit', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setDoubleShiftLock(...a) { this._rec('setDoubleShiftLock', a); }
@@ -578,11 +584,25 @@ test('保存识别设置 sends the checkbox + textarea verbatim', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     world.$('stripPeriod').checked = false;
+    world.$('numItn').checked = false;
     world.$('hotwords').value = '倪妮\nGPU';
     world.$('btnSaveAsr').click();
     equal(world.lastCall('saveAsrSettings').args,
-        [false, '倪妮\nGPU', world.token], 'saveAsrSettings args');
+        [false, false, '倪妮\nGPU', world.token], 'saveAsrSettings args');
     assert(world.$('asrNote').textContent.includes('已保存'), 'save note shown');
+});
+
+test('识别 toggle 拨动即存走窄接口，热词草稿不受触碰', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.$('hotwords').value = '编辑中的草稿';
+    world.$('numItn').checked = true;
+    const itn = world.$('numItn');
+    itn.listeners.find(listener => listener.type === 'change').handler({ target: itn });
+    equal(world.lastCall('setAsrToggles').args,
+        [true, true, world.token], 'toggle change saves via setAsrToggles only');
+    equal(world.native.of('saveAsrSettings').length, 0, 'toggle does not route through saveAsrSettings');
+    equal(world.$('hotwords').value, '编辑中的草稿', 'draft survives the toggle save');
 });
 
 test('保存定制 absorbs the box into the unified save chain; 插入模板 fills valid JSON without calling the bridge', () => {
@@ -1258,14 +1278,14 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     equal(hiddenMap(), {
         home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        licenses: true, test: true,
+        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
         home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        licenses: true, test: true,
+        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
 
@@ -1868,6 +1888,35 @@ test('double shift lock toggle reflects state and commits setDoubleShiftLock (#6
     equal(world.lastCall('setDoubleShiftLock').args, [false, world.token], 'commit + token');
 });
 
+test('slider readouts follow state and input (#106: saturation/opacity/height/volume)', () => {
+    const world = new SettingsWorld();
+    // 本套件无 era 门：对旧 settings 资产（无 output 元素）自动让位，
+    // baseline 轮不因缺元素误报（world.$ 缺元素会 throw，走 getElementById）。
+    if (!world.doc.getElementById('keySatOut')) return;
+    world.push({ ...BASE_STATE, keySat: 60, keyOpacity: 65, kbHeightPortrait: 300, keySoundVolume: 40 });
+    equal(world.$('keySatOut').textContent, '60%', 'keySat readout from state');
+    equal(world.$('keyOpacityOut').textContent, '65%', 'keyOpacity readout from state');
+    equal(world.$('kbHeightOut').textContent, '300 px', 'kbHeight readout from state');
+    equal(world.$('keySoundVolumeOut').textContent, '40%', 'volume readout from state');
+    // 拖动实时刷新读数：addEventListener 挂的走 listeners，oninput 挂的直呼。
+    const vol = world.$('keySoundVolume');
+    vol.value = '75';
+    vol.listeners.find(l => l.type === 'input').handler({ target: vol });
+    equal(world.$('keySoundVolumeOut').textContent, '75%', 'volume readout follows input');
+    const h = world.$('kbHeight');
+    h.value = '340';
+    h.listeners.find(l => l.type === 'input').handler({ target: h });
+    equal(world.$('kbHeightOut').textContent, '340 px', 'height readout follows input');
+    const sat = world.$('keySat');
+    sat.value = '30';
+    sat.oninput();
+    equal(world.$('keySatOut').textContent, '30%', 'keySat readout follows input');
+    const op = world.$('keyOpacity');
+    op.value = '85';
+    op.listeners.find(l => l.type === 'input').handler({ target: op });
+    equal(world.$('keyOpacityOut').textContent, '85%', 'keyOpacity readout follows input');
+});
+
 test('feel card renders state values and commits each control with the token', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, bottomPadPortrait: 24, bottomPadLandscape: 12, holdMs: 450, scrubSpeed: 2, popupSnap: 2, candidateFont: 135 });
@@ -2126,6 +2175,56 @@ test('base dictionary card renders builtin/custom/building and wires the actions
         elapsedMs: 32000 });
     assert(world.$('dictBaseBuilding').textContent.includes('32'),
         'elapsed seconds surface in the hint');
+
+    // 进度条（#95 后续）：COPYING 字节比 → 百分比文案+条；COMPILING
+    // 产物步进 → 计数+正在编+ETA（elapsed/percent 外推）；无 progress
+    // 回退原阶段文案且条隐藏；完成收起。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COPYING',
+        elapsedMs: 1500,
+        progress: { percent: 6, done: 1000000, total: 16930834,
+                    detail: 'base.dict.yaml' } });
+    assert(world.$('dictBaseBuilding').textContent.includes('6'),
+        'copy percent surfaces');
+    equal(world.$('dictBaseProgressBar').hidden, false, 'copy bar visible');
+    equal(world.$('dictBaseProgressBar').firstElementChild.style.width, '6%',
+        'bar width follows percent');
+    // 主产物落地前（done=0）：不给 ETA（外推会单调上修），尾巴是可离开
+    // 提示；0/N 不知道在编哪项，不冒「正在编」。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 55000,
+        progress: { percent: 15, done: 0, total: 8 } });
+    assert(!world.$('dictBaseBuilding').textContent.includes('约'),
+        'no eta before the main table lands');
+    assert(!world.$('dictBaseBuilding').textContent.includes('正在编'),
+        'no in-progress guess at 0/N');
+    assert(world.$('dictBaseBuilding').textContent.includes('可离开'),
+        'can-leave hint while table compiles');
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 42000,
+        progress: { percent: 45, done: 2, total: 7, detail: 'luna_pinyin_t9' } });
+    assert(world.$('dictBaseBuilding').textContent.includes('2/7'),
+        'compile step count surfaces');
+    assert(world.$('dictBaseBuilding').textContent.includes('九宫格'),
+        'compile detail maps to a readable name');
+    assert(world.$('dictBaseBuilding').textContent.includes('约'),
+        'eta surfaces past the early window');
+    // 全产物落盘（detail 空）：显示收尾，不冒「正在编」。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 88000,
+        progress: { percent: 95, done: 8, total: 8 } });
+    assert(world.$('dictBaseBuilding').textContent.includes('收尾'),
+        'finalize wording when detail is empty');
+    assert(!world.$('dictBaseBuilding').textContent.includes('正在编'),
+        'no stale in-progress label when done');
+    // ANALYZING 心跳：读满后的抽样/staging 空窗有文案在动，条隐藏。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'ANALYZING',
+        elapsedMs: 21000 });
+    assert(world.$('dictBaseBuilding').textContent.includes('分析'),
+        'analyzing stage surfaces its own label');
+    equal(world.$('dictBaseProgressBar').hidden, true, 'analyzing hides the bar');
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 33000 });
+    equal(world.$('dictBaseProgressBar').hidden, true, 'bar hides without progress');
     world.FeelimeSettings().onEvent({ type: 'dictBaseDone',
         message: '基底词库换装完成' });
     equal(world.$('dictBaseBuilding').hidden, true, 'done collapses the hint');
@@ -2332,6 +2431,28 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
     equal(world.lastCall('setKeyBubble').args, [true, world.token],
         'key bubble commit + token');
 
+    // #89 组词防误触开关：默认关、回显、拨动即过桥
+    const guardToggle = world.$('cnEnComposingGuard');
+    world.push({ ...BASE_STATE });
+    equal(guardToggle.checked, false, 'composing guard default off');
+    world.push({ ...BASE_STATE, cnEnComposingGuard: true });
+    equal(guardToggle.checked, true, 'composing guard follows state');
+    guardToggle.listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setCnEnComposingGuard').args, [true, world.token],
+        'composing guard commit + token');
+
+    // 语音就绪震动（公众号 NULL）：默认关、回显、拨动即过桥
+    const vrhToggle = world.$('voiceReadyHaptic');
+    world.push({ ...BASE_STATE });
+    equal(vrhToggle.checked, false, 'voice ready haptic default off');
+    world.push({ ...BASE_STATE, voiceReadyHaptic: true });
+    equal(vrhToggle.checked, true, 'voice ready haptic follows state');
+    vrhToggle.listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setVoiceReadyHaptic').args, [true, world.token],
+        'voice ready haptic commit + token');
+
     // 气泡停留档（验收 2026-09-24）：回显 + 换档过桥。
     const lingerSel = world.$('bubbleLinger');
     world.push({ ...BASE_STATE, bubbleLinger: 400 });
@@ -2340,6 +2461,22 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
     lingerSel.listeners.find(l => l.type === 'change').handler({ target: { value: '600' } });
     equal(world.lastCall('setBubbleLinger').args, [600, world.token],
         'linger tier commit + token');
+
+    // toast 停留时长滑杆（300-10000ms）：回显 + 拖动刷读数 + 松手才过桥。
+    const toastSlider = world.$('toastMs');
+    world.push({ ...BASE_STATE, toastMs: 500 });
+    equal(toastSlider.value, '500', 'toastMs echo renders the value');
+    equal(world.$('toastMsOut').textContent, '500 ms', 'toastMs readout follows the echo');
+    const tInput = toastSlider.listeners.find(l => l.type === 'input');
+    const tChange = toastSlider.listeners.find(l => l.type === 'change');
+    assert(tInput && tChange, 'toastMs slider has input + change listeners');
+    tInput.handler({ target: { value: '2500' } });
+    equal(world.$('toastMsOut').textContent, '2500 ms', 'dragging refreshes the readout');
+    equal(world.native.calls.filter(c => c.method === 'setToastMs').length, 0,
+        'dragging (input) does not commit');
+    tChange.handler({ target: { value: '2500' } });
+    equal(world.lastCall('setToastMs').args, [2500, world.token],
+        'toastMs commit + token');
 
     // Slider: input only marks dirty, change commits once with the parsed value.
     const slider = world.$('keyOpacity');
@@ -2907,6 +3044,91 @@ test('lang keys: editor saves alt + flick slots into langKeys and the pack', () 
     equal(parsed.langKeys.pinyin.q.down, '[edit:copy]', 'down slot saved as [edit:x]');
 });
 
+test('lang keys: corner-mark checkbox links flick-up to the mark (altAsUp)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const qKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'q');
+    qKey.click();
+    let body = world.doc.getElementById('ckEditBody');
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 角标 € → 勾「上滑直接输入角标内容」→ 上滑槽=文本:€（裸文本 DSL）。
+    const alt = body.querySelector('input');
+    alt.value = '€'; fire(alt, 'input');
+    let cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cb.checked, false, 'unchecked while flick-up is keyboard default');
+    cb.checked = true; fire(cb, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    let parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '€', 'flick-up saves as the literal mark');
+    equal(parsed.langKeys.pinyin.q.alt, '€', 'corner mark saved');
+    // 重开：勾选态派生（up 文本 == 角标）；改角标 → 上滑跟随。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cb.checked, true, 'derived check on reopen');
+    const alt2 = body.querySelector('input');
+    alt2.value = '℃'; fire(alt2, 'input');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '℃', 'flick-up follows the mark');
+    // 手动改上滑文本（联动断开，codex review P2 两连）：手动值必须胜出
+    // ——ckBuildAction 的 text 监听捕获 d.up 对象，联动若替换对象则
+    // 手动编辑写进孤儿丢失；派生勾选态必须原地弹起。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    // text 型控件 id 恒 ckText（ckBuildAction）且 modal 内唯一。
+    let upText = world.$('ckText');
+    equal(!!upText, true, 'text input renders while linked');
+    upText.value = '¥';
+    // 两个 input listener（ckBuildAction 的 d.text 写入 + 派生刷新）都要跑
+    upText.listeners.filter(l => l.type === 'input').forEach(l => l.handler());
+    const cbManual = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cbManual.checked, false, 'manual edit drops the derived check in place');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '¥', 'manual flick-up text wins over the link');
+    // 取消勾选 → 上滑回键盘默认（不落字段）。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    cb.checked = false; fire(cb, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, undefined, 'uncheck falls back to keyboard default');
+    equal(parsed.langKeys.pinyin.q.alt, '℃', 'mark untouched by uncheck');
+});
+
+test('lang keys: deep-link edit keeps existing customizations (codex review P1)', () => {
+    // 预置：英文键盘 w 已定制 + 空三行（native state 推送的真值）。
+    const preset = { version: 1, rows: [[], [], []],
+        langKeys: { english: { w: { alt: '$', up: '$' } } } };
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE,
+        custom: { enabled: true, summary: '已定制 1 个键', json: JSON.stringify(preset) } });
+    // 深链直进语言键盘页（不经 ckEnter，ckRows 仍 null）：修复前保存
+    // 整包 rows 被保底成 []、langKeys 只剩本次编辑——旧定制被覆盖丢。
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const qKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'q');
+    qKey.click();
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const alt = world.doc.getElementById('ckEditBody').querySelector('input');
+    alt.value = '€'; fire(alt, 'input');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.english.w.up, '$', 'other layouts survive a deep-link edit');
+    equal(parsed.langKeys.pinyin.q.alt, '€', 'the new edit saves too');
+});
+
 test('lang keys: none slot saves as empty string (gesture off)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
@@ -3388,8 +3610,102 @@ test('#85 page reports gesture capability to native', () => {
         'page declares imeGestureSupport on hello');
 });
 
+
+
+test('#113 bottom sym split switch: state echo + change persists via bridge', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, bottomSymSplit: true });
+    equal(world.$('bottomSymSplit').checked, true, 'state.bottomSymSplit echoes to the toggle');
+    world.$('bottomSymSplit').checked = false;
+    world.$('bottomSymSplit').listeners.find(l => l.type === 'change')
+        .handler({ target: world.$('bottomSymSplit') });
+    equal(world.lastCall('setBottomSymSplit').args, [false, world.token],
+        'toggling calls setBottomSymSplit(value, token)');
+});
+
+test('#112 strip pages: three entries route to independent pages, drag reorder, delete/add/reset, save packs fields', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const FS = world.FeelimeSettings();
+    // 三入口 → 三个独立页，各自渲染自己的清单（t9/stroke 16、ink 12）。
+    FS.showPage('customkeys');
+    FS.showPage('ckt9strip');
+    equal([...world.doc.querySelectorAll('#ckt9List .ck-strip-row')].length, 16, 't9 page lists 16 defaults');
+    FS.showPage('ckstrokestrip');
+    equal([...world.doc.querySelectorAll('#ckstrokeList .ck-strip-row')].length, 16, 'stroke page lists 16 defaults');
+    FS.showPage('ckinkstrip');
+    equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 12, 'ink page lists 12 defaults');
+    // ink 添加 ％ → 13 项；t9 页不受影响。
+    const inkInput = world.$('ckinkAddInput');
+    inkInput.value = '％';
+    world.$('ckinkAddBtn').listeners.find(l => l.type === 'click').handler();
+    equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 13, 'ink add appends ％');
+    // 回 t9 页：仍 16（页面独立，草稿互不影响）。
+    FS.showPage('ckt9strip');
+    equal([...world.doc.querySelectorAll('#ckt9List .ck-strip-row')].length, 16, 't9 untouched by ink edits');
+    // 拖动：row6（'、'）上拖越过 row1 中心 → 落第 2 位（跨多行直接映射）。
+    // 桩与事件形态照抄键盘选择拖动用例（rect 等高排布 + 裸事件直调）。
+    const rows = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')];
+    rows.forEach((r, i) => {
+        r.getBoundingClientRect = () => ({ x: 0, y: 100 + i * 44, top: 100 + i * 44,
+            height: 40, width: 300, bottom: 140 + i * 44, left: 0, right: 300 });
+    });
+    const host = rows[0].parentElement;
+    host.setPointerCapture = () => {}; host.releasePointerCapture = () => {};
+    const mkEv = (y) => ({ pointerId: 7, clientX: 10, clientY: y, pointerType: 'touch',
+        isPrimary: true, button: 0, preventDefault: () => {} });
+    // handler 靠 ev.type 区分 pointerup/cancel：emit 注入真实事件名。
+    const emit = (el, type, ev) => (el.listeners || []).filter(l => l.type === type)
+        .forEach(l => l.handler(Object.assign({}, ev, { type })));
+    const handle = rows[6].querySelector('.ck-strip-handle');
+
+    emit(handle, 'pointerdown', mkEv(100 + 6 * 44 + 20));   // row6（'、'）中心
+
+    emit(host, 'pointermove', mkEv(100 + 0 * 44 + 2));      // 上拖过 row0 中心 → 落第 1 位
+
+    emit(host, 'pointerup', mkEv(100 + 0 * 44 + 2));
+
+    const after = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')]
+        .map(r => r.dataset.stripValue);
+    equal(after[0], '、', 'dragged row lands first');
+    equal(after[1], '，', 'original first row follows');
+    // 松手即标脏、DOM 顺序=草稿；保存后三字段独立打包。
+    world.$('customJson').value = '{"version":1,"rows":[[]]}';
+    world.$('btnSaveCustom').click();
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.t9Strip[0], '、', 'packed t9Strip reflects drag order');
+    equal(saved.inkStrip[saved.inkStrip.length - 1], '％', 'packed inkStrip keeps ％');
+    equal(saved.strokeStrip, undefined, 'stroke untouched = field omitted');
+    // 删除：重排后删的是当前行（row0 现在是 '、'）。
+    FS.showPage('ckt9strip');
+    const fresh = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')];
+    const del = fresh[0].querySelectorAll('button')[1];
+    equal(del.textContent, '✕', 'delete button rendered');
+    del.listeners.find(l => l.type === 'click').handler();
+    const afterDel = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')]
+        .map(r => r.dataset.stripValue);
+    equal(afterDel[0], '，', 'delete removes the dragged-first row');
+    assert(!afterDel.includes('、'), '、 is gone');
+    // 最后一项禁删（新页删到 1 项时按钮 disabled）。
+    FS.showPage('ckinkstrip');
+    for (let i = 0; i < 12; i++) {
+        const rs = [...world.doc.querySelectorAll('#ckinkList .ck-strip-row')];
+        rs[rs.length - 1].querySelectorAll('button')[1]
+            .listeners.find(l => l.type === 'click').handler();
+    }
+    const lastRow = [...world.doc.querySelectorAll('#ckinkList .ck-strip-row')][0];
+    assert(lastRow.querySelectorAll('button')[1].disabled, 'last remaining row disables delete');
+    // 恢复默认（页内 confirm 桩）：sandbox.window === sandbox，stub 挂这。
+    world.sandbox.confirm = () => true;
+    world.$('ckinkReset').listeners.find(l => l.type === 'click').handler();
+    delete world.sandbox.confirm;
+    equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 12, 'reset restores 12 defaults');
+});
+
+
 // 统计必须在全部测试注册之后求值（曾因提前求值吞掉尾部用例的失败，
-// 119/119 假绿实为 118/119——codex 复审 P1）。
+// 119/119 假绿实为 118/119——codex 复审 P1；2026-11-15 再犯：strip 用例
+// append 在汇总之后，FAIL 不影响退出码——汇总块必须在真实文件末尾）。
 const failed = RESULTS.filter(([, ok]) => !ok);
 console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
 if (failed.length) {

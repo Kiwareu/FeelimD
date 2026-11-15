@@ -144,7 +144,30 @@ export FEELIME_ASR_FIXTURE=$PWD/mixed-zh-en.wav   # 本地自备 16kHz wav，不
 # 可选：FEELIME_BUILDER_SSH 可把 JVM 套件放到远端跑；仅本机构建时无需设置
 bash scripts/verify/run-all.sh    # 全量门禁（--list/--resume/--from/--profile 选段；
                                   #  开头 pm clear 基线复位，段间清扫，flock 单设备锁）
+bash scripts/verify/run-all.sh --release-evidence
+                                  # 发版证据查询（不碰设备）：按段级证据账本
+                                  #  （~/.config/feelime/gate-evidence.jsonl，每段
+                                  #  跑绿自动记账）+ gate-trigger-map.json 判定每段
+                                  #  对 HEAD 是否仍有效（FRESH/STALE/WEEKLY_DUE）。
+                                  #  全 FRESH 退出 0=可发版；否则退出 4 列出须补跑段。
 ```
+
+**快速发版序列（15 分钟改造，2026-11-15 codex 方案）**——发版不再从零重跑全量
+门禁（v1.4.10 实测白烧 63min：当天 daily 绿过的段被整跑）：
+
+1. `run-all.sh --release-evidence` 全 FRESH 是发版前置（STALE 段=diff 触发
+   必跑、WEEKLY_DUE 段=周回归逾期 7 天，都要先补）；本地三段（~70s）照跑。
+2. 产物只构建一次：`publish-release.sh v<x> --build-only` → ace 冒烟
+   （`scripts/release-smoke.py`，产出 sha 清单）→ `--stage --verify-sha <清单>`
+   （**不重建**，读 release-dist 固定字节，GitHub draft）→ Play
+   `publish-play.py --stage-only`（edit 不 commit）→ 内网暂存 → 冒烟过了
+   统一放行：`publish-release.sh v<x> --finalize` + `publish-play.py
+   --finalize-edit <id>`。上传与 ace 冒烟并行。
+3. 材料一份录入多处生成：`generate-release-pages.py --json release.json`
+   （内网 index + googleplay 四处 + notes；锚点失配 fail loud）。
+4. 周回归：设备段每 7 天至少一次全覆盖（`--profile full` 或分两轮），证据
+   账本自动判 WEEKLY_DUE；9l 在 AVD 是已定罪环境缺陷（KNOWN-ENV-SKIP，
+   不记绿），其验证归属真机。
 
 **键盘新增视图/浮层（互斥收口，2026-09-29 定案）**：
 
@@ -226,6 +249,16 @@ DevTools 合成 TouchEvent 切到符号层（`<123>`）时会触发 qemu **静�
 
 ## 工程约定
 
+- **InputConnection 查询不上主线程**（#93 实测定罪，2026-11-09）：
+  `getSelectedText`/`getExtractedText`/`getTextBefore/AfterCursor` 等
+  同步 IC 查询一律走 `cursorQueryExecutor`（光标/退格/分享三处既有
+  先例），主线程捕获 connection+代际（`inputConnectionGeneration` +
+  `hwInputGeneration` 双校验，onFinishInput/onUnbindInput 只换届后者）、
+  回主线程终检后再用。原因：查询由宿主 App 主线程执行——自家设置页
+  与 IME 同进程时互等，各等满 framework 2s 超时返回 null（logcat
+  `RemoteInputConnection` 警告），真选区被报成空；跨进程慢宿主同样
+  卡。已知存量例外：语音启动 `editorPort.selectedText()`（有选区前置
+  门，带选区启动会白卡 2s，待修）。
 - **设置不进 localStorage，壳提供统一 pref 接口**：一切「设置」（用户
   偏好，需要备份/换机跟随的值）的真相源必须是原生层（键盘侧走
   `feelime_keyboard.xml` + hello 下发 + `setQuickPref`/SettingsBridge

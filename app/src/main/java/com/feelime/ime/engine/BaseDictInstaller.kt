@@ -3,6 +3,7 @@ package com.feelime.ime.engine
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.SystemClock
 import com.feelime.ime.nativeengine.NativeSmoke
 import java.io.File
@@ -63,6 +64,60 @@ object BaseDictInstaller {
     /** 主表构建的内存估算系数（实测万象 2.7M 词条峰值 1.2GB ≈ 450B/条）。 */
     private const val BASE_BUILD_BYTES_PER_ENTRY = 600L
     private const val TONE_RATIO_THRESHOLD = 0.02
+
+    // ---- 导入进度模型（librime maintenance 无逐 schema 回调，进度取两
+    // 个真实信号拼装：COPYING 段按源流字节数（精确）；COMPILING 段按
+    // staging 产物落盘计数（librime 逐 schema 串行编译、编完即落盘）。
+    // 段权重 COPY 15 / COMPILE 80 / ACTIVATE 5、compile 段内主 table
+    // 占 70%（ace 209 万词条实测：table 收集+落盘 ~50s / 编译段总 ~75s）。
+    // percent 单调不减；ETA 由 UI 用 elapsed/percent 外推（比例外推天然
+    // 自校准：慢机已耗时长 → ETA 自动变长，不引入设备速率常量）。 ----
+    private const val PROGRESS_WEIGHT_COPY = 0.15
+    private const val PROGRESS_WEIGHT_COMPILE = 0.80
+
+    /** compile 段内单个产物的原始权重（音形等无主 table 的清单会被
+     *  [compileProgress] 归一化，不依赖 luna_pinyin 在场）。 */
+    fun productWeight(product: String, expected: List<String>): Double {
+        if (product == "luna_pinyin.table.bin") return 0.70
+        if (product == "luna_pinyin.prism.bin") return 0.08
+        val rest = expected.count {
+            it != "luna_pinyin.table.bin" && it != "luna_pinyin.prism.bin"
+        }.coerceAtLeast(1)
+        return 0.22 / rest
+    }
+
+    /** COMPILING 进度 JSON（detail = 未完成产物里权重最大的 schema；
+     *  done 为空时不给 detail——0/N 时不知道 librime 在编哪项，
+     *  「正在编 X」是猜。权重归一化后全完成显式 95（codex P2：浮点
+     *  截断会得到 94；音形两件清单旧公式只到 50%）。 */
+    fun compileProgress(done: Set<String>, expected: List<String>): JSONObject {
+        val weights = expected.associateWith { productWeight(it, expected) }
+        val sum = weights.values.sum()
+        val acc = weights.filterKeys { it in done }.values.sum()
+        val complete = done.size >= expected.size
+        val percent = if (complete) 95 else
+            (100 * (PROGRESS_WEIGHT_COPY + PROGRESS_WEIGHT_COMPILE * acc / sum)).toInt()
+        val pending = expected.filter { it !in done }
+            .maxByOrNull { productWeight(it, expected) }
+        return JSONObject()
+            .put("percent", percent.coerceIn(0, 95))
+            .put("done", done.size)
+            .put("total", expected.size)
+            .putOpt("detail", if (done.isEmpty() || pending == null) JSONObject.NULL
+                else pending.removeSuffix(".prism.bin").removeSuffix(".table.bin"))
+    }
+
+    /** COPYING 进度 JSON（源流字节比；size<=0 时只报已读量无 percent）。 */
+    fun copyProgress(read: Long, size: Long, name: String?): JSONObject {
+        val frac = if (size > 0) (read.toDouble() / size).coerceIn(0.0, 1.0) else 0.0
+        return JSONObject()
+            .putOpt("percent", if (size > 0)
+                (100 * PROGRESS_WEIGHT_COPY * frac).toInt() else JSONObject.NULL)
+            .put("done", read)
+            .put("total", if (size > 0) size else 0)
+            .putOpt("detail", name ?: JSONObject.NULL)
+    }
+
 
     // ---- #20 音形码表导入（小鹤音形）：独立于基底词库的第二换装通道 ----
     // 事务标记共用 KEY_INSTALLING（编译期间进程中断由 sweepPending 回滚），
@@ -163,6 +218,23 @@ object BaseDictInstaller {
     @Volatile private var operationKind: String? = null
     @Volatile private var stageSnapshot: String? = null
     @Volatile private var stageStartedAt: Long = 0L
+    /** 导入进度快照（{percent?,done,total,detail?}，与 stage 同生命周期；
+     *  进度模型见 companion PROGRESS_ 注释）。status()/statusJson 合并
+     *  下发，事件推到设置页。 */
+    @Volatile private var progressSnapshot: JSONObject? = null
+
+    /** ANALYZING 心跳的生命周期（codex P1 修）：flag 停止 + join 收割，
+     *  与 stageSnapshot 解耦——收尾清空与心跳 status() 写回的交错会把
+     *  阶段复活成永久心跳。stop 在 installAsync 收尾与进 COMPILING
+     *  两处，done/error 事件保证在心跳退出之后。 */
+    private val analyzingFlag = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var analyzingThread: Thread? = null
+
+    private fun stopAnalyzingHeartbeat() {
+        analyzingFlag.set(false)
+        analyzingThread?.let { t -> runCatching { t.join(2500) } }
+        analyzingThread = null
+    }
 
     /** 编译期的切换目标（#7 用户裁定：文案要反馈实际生效的词库）：
      *  槽 id / "builtin"（revert），null = 非切换类编译（SAF 导入）。
@@ -182,6 +254,7 @@ object BaseDictInstaller {
         val app = context.applicationContext
         operationKind = KIND_BASE
         stageSnapshot = "COPYING"
+        progressSnapshot = null
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             // 编译保活（ace 实录：灭屏数分钟 ColorOS 静默清进程）。收尾的
@@ -197,6 +270,10 @@ object BaseDictInstaller {
             // 收尾补偿排入的下一个补编任务由它自己的 CAS 持有，上一个
             // 任务的 finally 若再清零会让补编全程裸奔（codex 三轮 P1-1）。
             stageSnapshot = null
+            progressSnapshot = null
+            // 心跳先于完成事件退出（codex P1）：join 后不再有迟到事件
+            // 把已收起的 building 行复活。
+            stopAnalyzingHeartbeat()
             operationKind = null
             building.set(false)
             try {
@@ -225,6 +302,17 @@ object BaseDictInstaller {
 
     fun isBuilding(): Boolean = building.get()
 
+    /** #95：T9 是否因大词库跳编而不可用（与设置页 t9Skipped 提示同口径：
+     *  自定义基底 + 跳过标记 + staging 无 t9 prism）。供键盘 selectMode
+     *  拒绝时区分「永久停用（换词库才能恢复）」与「准备中」。 */
+    fun isT9Skipped(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        val built = File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile
+        return prefs.getString(KEY_MODE, "builtin") == "custom" && built &&
+            prefs.getBoolean(KEY_T9_SKIPPED, false) &&
+            !File(context.filesDir, "rime-user/build/luna_pinyin_t9.prism.bin").isFile
+    }
+
     /** 忙时排队的补编补偿（P2-6）：任务收尾（building 已清零）统一触发。
      *  目标变体若本次安装清单已编出（prism 在），ifNeeded 自行 no-op。 */
     private fun compensatePendingFuzzy(app: Context) {
@@ -251,6 +339,7 @@ object BaseDictInstaller {
         val app = context.applicationContext
         operationKind = KIND_FLYPY
         stageSnapshot = "COPYING"
+        progressSnapshot = null
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             CompileGuardService.start(app)
@@ -260,6 +349,7 @@ object BaseDictInstaller {
                     InstallResult("BASE_DICT_INTERNAL", changed = true)
                 }
             stageSnapshot = null
+            progressSnapshot = null
             operationKind = null
             building.set(false)
             try {
@@ -313,16 +403,31 @@ object BaseDictInstaller {
         val variant = BaseDictFiles.fuzzyVariant(mask) ?: return
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         if (prefs.getString(KEY_MODE, "builtin") != "custom") return
-        if (fuzzyVariantIntact(context, mask)) return
+        // codex #73 审：只查全拼会让「已有全拼变体、缺 T9 变体」的升级
+        // 用户永远停在严格 T9——两族都完整才算齐（T9 不适用时只看全拼）。
+        if (fuzzyVariantsIntact(context, mask)) return
         android.util.Log.i("FeelimeBaseDict", "fuzzy variant $variant missing -> compile")
         ensureFuzzyVariantAsync(context, mask)
+    }
+
+    /** 两族模糊变体（全拼 + T9）都已完整 = 入口放行条件。T9 适用性
+     *  与 [compileFuzzyVariant] 同门：staging 有严格 T9 prism（导入时
+     *  内存门的裁决）且部署模板在场。 */
+    private fun fuzzyVariantsIntact(context: Context, mask: Int): Boolean {
+        if (!fuzzyVariantIntact(context, mask)) return false
+        val staging = File(context.filesDir, "rime-user/build")
+        val t9Applies = File(staging, "luna_pinyin_t9.prism.bin").isFile &&
+            t9Template(context) != null
+        if (!t9Applies) return true
+        return fuzzyVariantIntact(context, mask, FuzzyPinyin.T9_SCHEMA_ID)
     }
 
     /** 变体产物可用 = prism 存在且无编译事务位残留（codex 三轮 P1-2：
      *  librime 原地写，中断的半截 prism 文件也在——只看 isFile 会把
      *  残骸当可用变体喂给运行时）。fuzzySchemaId 与入口共用本判定。 */
-    fun fuzzyVariantIntact(context: Context, mask: Int): Boolean {
-        val variant = BaseDictFiles.fuzzyVariant(mask) ?: return false
+    fun fuzzyVariantIntact(context: Context, mask: Int,
+        schemaId: String = FuzzyPinyin.SCHEMA_ID): Boolean {
+        val variant = BaseDictFiles.fuzzyVariantOf(schemaId, mask) ?: return false
         if (!File(context.filesDir, "rime-user/build/$variant.prism.bin").isFile) return false
         return context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
             .getInt(KEY_FUZZY_COMPILING_MASK, 0) == 0
@@ -352,6 +457,7 @@ object BaseDictInstaller {
                 .getOrElse { "BASE_DICT_INTERNAL" as String? }
             operationKind = null
             stageSnapshot = null
+            progressSnapshot = null
             building.set(false)
             try {
                 if (code != null) {
@@ -383,16 +489,24 @@ object BaseDictInstaller {
         val user = File(context.filesDir, "rime-user")
         val staging = File(user, "build")
         val prism = File(staging, "$variant.prism.bin")
-        if (prism.isFile && prefs.getInt(KEY_FUZZY_COMPILING_MASK, 0) == 0) {
-            return null // 已有且非中断残留，无需补编
+        if (fuzzyVariantsIntact(context, mask)) {
+            return null // 两族齐备且非中断残留，无需补编
         }
 
         val archive = activeSourceDir(context) ?: return "NO_ARCHIVE"
         val template = engineTemplate(context) ?: return "ENGINE_NOT_READY"
+        // issue #73：T9 模糊变体同场补编。门 = staging 有 T9 prism（#95
+        // 内存门移除后导入恒编出；仅旧版本跳编的存量基底无此产物）+ T9
+        // 模板在场（旧资产混搭时缺失则跳过）。T9 变体编译失败不阻塞
+        // 全拼（编译后按产物存在性分别判定）。
+        val t9Variant = BaseDictFiles.t9FuzzyVariant(mask)
+            ?.takeIf { File(staging, "luna_pinyin_t9.prism.bin").isFile }
+            ?.takeIf { t9Template(context) != null }
+        val schemas = listOfNotNull(variant, t9Variant)
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
                 context.assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
-                listOf(variant),
+                schemas,
             )
         }.getOrNull() ?: return "NO_TEMPLATE"
         val sha = prefs.getString(KEY_SOURCE_SHA, "user") ?: "user"
@@ -416,6 +530,11 @@ object BaseDictInstaller {
                 val schemaText = BaseDictFiles.variantSchema(template, mask)
                 File(user, "$variant.schema.yaml").writeText(schemaText)
                 File(staging, "$variant.schema.yaml").writeText(schemaText)
+                if (t9Variant != null) {
+                    val t9Text = BaseDictFiles.t9VariantSchema(t9Template(context)!!, mask)
+                    File(user, "$t9Variant.schema.yaml").writeText(t9Text)
+                    File(staging, "$t9Variant.schema.yaml").writeText(t9Text)
+                }
                 File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
                 File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
             }.getOrElse { return finallyCleanup(user, staging, prefs, "STAGE_FAILED") }
@@ -438,6 +557,9 @@ object BaseDictInstaller {
             }
             pollMaintenance({ })
             NativeSmoke.rimeJoinMaintenance()
+            if (t9Variant != null && !File(staging, "$t9Variant.prism.bin").isFile) {
+                android.util.Log.w("FeelimeBaseDict", "t9 fuzzy variant m$mask missing after compile")
+            }
             result = if (prism.isFile) null else "PRISM_MISSING"
             return result
         } finally {
@@ -462,6 +584,7 @@ object BaseDictInstaller {
         // user 根累积 luna_pinyin_fuzzy_m*.schema.yaml。
         (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
             File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()
+            File(user, "${FuzzyPinyin.T9_SCHEMA_ID}_m$mask.schema.yaml").delete()
         }
         // 成功/确认无产物（PRISM_MISSING = prism 根本没写出）清事务位；
         // 中途失败保留事务位——半成品/无产物都视为不可用，下次补编
@@ -474,9 +597,14 @@ object BaseDictInstaller {
         return code
     }
 
-    /** 留档目录里的表文件名（补编现场恢复用）。 */
+    /** 留档目录里的表文件名（补编现场恢复用）。顺序同样过
+     *  [orderImportTables]——模糊音补编会就地重写全量伞表，走回字典序
+     *  等于把主安装路径修好的 41448/8105 先后又改回去。 */
     private fun stagedTableNames(sourceDir: File): List<String> =
-        sourceDir.listFiles()?.filter { it.isFile && it.name.endsWith(".dict.yaml") }?.map { it.name }?.sorted() ?: emptyList()
+        orderImportTables(
+            sourceDir.listFiles()?.filter { it.isFile && it.name.endsWith(".dict.yaml") }
+                .orEmpty(),
+        ).map { it.name }
 
     /** umbrella 的行数注释位（补编路径拿不到精确值，留诊断提示）。 */
     private fun stagedLineHint(@Suppress("UNUSED_PARAMETER") prefs: android.content.SharedPreferences): Int = 0
@@ -493,6 +621,8 @@ object BaseDictInstaller {
         val app = context.applicationContext
         pendingSlotId = "builtin"
         stageSnapshot = "ACTIVATING"
+        progressSnapshot = JSONObject().put("percent", 95)
+            .put("done", 0).put("total", 0)
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             val code = runCatching {
@@ -503,6 +633,7 @@ object BaseDictInstaller {
                 .getOrElse { "BASE_DICT_REVERT_FAILED" }
             pendingSlotId = null
             stageSnapshot = null
+            progressSnapshot = null
             operationKind = null
             building.set(false)
             if (code == null) {
@@ -577,6 +708,8 @@ object BaseDictInstaller {
         pendingSlotId = slotId
         operationKind = KIND_BASE
         stageSnapshot = "ACTIVATING"
+        progressSnapshot = JSONObject().put("percent", 95)
+            .put("done", 0).put("total", 0)
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             CompileGuardService.start(app)
@@ -590,6 +723,7 @@ object BaseDictInstaller {
                 InstallResult("BASE_DICT_INTERNAL", changed = true)
             }
             stageSnapshot = null
+            progressSnapshot = null
             operationKind = null
             pendingSlotId = null
             building.set(false)
@@ -618,7 +752,11 @@ object BaseDictInstaller {
     private fun cacheKey(context: Context): String {
         cachedCompileKey?.let { return it }
         val digest = MessageDigest.getInstance("SHA-256")
-        digest.update("base-cache-v1".toByteArray())
+        // v2：import_tables 改按「有权重的表在前」排序（修 41448 顶掉
+        // 8105 词频）。不递增的话老槽的 compile_key 仍命中，activateCached
+        // 直接还原那份错序的旧快照——已装过词库的用户（正是受影响人群）
+        // 永远拿不到修复。**凡是改变编译产物语义的改动都要在这里 +1。**
+        digest.update("base-cache-v2".toByteArray())
         listOf("engine-data/MANIFEST.json", BaseDictFiles.ASSETS_DEFAULT,
             BaseDictFiles.ASSETS_SYMBOLS).forEach { asset ->
             context.assets.open(asset).use { digest.update(it.readBytes()) }
@@ -747,6 +885,7 @@ object BaseDictInstaller {
         if (isBuilding() && stage != null) {
             json.put("stage", stage)
                 .put("elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt)
+                .putOpt("progress", progressSnapshot ?: JSONObject.NULL)
         }
         // 切换目标随 building 下发：页面重开时「当前生效 X，正在切换到
         // Y」仍可恢复（null = SAF 导入等无槽目标）。
@@ -786,6 +925,9 @@ object BaseDictInstaller {
                 if (variant != null) {
                     File(context.filesDir, "rime-user/build/$variant.prism.bin").delete()
                 }
+                BaseDictFiles.t9FuzzyVariant(staleCompiling)?.let {
+                    File(context.filesDir, "rime-user/build/$it.prism.bin").delete()
+                }
                 // 编译现场的 user 根残留（源/umbrella/default/变体 schema）
                 // 一并清——finallyCleanup 没机会跑。
                 val user = File(context.filesDir, "rime-user")
@@ -795,6 +937,7 @@ object BaseDictInstaller {
                 File(File(user, "build"), BaseDictFiles.DEFAULT_FILE).delete()
                 (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { m ->
                     File(user, "${FuzzyPinyin.SCHEMA_ID}_m$m.schema.yaml").delete()
+                    File(user, "${FuzzyPinyin.T9_SCHEMA_ID}_m$m.schema.yaml").delete()
                 }
             }
             prefs.edit().remove(KEY_FUZZY_COMPILING_MASK).apply()
@@ -888,7 +1031,7 @@ object BaseDictInstaller {
             val sha = meta?.optString("sha")?.takeIf { it.isNotBlank() } ?: source.slotId
             outcome = StageOutcome(Staged(sha, files))
         } else {
-            outcome = stageSource(context, (source as SourceInput.Uri).uri, sourceDir)
+            outcome = stageSource(context, (source as SourceInput.Uri).uri, sourceDir, pushEvent)
         }
         val staged = outcome.staged
         if (staged == null) {
@@ -896,6 +1039,29 @@ object BaseDictInstaller {
             clearInstalling(context)
             return InstallResult(outcome.errorCode ?: "BASE_DICT_READ_FAILED", changed = false)
         }
+        // #95 进度：读满 → 抽样/staging 写/引擎 reload 之间有 ~17s 无事件
+        // 空窗（ace 实测 209 万词条：analyze 11s + staging 写 6s），文案
+        // 会卡在「读取 14%」——ANALYZING 心跳 2s 一推保住「在动」的感
+        // 知。codex P1：循环条件不得依赖 stageSnapshot、心跳体不得调
+        // status()（内部写回 stage，与收尾清空竞态会把阶段写回、心跳
+        // 永生）——改独立 flag + 纯 JSON 构造；先睡后推+双检压掉迟到
+        // 事件，stopAnalyzingHeartbeat 在收尾/进 COMPILING 两处 join。
+        stageSnapshot = "ANALYZING"
+        progressSnapshot = null
+        analyzingFlag.set(true)
+        analyzingThread = Thread {
+            while (analyzingFlag.get()) {
+                Thread.sleep(2000)
+                if (!analyzingFlag.get()) break
+                runCatching {
+                    pushEvent(JSONObject().put("type", "dictBaseProgress")
+                        .put("stage", "ANALYZING")
+                        .putOpt("operation", operationKind)
+                        .putOpt("progress", progressSnapshot ?: JSONObject.NULL)
+                        .put("elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt))
+                }
+            }
+        }.also { it.isDaemon = true; it.start() }
         val stats = analyzeSource(staged.files)
         if (staged.files.isEmpty() || stats.tabLines <= 0) {
             sourceDir.deleteRecursively()
@@ -951,32 +1117,40 @@ object BaseDictInstaller {
         // #35 延迟编译：核心 6 项 + 当前模糊音 1 变体（见 baseCompileSchemas）；
         // #20 联动：音形码表已导入时 flypy 同场在列。
         val flypyInstalled = isFlypyInstalled(context)
-        val includeT9 = BaseDictFiles.t9Eligible(stats.tabLines, availBytes)
+        // #95：T9 词条门移除（prism 输入是去重音节表，与词条数无关；
+        // 当年爆炸是英文编码混进 syllabary 被保护级联展开——schema 侧
+        // erase 过滤已根治，host 实测 192 万词条 T9 段增量≈0）。
         val compileSchemas = BaseDictFiles.baseCompileSchemas(
-            FuzzyPinyin.mask(context), flypyInstalled, includeT9,
+            FuzzyPinyin.mask(context), flypyInstalled,
         )
-        if (!includeT9) {
-            android.util.Log.w("FeelimeBaseDict",
-                "T9 skipped: ${stats.tabLines} entries, " +
-                    "avail=${availBytes / 1_000_000}MB")
-        }
 
         // #35 双拼/T9 纯拼音子伞表（「ing欧」定罪）：按表采样切分比例，
         // 拼音码表照旧进全量伞表（全拼英文混输特性保留），字母码表
         // （en/abbrev 类）只进全量伞。全部表都是拼音码时不分表（单文件
         // #23 导入零变化）；切不出来（全字母）也退回全量（行为同旧）。
+        // #98 无码表（columns 无 code，靠 encoder 注音）没有自身编码
+        // 样本可判——跟随「存在拼音供码表」进子伞（encoder 跨表学习，
+        // 没有拼音供码表时无码词必然整体 Encode failure，进子伞无意义，
+        // codex P2-3：也不能让形码字表+无码词表的组合误判拼音域）。
         val dpTables: List<String> = if (syllables.isEmpty() || nonPinyinRatio == null) {
             emptyList()
         } else {
-            staged.files.filter { f ->
+            val codedEligible = staged.files.filter { f ->
+                dictCodeColumn(f) != -1
+            }.filter { f ->
                 val lines = stats.perFile.firstOrNull { it.first == f }?.second ?: 0
                 lines <= 0 || runCatching {
                     pinyinCodeRatio(f, syllables, NON_PINYIN_SAMPLE / 4, lines) >= 0.5f
                 }.getOrDefault(true)
-            }.map { it.name }.also { eligible ->
-                if (eligible.size == staged.files.size || eligible.isEmpty()) {
+            }.map { it.name }
+            val codeless = staged.files.filter { dictCodeColumn(it) == -1 }.map { it.name }
+            val eligible =
+                if (codedEligible.isEmpty()) emptyList()
+                else codedEligible + codeless
+            eligible.also {
+                if (it.size == staged.files.size || it.isEmpty()) {
                     android.util.Log.i("FeelimeBaseDict",
-                        "dp umbrella: no split (${eligible.size}/${staged.files.size} pinyin tables)")
+                        "dp umbrella: no split (${it.size}/${staged.files.size} pinyin tables)")
                 }
             }
         }
@@ -1023,6 +1197,20 @@ object BaseDictInstaller {
                 File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
                 File(staging, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
             }
+            // issue #73：T9 变体 schema 同批双落位（codex 实锤：只写全拼
+            // 时 compileSchemas 里的 T9 变体在 staging 无源，requiredProducts
+            // 校验缺产物 → 首次导入整体回滚）。#95：T9 词条门移除后
+            // 恒随清单在场（模板缺失时仍跳过）。
+            run {
+                t9Template(context)?.let { t9Tpl ->
+                    (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
+                        val variant = BaseDictFiles.t9FuzzyVariant(mask) ?: return@forEach
+                        val text = BaseDictFiles.t9VariantSchema(t9Tpl, mask)
+                        File(user, "$variant.schema.yaml").writeText(text)
+                        File(staging, "$variant.schema.yaml").writeText(text)
+                    }
+                }
+            }
             // default 双落位：user 根 = ConfigBuilder 的源（include 解析），
             // staging = SchemaListUpdate 的 deployed 直读。
             File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
@@ -1038,6 +1226,7 @@ object BaseDictInstaller {
             staging.listFiles()?.forEach { f ->
                 val stem = f.name.removeSuffix(".prism.bin")
                 val managed = stem.startsWith("${FuzzyPinyin.SCHEMA_ID}_m") ||
+                    stem.startsWith("${FuzzyPinyin.T9_SCHEMA_ID}_m") ||
                     stem == "luna_pinyin_t9"
                 if (f.name.endsWith(".prism.bin") && managed &&
                     stem !in compileSchemas
@@ -1080,17 +1269,25 @@ object BaseDictInstaller {
                 return InstallResult("BASE_DICT_MAINTENANCE_START_FAILED", changed = true)
             }
         }
-        pushEvent(status("COMPILING"))
-        val timeout = pollMaintenance(pushEvent)
+        // 产物基线在 maintenance 启动前取（codex P2：启动后到 poll 首轮
+        // 间隔内落盘的产物会永久漏计）；心跳停 + 首推带总口径 elapsedMs
+        //（防「已用时 0 秒」闪回）。
+        val compileStartWall = System.currentTimeMillis()
+        stopAnalyzingHeartbeat()
+        pushEvent(status("COMPILING").put(
+            "elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt))
+        // 产物清单提前算（校验与进度观察共用一份口径）。
+        val build = File(user, "build")
+        val required = requiredProducts(compileSchemas) +
+            listOfNotNull(BaseDictFiles.DP_TABLE.takeIf { splitDp })
+        val timeout = pollMaintenance(pushEvent, stagingDir = build,
+            expected = required, baselineWall = compileStartWall)
         // join 必须等到部署线程真正收尾才能动产物（线程还在写文件时
         // 回滚会撕裂）。超时不自动判负（#35 万象实测：2.7M 词条慢机
         // 超 45min 也该等它编完），成败由产物完整性判定。
         NativeSmoke.rimeJoinMaintenance()
 
         // 产物校验（按本次编译清单推导；#35 延迟编译后只验进过清单的）。
-        val build = File(user, "build")
-        val required = requiredProducts(compileSchemas) +
-            listOfNotNull(BaseDictFiles.DP_TABLE.takeIf { splitDp })
         val missing = required.filterNot { File(build, it).isFile }
         if (missing.isNotEmpty()) {
             android.util.Log.w("FeelimeBaseDict", "missing products: $missing")
@@ -1119,7 +1316,7 @@ object BaseDictInstaller {
             .putFloat(KEY_NON_PINYIN_RATIO, nonPinyinRatio ?: -1f)
             .putBoolean(KEY_TONED, toned)
             .putInt(KEY_TAB_LINES, stats.tabLines)
-            .putBoolean(KEY_T9_SKIPPED, !includeT9)
+            .putBoolean(KEY_T9_SKIPPED, false)
             .apply()
         saveActiveCache(context)
         return InstallResult(null, changed = true)
@@ -1163,11 +1360,7 @@ object BaseDictInstaller {
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
                 assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
-                BaseDictFiles.flypyCompileSchemas(
-                    baseCustom,
-                    baseCustom && BaseDictFiles.t9Eligible(
-                        prefs.getInt(KEY_TAB_LINES, 0), availMemory(context)),
-                ),
+                BaseDictFiles.flypyCompileSchemas(baseCustom),
             )
         }.getOrNull() ?: run {
             rollbackFlypy(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
@@ -1206,7 +1399,9 @@ object BaseDictInstaller {
             return InstallResult("BASE_DICT_MAINTENANCE_START_FAILED", changed = true)
         }
         pushEvent(status("COMPILING"))
-        val timeout = pollMaintenance(pushEvent, FLYPY_TIMEOUT_MS)
+        val timeout = pollMaintenance(pushEvent, FLYPY_TIMEOUT_MS,
+            stagingDir = File(user, "build"),
+            expected = listOf(BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin"))
         NativeSmoke.rimeJoinMaintenance()
         val build = File(user, "build")
         val missing = listOf(BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin")
@@ -1329,6 +1524,9 @@ object BaseDictInstaller {
     private fun pollMaintenance(
         pushEvent: (JSONObject) -> Unit,
         timeoutMs: Long = MAINTENANCE_TIMEOUT_MS,
+        stagingDir: File? = null,
+        expected: List<String> = emptyList(),
+        baselineWall: Long = System.currentTimeMillis(),
     ): Boolean {
         val started = SystemClock.elapsedRealtime()
         var lastPush = 0L
@@ -1340,10 +1538,27 @@ object BaseDictInstaller {
                 timedOut = true
                 android.util.Log.w("FeelimeBaseDict", "maintenance timed out, draining")
             }
+            // 产物步进（librime 无逐 schema 回调）：只认 mtime ≥ 基线的
+            // 产物——staging 常有上次导入的同名旧产物，按存在性计数开局
+            // 就是 8/8（ace 实录）。信号语义是「产物文件出现/更新」
+            // （librime 写文件含预分配阶段，出现≠收尾完成），用作步进
+            // 观察足够，ETA 资格见 UI 侧 done 门槛。
+            if (stagingDir != null && expected.isNotEmpty()) {
+                progressSnapshot = runCatching {
+                    compileProgress(
+                        expected.filter {
+                            val f = File(stagingDir, it)
+                            f.isFile && f.lastModified() >= baselineWall
+                        }.toSet(), expected)
+                }.getOrNull() ?: progressSnapshot
+            }
             if (now - lastPush > PROGRESS_EVERY_MS) {
                 lastPush = now
+                // elapsedMs 统一总口径（stageStartedAt = 导入起点，
+                // codex P2：poll 起点口径会在段切换时把秒数归零、与页面
+                // 重开快照跳变）；timeout 判定仍用 poll 自己的 elapsed。
                 pushEvent(status(if (timedOut) "DRAINING" else "COMPILING")
-                    .put("elapsedMs", elapsed))
+                    .put("elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt))
             }
             Thread.sleep(500)
         }
@@ -1357,12 +1572,61 @@ object BaseDictInstaller {
      *  时，「头部全拼+尾部形码」的表会整体漏检）；注释/分隔行跳过。
      *  注意这只是启发式提示信号：换装会按导入码表重编 prism（本机
      *  librime 实测 naxy/kkfj 可命中），不构成「无法输入」的判定。 */
+    /** dict.yaml 头部的码列索引（rime 语义：`columns:` 声明各列角色，
+     *  无声明默认 [text, code, weight]——码在第二列；多行与 inline 两种
+     *  list 形态 librime 都支持，config_data.cc 走完整 YAML 解析）。返回
+     *  -1 = 声明了 columns 但不含 code（如雾凇 tencent 表 `columns:
+     *  [text, weight]`，词条靠 librime 编译期用同库有码词条的 encoder
+     *  自动注音——host 实测 98 万词全部编入，见 #98）。列表内注释/空行
+     *  跳过（中断在注释处的声明不算读完——codex P2：半截列表误判无码
+     *  会把形码表当拼音表）。 */
+    internal fun dictCodeColumn(file: File): Int {
+        file.bufferedReader(Charsets.UTF_8).useLines { seq ->
+            val cols = mutableListOf<String>()
+            var first = true
+            var inColumns = false
+            for (raw in seq) {
+                var line = raw.trimEnd()
+                if (first) { line = line.trimStart('﻿'); first = false }
+                if (line == "...") break
+                if (line == "---") continue
+                val t = line.trim()
+                if (!inColumns) {
+                    if (t == "columns:") { inColumns = true; continue }
+                    // inline 形态：columns: [text, weight]
+                    if (t.startsWith("columns:")) {
+                        val rest = t.removePrefix("columns:").trim()
+                        if (rest.startsWith("[") && rest.endsWith("]")) {
+                            rest.removeSurrounding("[", "]").split(',')
+                                .map { it.trim().trim('"').trim('\'') }
+                                .filter { it.isNotEmpty() }
+                                .forEach { cols.add(it) }
+                            break
+                        }
+                    }
+                    continue
+                }
+                if (t.isEmpty() || t.startsWith("#")) continue
+                val item = Regex("^-\\s*(.+?)\\s*$").find(t) ?: break
+                cols.add(item.groupValues[1].trim().trim('"').trim('\''))
+            }
+            return if (cols.isEmpty()) 1  // 无声明/解析未果，默认第二列
+            else cols.indexOf("code").let { if (it == -1) -1 else it }
+        }
+    }
+
     internal fun pinyinCodeRatio(
         file: File,
         syllables: Set<String>,
         sampleLimit: Int,
         totalLines: Int = 0,
     ): Double {
+        // 无码列表（#98）：词条由同库 encoder 注音（不需要 essay，Pass2
+        // 从同库单字有码词条学习），注音产物就是拼音码——按拼音表处理，
+        // 进双拼/T9 子伞；旧逻辑把权重列当码判（"100" 非字母）→ ratio=0
+        // 把整张表排除出子伞（双拼/T9 丢 98 万词）。
+        val codeColumn = dictCodeColumn(file)
+        if (codeColumn == -1) return 1.0
         // 步长让样本均匀铺满全表；词表小于样本上限时逐行全采。
         val step = if (totalLines > sampleLimit) (totalLines + sampleLimit - 1) / sampleLimit else 1
         var seen = 0
@@ -1375,8 +1639,9 @@ object BaseDictInstaller {
                 if (trimmed.startsWith("#") || trimmed == "..." ||
                     trimmed == "---" || !line.contains('\t')
                 ) continue
-                // dict.yaml 词条行：词\t码\t[权重]——码在第 2 列。
-                val code = line.split('\t').getOrNull(1)?.trim() ?: continue
+                // dict.yaml 词条行：词\t码\t[权重]——码列由头部声明决定
+                // （默认第 2 列）。
+                val code = line.split('\t').getOrNull(codeColumn)?.trim() ?: continue
                 seen++
                 if ((seen - 1) % step != 0) continue
                 if (code.isEmpty()) continue
@@ -1435,7 +1700,48 @@ object BaseDictInstaller {
      *  返回 (sha256, 落盘文件表)；sha 对最终落盘集合（名+内容，按名排序）
      *  计算，zip 后处理改写会体现在指纹里。null = 读取失败/超 150MB。
      *  空 zip（无可解析表）返回非 null 空文件表，由调用方按 EMPTY 报。 */
-    private class Staged(val sha: String, val files: List<File>)
+
+    /** import_tables 的书写顺序。rime 的规则是「重复 (词, 码) 靠前的表
+     *  先到先得」（EntryCollector::CreateEntry 对单字码重复直接丢弃后到
+     *  的），所以顺序决定谁的词频生效——不能用 listFiles() 的文件系统
+     *  顺序。判据：**带显式权重的表必须排在不带的前面**，不带词频信息
+     *  的表没有资格压过带的。反例（真机实测）：雾凇 41448 大字表 46055
+     *  行零权重，排到了 8105 字表（8765 行全带权重）前面，所有常用字的
+     *  词频被空权重顶成 log(DBL_EPSILON)≈-708，单字候选与造句全被生僻
+     *  字反超——`niuiuabima` 造句出「…是啥蓖麻」而不是「你是傻逼吗」。
+     *  同组内按文件名排序，与文件系统顺序解耦（确定性）。 */
+    internal fun orderImportTables(files: List<File>): List<File> =
+        if (files.size <= 1) files
+        else files.sortedWith(
+            compareByDescending<File> { hasExplicitWeight(it) }.thenBy { it.name },
+        )
+
+    /** 表里是否存在带显式权重的词条行（默认权重列=第三列）。扫到首个命中
+     *  即返回；无权重的表要扫全表（雾凇 tencent 98 万行，装库时跑一次，
+     *  几十毫秒量级）。注释/分隔行跳过；读失败按无权重处理——排序退化成
+     *  纯文件名序，不引入新行为。声明了 `columns: [text, weight]` 的无码
+     *  表本就靠编译期 encoder 注音（Pass2，恒在有码表之后入库），其在
+     *  import_tables 里的位置不影响重复裁决，按无权重归组无害。 */
+    internal fun hasExplicitWeight(file: File): Boolean = runCatching {
+        file.bufferedReader(Charsets.UTF_8).useLines { seq ->
+            for (raw in seq) {
+                if (!raw.contains('\t')) continue
+                val line = raw.trimStart()
+                if (line.startsWith('#') || line == "---" || line == "...") continue
+                val cols = raw.split('\t')
+                if (cols.size >= 3 && cols[2].trim().isNotEmpty()) return@useLines true
+            }
+            false
+        }
+    }.getOrDefault(false)
+
+    /** 落盘文件表。顺序在此钉死（见 [orderImportTables]）：伞表的
+     *  import_tables 与双拼/T9 子伞都直接透传 [files]，在下游各写一遍
+     *  容易漏。sha 由调用方按「名+内容、按名排序」算好传入，不受这里
+     *  重排影响。 */
+    private class Staged(val sha: String, rawFiles: List<File>) {
+        val files: List<File> = BaseDictInstaller.orderImportTables(rawFiles)
+    }
 
     /** #7 安装源：SAF Uri（新导入）或已导入槽（再次激活）。 */
     private sealed class SourceInput {
@@ -1445,9 +1751,28 @@ object BaseDictInstaller {
 
     private class StageOutcome(val staged: Staged?, val errorCode: String? = null)
 
-    private fun stageSource(context: Context, uri: Uri, sourceDir: File): StageOutcome {
+    private fun stageSource(
+        context: Context,
+        uri: Uri,
+        sourceDir: File,
+        pushEvent: (JSONObject) -> Unit,
+    ): StageOutcome {
         val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
             ?: return StageOutcome(null)
+        // 源总长（SAF DocumentsProvider 的 SIZE 列；查不到则进度只报已读
+        // 量、无百分比）。COPYING 阶段没有轮询循环，读循环每 ~1MB 直接
+        // 推一次进度事件（模型下载同款频率量级）。
+        val sourceBytes = runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE),
+                null, null, null)?.use { c -> if (c.moveToFirst()) c.getLong(0) else -1L }
+        }.getOrNull() ?: -1L
+        var lastPushed = -1L
+        fun pushCopy(read: Long, name: String?) {
+            if (lastPushed >= 0 && read - lastPushed < (1 shl 20)) return
+            lastPushed = read
+            progressSnapshot = copyProgress(read, sourceBytes, name)
+            pushEvent(status("COPYING"))
+        }
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(1 shl 16)
         input.use { stream ->
@@ -1482,6 +1807,7 @@ object BaseDictInstaller {
                         }
                         digest.update(buffer, 0, read)
                         out.write(buffer, 0, read)
+                        pushCopy(total, BaseDictFiles.SOURCE_FILE)
                     }
                 }
                 if (overLimit || total == 0L) return StageOutcome(null)
@@ -1507,8 +1833,24 @@ object BaseDictInstaller {
             var total = 0L
             var overLimit = false
             var duplicate: Pair<String, String>? = null
+            // 进度口径：zip.read 计的是解压后字节，与源 zip 大小不可比
+            // （209 万词条 zip 解压比 ~3x，会 49MB/16MB 恒钳满格）。计数
+            // 流套在 ZipInputStream 底层记压缩流字节——与 SIZE 同口径。
+            var compressedRead = 0L
+            val counting = object : java.io.FilterInputStream(stream) {
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    val n = super.read(b, off, len)
+                    if (n > 0) compressedRead += n
+                    return n
+                }
+                override fun read(): Int {
+                    val n = super.read()
+                    if (n >= 0) compressedRead += 1
+                    return n
+                }
+            }
             val zipped = runCatching {
-                ZipInputStream(PushbackInputStream(stream, 4).apply { unread(head, 0, got) })
+                ZipInputStream(PushbackInputStream(counting, 4).apply { unread(head, 0, got) })
                     .use { zip ->
                         while (!overLimit && duplicate == null) {
                             val entry = zip.nextEntry ?: break
@@ -1537,6 +1879,7 @@ object BaseDictInstaller {
                                         break
                                     }
                                     out?.write(buffer, 0, read)
+                                    pushCopy(compressedRead, base)
                                 }
                             }
                             val name = base
@@ -1661,14 +2004,18 @@ object BaseDictInstaller {
     /** #37 多表加权：每表按行数分摊采样额度（总量 [NON_PINYIN_SAMPLE]），
      *  结果按行数加权平均。 */
     private fun pinyinRatioOverFiles(stats: SourceStats, syllables: Set<String>): Float {
-        if (stats.tabLines == 0) return 1f
+        // 无码表（#98 columns 无 code）没有自身编码样本，对「拼音域」
+        // 无信息——不计入分子也不占分母（codex P2-3：计入会把形码组合
+        // 的非拼音提示掩盖掉）。
+        val coded = stats.perFile.filter { it.second > 0 && dictCodeColumn(it.first) != -1 }
+        val codedLines = coded.sumOf { it.second }
+        if (codedLines == 0) return 1f
         var weighted = 0.0
-        for ((f, lines) in stats.perFile) {
-            if (lines <= 0) continue
+        for ((f, lines) in coded) {
             val limit = maxOf(1, NON_PINYIN_SAMPLE * lines / stats.tabLines)
             weighted += pinyinCodeRatio(f, syllables, limit, lines) * lines
         }
-        return (weighted / stats.tabLines).toFloat()
+        return (weighted / codedLines).toFloat()
     }
 
     private fun joinHex(bytes: ByteArray): String =
@@ -1677,6 +2024,14 @@ object BaseDictInstaller {
     private fun engineTemplate(context: Context): String? {
         val shared = EngineDataStore.readyFile(
             context, "rime/${FuzzyPinyin.SCHEMA_ID}.schema.yaml",
+        ) ?: return null
+        return runCatching { shared.readText() }.getOrNull()
+    }
+
+    /** T9 模糊部署模板（issue #73；旧资产混搭时可能缺失，调用方需容错）。 */
+    private fun t9Template(context: Context): String? {
+        val shared = EngineDataStore.readyFile(
+            context, "rime/${FuzzyPinyin.T9_SCHEMA_ID}.schema.yaml",
         ) ?: return null
         return runCatching { shared.readText() }.getOrNull()
     }
@@ -1699,6 +2054,7 @@ object BaseDictInstaller {
         }
         (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
             File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()
+            File(user, "${FuzzyPinyin.T9_SCHEMA_ID}_m$mask.schema.yaml").delete()
         }
         // staging 的编译期 default.yaml 一并删（运行时不需要 schema_list）；
         // staging 的变体 schema yaml 不删——那是 DictCompiler 输出的
@@ -1815,6 +2171,7 @@ object BaseDictInstaller {
         stageSnapshot = stage
         return JSONObject().put("type", "dictBaseProgress").put("stage", stage)
             .putOpt("operation", operationKind)
+            .putOpt("progress", progressSnapshot ?: JSONObject.NULL)
     }
 
     /** 成功文案带实际生效词库（用户裁定：文案要反馈实际生效的词库）：
