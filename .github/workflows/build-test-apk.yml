@@ -172,6 +172,9 @@ jobs:
         env:
           SIGNING_KEY: ${{ secrets.FEELIME_SIGNING_KEY }}
           KEY_ID: ${{ secrets.FEELIME_KEY_ID }}
+          # `gh` is not pre-authenticated on the runner; without this both
+          # `gh release view` and `gh release create` fail (exit code 4).
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           VERSION=$(tr -d '\n' < app/src/main/assets/keyboard/VERSION)
