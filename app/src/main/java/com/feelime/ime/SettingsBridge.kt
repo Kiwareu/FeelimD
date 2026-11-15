@@ -259,8 +259,8 @@ const val KB_HEIGHT_PORTRAIT_KEY = "keyboard_height_portrait"
 
 fun readKeyOpacity(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_KEY_OPACITY, 74)
-        .let { if (it in 0..100) it else 74 }
+        .getInt(PREF_KEY_OPACITY, 76)
+        .let { if (it in 0..100) it else 76 }
 
 data class GlassSkin(
     val id: String,
@@ -288,18 +288,18 @@ val GLASS_SKINS = listOf(
 
 fun readGlassBlur(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_GLASS_BLUR, 26)
-        .takeIf { it in 0..32 } ?: 26
+        .getInt(PREF_GLASS_BLUR, 18)
+        .takeIf { it in 0..32 } ?: 18
 
 fun readGlassRadius(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_GLASS_RADIUS, 22)
-        .takeIf { it in 8..28 } ?: 22
+        .getInt(PREF_GLASS_RADIUS, 20)
+        .takeIf { it in 8..28 } ?: 20
 
 fun readPanelOpacity(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_PANEL_OPACITY, 42)
-        .takeIf { it in 35..100 } ?: 42
+        .getInt(PREF_PANEL_OPACITY, 68)
+        .takeIf { it in 35..100 } ?: 68
 
 fun readGlassSkin(context: Context): String {
     // 空串 = 还没套用皮肤，或套用后又单独调过。不要把缺省伪装成「琉璃青」，
@@ -441,7 +441,11 @@ val THEME_PRESETS = listOf("classic", "ocean", "violet", "amber", "sakura", "tea
 fun readThemePreset(context: Context): String {
     val saved = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getString(PREF_THEME_PRESET, "") ?: ""
-    return if (saved in THEME_PRESETS) saved else "classic"
+    // 缺省 = 樱花粉（sakura）：未改过外观的用户开箱即粉。整套缺省参数与
+    // GLASS_SKINS 的 sakura 行一致（饱和度 52、键面不透明 76、模糊 18、
+    // 圆角 20、面板 68、亮度 0），不要只改预置——单改色相会是高饱和
+    // 的艳粉，不是樱雾的嫩粉。
+    return if (saved in THEME_PRESETS) saved else "sakura"
 }
 
 /** #31 色相滑条（预置之上的自定义色相）：-1=未自定义（按预置/默认），
@@ -484,8 +488,8 @@ fun readKeySat(context: Context): Int =
 
 fun readThemeSat(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_THEME_SAT, 100)
-        .takeIf { it in 0..100 } ?: 100
+        .getInt(PREF_THEME_SAT, 52)
+        .takeIf { it in 0..100 } ?: 52
 
 /** #61 亮度偏移（色号编辑的主维度，中间态方案）：offset 直接加在各
  *  表面色的设计 l 上（组内同向、层次近似保持），0=无偏移。范围
