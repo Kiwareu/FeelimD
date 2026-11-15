@@ -105,6 +105,18 @@ jobs:
       - name: Fetch build assets (sherpa AAR + models, SHA-256 verified)
         run: ./scripts/setup-assets.sh
 
+      - name: Install esbuild (legacy-web gate needs it)
+        # check_legacy_web.js looks for esbuild at $FEELIME_ESBUILD or
+        # ~/.config/feelime/toolchain/esbuild. Pin 0.28.2: the checked-in
+        # *.legacy.js files were generated with it, and the gate compares
+        # byte-for-byte, so the version must match.
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/feelime/toolchain"
+          npm install esbuild@0.28.2 --prefix /tmp/esb
+          cp /tmp/esb/node_modules/.bin/esbuild "$HOME/.config/feelime/toolchain/esbuild"
+          "$HOME/.config/feelime/toolchain/esbuild" --version
+
       - name: JS verification (css lint + mock bridge tests)
         run: |
           node scripts/verify/css_lint.js
