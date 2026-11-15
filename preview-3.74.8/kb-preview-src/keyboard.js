@@ -322,6 +322,10 @@
         "清空": "Clear",
         "确认清空": "Confirm clear",
         "＋添加": "＋ Add",
+        // 剪贴板/常用语搜索（2026-11-16）。
+        "搜索剪贴板 / 常用语": "Search clipboard / phrases",
+        "清除搜索": "Clear search",
+        "没有找到包含「{0}」的内容": "No results for “{0}”",
         "松手结束": "Release to finish.",
         "点击任意位置结束": "Tap anywhere to finish.",
         "请说较标准的普通话。标点由本机模型自动补上，声音不会上传": "Speak fairly standard Mandarin. Punctuation is added on-device; audio is never uploaded.",
@@ -803,8 +807,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         caps: 'M12 3l7 7h-4v6H9v-6H5zM7 19h10v2H7z',
         backspace: 'M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4.59 12.59L16 17l-2.5-2.5L11 17l-1.41-1.41L12.09 13 9.59 10.5 11 9.1l2.5 2.5L16 9.1l1.41 1.41L14.91 13z',
         mic: 'M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z M19 12a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12h-2z',
-        // 底行地球仪键（Material "language" 实心地球，与候选栏描边地球同义）。
-        globe: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.91-4.33-3.56zm2.95-8H5.08c.96-1.65 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM13.34 14H10.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.34.16-2h2.68c.09.66.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z',
         arrowLeft: 'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z',
         smiley: 'M15.5 11c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5zM11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
         // 快捷设置方块图标（wechat 式 tile 网格）。同一构建器，键面不用。
@@ -1652,6 +1654,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.clipboardItems = [];
             this.clipboardGroups = [];
             this.clipGroupFilter = 'all';
+            this.clipSearch = '';
             this.favoriteItems = [];
             this.popup = null;
             this.popupEndEvents = new WeakSet();
@@ -2139,14 +2142,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #39-6（手写容易退出，诊断定罪）：工具栏就在书写区正上方，
             // 书写划上去的笔迹若落笔抬笔都在按钮上（如齿轮），会合成
             // click 直达 openSetup——设置页顶掉键盘，用户看到的就是
-            // 「写着写着退出」。候选条与工具箱行各加「静止按压」判定：
-            // touchend 时移动超阈值的触摸 preventDefault 掉 click 合成，
-            // 书写划过/滑动翻候选页不再误触按钮；正常点按（<24px）不受
-            // 影响。工具箱行（2026-11-16）独立成行后同样要挂——齿轮
-            // 已搬到该行，只挂候选行会漏掉它。
-            ['candidateBar', 'toolboxRow'].forEach(rowId => {
-                const bar = document.getElementById(rowId);
-                if (!bar) return;
+            // 「写着写着退出」。候选条整行加「静止按压」判定：touchend
+            // 时移动超阈值的触摸 preventDefault 掉 click 合成，书写划
+            // 过/滑动翻候选页不再误触按钮；正常点按（<24px）不受影响。
+            {
+                const bar = document.getElementById('candidateBar');
                 let barTouchStart = null;
                 bar.addEventListener('touchstart', event => {
                     const t = event.changedTouches[0];
@@ -2163,7 +2163,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         event.preventDefault();
                     }
                 }, { capture: true });
-            });
+            }
             // 完整设置入口（#33-1 后语义）：齿轮是工具栏目录里的可选
             // 工具（用户自选常驻），快开面板菜单里也有一份同名入口。
             const fullSetup = document.getElementById('fullSetupButton');
@@ -2303,6 +2303,29 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
                 button.addEventListener('click', () => this.openPanel(button.dataset.panelTab));
                 this.bindTouch(button);
+            });
+            // 剪贴板/常用语搜索（2026-11-16）：输入即过滤，不重建输入框
+            // 本身（renderPanel 只重建 #panelList，焦点不丢）。focus 走
+            // setPanelInput(true)，与分组名输入同一套面板输入重定向。
+            const searchInput = document.getElementById('panelSearchInput');
+            const searchClear = document.getElementById('panelSearchClear');
+            if (searchInput) {
+                searchInput.addEventListener('focus', () => this.setPanelInput(true));
+                searchInput.addEventListener('blur', () => {
+                    if (!this.phraseCardOpen()) this.setPanelInput(false);
+                });
+                searchInput.addEventListener('input', () => {
+                    this.clipSearch = searchInput.value.trim();
+                    if (searchClear) searchClear.hidden = !this.clipSearch;
+                    this.renderPanel();
+                });
+            }
+            if (searchClear) searchClear.addEventListener('click', () => {
+                if (searchInput) searchInput.value = '';
+                this.clipSearch = '';
+                searchClear.hidden = true;
+                this.renderPanel();
+                if (searchInput) searchInput.focus();
             });
             document.getElementById('hide').addEventListener('click', () => this.call(() => Native.hideKeyboard(this.token)));
             const micBtn = document.getElementById('mic');
@@ -2788,13 +2811,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 layer.append(row);
             });
             // Bottom row:
-            // [globe] [123] [punct] [space(+mic)] [中/英] [enter].
-            // 底行左下角地球仪键（2026-11-16 用户要求恢复）：点按弹系统
-            // 输入法选择器，与候选栏地球仪同一路；中/英长按仍可打开选择器。
+            // [123] [punct] [space(+mic)] [中/英] [enter]; long-press the
+            // toggle for the system IME picker (the old globe slot).
             const bottom = this.row();
-            bottom.append(this.specialKey('globe', ICONS.globe,
-                () => this.call(() => Native.switchInputMethod(this.token)),
-                'kb-special kb-unit-9'));
             // #113（默认关）：开=左下拆【符号】+【123】两键，123 直达数字
             // 键盘；两键恒用英文键盘宽（kb-unit-9 的 Shift/字母 calc，
             // 2026-11-16 用户裁定：俄语 11 格布局下随格变窄会让 123
@@ -3615,10 +3634,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // （非组合=可见）先于本调用执行，这里显式压回。收起键双
                 // 向显式设置（恢复路径不经 updateComposing 时也得翻回）
                 // ——联想让位（assocOnly）不藏收起键，与拼音联想同口径。
-                // 工具箱行的 mic 不藏（独立行，与手写候选行不混行）。
                 if (active) {
                     const mic = document.getElementById('mic');
-                    if (mic && !mic.closest('#toolboxRow')) mic.hidden = true;
+                    if (mic) mic.hidden = true;
                 }
                 const hideBtn = document.getElementById('hide');
                 if (hideBtn) hideBtn.hidden = active;
@@ -3873,8 +3891,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.toolbarYield = active;
             ['setupButton', ...Object.values(TOOL_CATALOG)].forEach(id => {
                 const el = document.getElementById(id);
-                // 工具箱行的工具不随让位隐藏（独立行，与候选栏不混行）。
-                if (el && !el.closest('#toolboxRow')) el.hidden = active;
+                if (el) el.hidden = active;
             });
             const clear = document.getElementById('composeClear');
             if (clear) clear.hidden = !active;
@@ -4775,18 +4792,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 未到期的工具栏长按计时一并掐掉（codex 2026-10-03 方案 §3）：
             // 它们挂在按钮/候选条自己的 touchend/cancel 上，收起链走不到
             // 那里——不清的话键盘已收、到点仍把编辑态拉起。不依赖
-            // pressedKeys（这套计时器没登记进去）。工具箱行（2026-11-16）
-            // 的工具同样要掐（独立行，长按计时挂在行内按钮上）。
-            ['candidateBar', 'toolboxRow'].forEach(id => {
-                const tbar = document.getElementById(id);
-                if (!tbar) return;
+            // pressedKeys（这套计时器没登记进去）。
+            const tbar = document.getElementById('candidateBar');
+            if (tbar) {
                 clearTimeout(tbar._barHold);
                 tbar._barHoldPos = null;
                 tbar.querySelectorAll('.tool').forEach(el => {
                     clearTimeout(el._editHold);
                     el._editHoldPos = null;
                 });
-            });
+            }
             this.scrubBase = null;
             this.scrubSteps = 0;
             // #34 手势会话随程序化取消一并复位（native 会话也要关——
@@ -7684,10 +7699,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         layoutChrome() {
             const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
             /* 竖屏行距 5→7px，三道缝多 6px，从内容预算里扣掉，避免末行被挤出。 */
-            /* 工具箱行（#toolboxRow，2026-11-16）：40px 行高 + 上下边距
-             * （竖屏 2+10=52，横屏 4+4=48），与候选栏同款。 */
-            const toolbox = this.landscape ? 48 : 52;
-            return (this.landscape ? 82 : 92) + bandExtra + toolbox;
+            return (this.landscape ? 82 : 92) + bandExtra;
         }
 
         /** Read the native view's total height back as content height. The
@@ -7751,10 +7763,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const S = (Number.isFinite(pct) ? Math.min(150, Math.max(50, pct)) : 100) / 100;
             const px = v => (Math.round(v * 100) / 100) + 'px';
             if (H < 30) {
-                // 极矮行高（横屏内容钳制可到很低；工具箱行加入后竖屏默认
-                // 高度也可能落到这档）：单行形态——藏角标、主字居中，不硬
-                // 塞 9px 角标 + 双行留白。阈值 24→30（2026-11-16）：H 在
-                // 24–29 时角标与主字余量不足，会轻微重叠（用户横屏实测）。
+                // 极矮行高（横屏内容钳制可到很低）：单行形态——藏角标、
+                // 主字居中，不硬塞 9px 角标 + 双行留白。阈值 24→30
+                // （2026-11-16 横屏重叠修复）：H 24–29 时角标仍按 9px
+                // 钉死、主字预算不足，字母行与上方数字/符号行轻微重叠。
                 root.setProperty('--cap-alt-size', '0px');
                 root.setProperty('--cap-main-size', px(Math.min(Math.min(22, H * 0.5) * S, H * 0.8)));
                 document.body.dataset.capSingle = 'on';
@@ -8322,25 +8334,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 面板打开时收起键暂住在 .panel-head（#33-2）——此刻锚点不在
             // 工具栏里，重排会把工具插进面板头；面板关闭路径自己会对账。
             if (this.panelOpen) return;
-            // 工具箱行（2026-11-16）：左组插在 spacer 之前，右组追加到
-            // 行尾；静态工具（F logo / 完整设置齿轮）固定行首。锚点都在
-            // 行内——拿行外的 preeditLine 当锚点会把左组插成键盘顶部的
-            // 全宽行（真机截图教训）。
-            const row = document.getElementById('toolboxRow');
-            const spacer = document.getElementById('toolboxSpacer');
-            if (!row || !spacer) return;
-            // F logo 固定行首（prepend：firstChild 在部分 DOM 里不可靠，
-            // insertBefore(…, firstChild) 会掉到行尾）。
-            const setupBtn = document.getElementById('setupButton');
-            if (setupBtn) row.prepend(setupBtn);
+            // 左组锚在候选区之前（candidateBar 行内，F logo 之后）；右组
+            // 锚在收起键之前。拼音带 preeditLine 在 softKeyboard 顶部、
+            // 候选条之外——拿它当锚点会把左组插成键盘顶部的全宽行，把
+            // 键盘顶出一屏（真机截图教训），两个锚点都必须在行内。
+            const pre = document.getElementById('candidates');
+            const hideBtn = document.getElementById('hide');
+            if (!pre || !hideBtn) return;
             const resolve = id => document.getElementById(TOOL_CATALOG[id]);
             this.toolbarLeft.forEach(id => {
                 const el = resolve(id);
-                if (el) row.insertBefore(el, spacer);
+                if (el) pre.parentNode.insertBefore(el, pre);
             });
             this.toolbarRight.forEach(id => {
                 const el = resolve(id);
-                if (el) row.appendChild(el);
+                if (el) hideBtn.parentNode.insertBefore(el, hideBtn);
             });
             this.pruneOverflowTools();
             this.renderToolbarEditor();
@@ -8363,9 +8371,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!el) return;
                 el.hidden = el.closest('#toolbarEditorGrid')
                     ? false
-                    // 工具箱行的工具只服从溢出（独立行，组合/让位不藏）：
-                    : el.closest('#toolboxRow')
-                    ? overflow.has(id)
                     // 让位态（手写候选整行互斥/T9 符号行/联想）优先：
                     // 重唤键盘触发的对账不得把工具插回让位中的候选行。
                     // overflow 的口径=配置 id（pruneOverflowTools 存的是
@@ -8379,9 +8384,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 自己的事（76e3c72 曾把「动作非 voice」机械翻译成藏工具栏
             // mic——设成剪贴板/定制键也藏，1.3.8 用户实测「刚开输入法
             // 图标丢失、过会儿又被布局对账翻回来」，两条路径打架闪烁）。
-            // 工具箱行的 mic 常驻（独立行，组合中也可点按开始语音）。
-            if (mic) mic.hidden = !mic.closest('#toolboxRow') && (this.toolbarYield ||
-                (composeHidden && this.voiceState === 'idle'));
+            if (mic) mic.hidden = this.toolbarYield ||
+                (composeHidden && this.voiceState === 'idle');
         }
 
         /** 溢出兜底：已保存的布局可能比当前候选条容量大（典型：单手模式
@@ -8412,8 +8416,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const recording = ['listening', 'loading', 'stopping']
                     .includes(this.voiceState);
                 if (recording && id === 'mic') return;
-                // 工具箱行的工具不随候选场景隐藏（独立行）；只服从溢出。
-                if (this.toolbarCandidatesSceneActive() && !el.closest('#toolboxRow')) {
+                if (this.toolbarCandidatesSceneActive()) {
                     el.hidden = true;
                     return;
                 }
@@ -8706,16 +8709,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 尺寸算好配置组名额，直接用——旧实测口径（26px 档）会把
             // fit 刚算出「19px 全放下」的场景再裁一轮（循环锁死）。
             if (this.floating && this._ftoolPruneCap != null) return this._ftoolPruneCap;
-            // 容量按工具箱行算（工具住在那行）：只扣行首 F logo，收起键
-            // 在候选栏、不占工具箱行（2026-11-16）。
-            const bar = document.getElementById('toolboxRow');
+            const bar = document.getElementById('candidateBar');
             const setup = document.getElementById('setupButton');
-            if (!bar || !setup || !bar.clientWidth) return 8;
+            const hide = document.getElementById('hide');
+            if (!bar || !setup || !hide || !bar.clientWidth) return 8;
             const gapRaw = typeof getComputedStyle === 'function'
                 ? getComputedStyle(bar).gap : '';
             const GAP = parseFloat(gapRaw) || 0;
             const BTN = setup.offsetWidth || 32;
-            const avail = bar.clientWidth - setup.offsetWidth - GAP * 2;
+            const avail = bar.clientWidth - setup.offsetWidth - hide.offsetWidth
+                - GAP * 2;
             return Math.max(1, Math.floor(avail / (BTN + GAP)));
         }
 
@@ -8734,9 +8737,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.pruneOverflowTools();
                 return;
             }
-            // 工具箱行（2026-11-16）：工具住在独立行，fit 按该行宽度算；
-            // 候选栏只剩候选，不再是工具的容器。
-            const bar = document.getElementById('toolboxRow');
+            const bar = document.getElementById('candidateBar');
             if (!bar || !bar.clientWidth) return;
             // 互斥语义（#47 复盘）：候选与工具永不同时有内容——组合中
             // 工具已被让位对账全藏（配置组仍会被 prune 用名额对账），
@@ -11540,20 +11541,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // composeExpand/composeClear 藏掉（#75：拒绝麦克风权限后
             // 候选下拉按钮消失，授权走通一次才恢复）。
             const recording = ['listening', 'loading', 'stopping'].includes(this.voiceState);
-            // 工具箱行（2026-11-16）：工具住在独立行里，打字时常驻可见，
-            // 不再随组合隐藏——候选/工具分行即满足互斥（2026-11-13 裁定），
-            // 互斥守卫只管候选栏内的按钮（enforceToolbarExclusion）。
+            // Composing hides the setup/mode/clipboard tools but never the mic
+            // while a voice session is active (the stop entry must survive).
+            document.getElementById('setupButton').hidden = this.composing;
+            const clipboardButtonEl = document.getElementById('clipboardButton');
+            if (clipboardButtonEl) clipboardButtonEl.hidden = this.composing;
+            const favoritesButtonEl = document.getElementById('favoritesButton');
+            if (favoritesButtonEl) favoritesButtonEl.hidden = this.composing;
+            // The new control/IME tools follow the same rule.
             // A composition started mid-control-view only
             // SUSPENDS the rows (switch stays on) - picking a candidate
             // brings them back via maybeResumeCtrlView below.
+            const ctrlToolEl = document.getElementById('ctrlTool');
+            if (ctrlToolEl) ctrlToolEl.hidden = this.composing;
+            const imeSwitchButtonEl = document.getElementById('imeSwitchButton');
+            if (imeSwitchButtonEl) imeSwitchButtonEl.hidden = this.composing;
             // 编辑模式可添加的工具（issue #15）随输入统一隐藏——composing
             // 时候选区空间宝贵；mic 例外（语音 stop 入口必须存活）。
             // 溢出集（单手等窄布局放不下的）在非 composing 时也保持隐藏。
             Object.values(TOOL_CATALOG).forEach(dom => {
                 if (dom === 'mic') return;
                 const el = document.getElementById(dom);
-                // 工具箱行的工具不随组合隐藏（独立行）；候选栏内的才藏。
-                if (el) el.hidden = (this.composing && !el.closest('#toolboxRow'))
+                if (el) el.hidden = this.composing
                     || (this._overflowTools && this._overflowTools.has(dom));
             });
             if (this.composing && this.ctrlView) this.suspendCtrlView();
@@ -11589,9 +11598,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const mic = document.getElementById('mic');
             // 同 auditToolbarTools：不再耦合长按空格动作（用户反馈
             // 1.3.8 丢图标的另一半触发点——本行在候选渲染高频路径上）。
-            // 工具箱行的 mic 不随组合隐藏（独立行）。
             if (mic) mic.hidden =
-                (this.composing && !recording && !mic.closest('#toolboxRow'));
+                (this.composing && !recording);
             // 中文联想让位同款压回（用户 2026-11-13 报「候选词夹在
             // 按钮中间」：语音结束后本函数的 mic 行只懂 composing/
             // recording，把 mic 插回联想候选行；上面的 yield 对账又被
@@ -11716,6 +11724,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             document.getElementById('panelClear').hidden = this.panelTab !== 'clipboard';
             document.getElementById('panelManage').hidden = this.panelTab !== 'favorites';
+            // 打开/切换 tab 时清空上一次的搜索（每 tab 重新搜）。
+            this.clearPanelSearch();
             this.renderPanel();
             if (this.panelTab === 'clipboard') Native.getClipboard(this.token);
             else if (this.panelTab === 'favorites') Native.getFavorites(this.token);
@@ -11771,6 +11781,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // （setPanelInput）继续有效，不能在这里释放。
             if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
             this.panelOpen = false;
+            // 关面板清空搜索（重开从空白开始），搜索行随之隐藏。
+            this.clearPanelSearch();
             this.hwNotifyPanelHeight(); // #H 面板收起回落候选条
             document.getElementById('panelLayer').hidden = true;
             document.getElementById('candidateBar').hidden = false;
@@ -11809,6 +11821,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             el.hidden = !on;
             if (!on) return;
             el.textContent = (this.clipboardItems || []).length + ' ' + t('条');
+        }
+
+        /** 剪贴板/常用语搜索行（2026-11-16）：只在剪贴板与常用语 tab
+         * 显示，颜文字态隐藏。打开/切换 tab 时清空查询（每 tab 重新搜），
+         * 避免旧查询把新 tab 的列表滤空。 */
+        syncPanelSearch() {
+            const row = document.getElementById('panelSearch');
+            if (!row) return;
+            row.hidden = !(this.panelOpen && (this.panelTab === 'clipboard' || this.panelTab === 'favorites'));
+        }
+
+        clearPanelSearch() {
+            this.clipSearch = '';
+            const input = document.getElementById('panelSearchInput');
+            if (input) input.value = '';
+            const clear = document.getElementById('panelSearchClear');
+            if (clear) clear.hidden = true;
+            this.syncPanelSearch();
         }
 
         renderPanel() {            const list = document.getElementById('panelList');
@@ -11870,15 +11900,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (filter === '') items = items.filter(item => !item.group);
                 else if (filter && filter !== 'all') items = items.filter(item => item.group === filter);
             }
+            // 搜索（2026-11-16）：与分组筛选叠加（AND）——选了分组时只搜
+            // 该分组；不区分大小写（中文无大小写，拉丁按小写比对）。
+            const q = (this.clipSearch || '').trim();
+            if (q) {
+                const needle = q.toLowerCase();
+                items = items.filter(item => (item.text || '').toLowerCase().includes(needle));
+            }
             empty.hidden = items.length > 0;
             // 空态不铺整块列表背景（验收反馈）：列表收起、提示只占一行，
             // 其余空间透出键盘背景，不再是一大块空面板。
             if (items.length) delete layer.dataset.empty;
             else layer.dataset.empty = '1';
             if (!items.length) {
-                empty.textContent = this.panelTab === 'clipboard'
-                    ? t("剪贴板只留在这台手机上，不上传、不进云备份。条数不另设上限；全部正文大约 32MB，再大就存不下。")
-                    : t("暂无常用语，点右上角「＋添加」");
+                empty.textContent = q
+                    ? t("没有找到包含「{0}」的内容", q)
+                    : this.panelTab === 'clipboard'
+                        ? t("剪贴板只留在这台手机上，不上传、不进云备份。条数不另设上限；全部正文大约 32MB，再大就存不下。")
+                        : t("暂无常用语，点右上角「＋添加」");
                 return;
             }
             items.forEach(item => {

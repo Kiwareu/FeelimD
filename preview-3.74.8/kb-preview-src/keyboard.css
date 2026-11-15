@@ -364,9 +364,7 @@ body.landscape #engineStatus { min-height: 40px; }
  * 2 -> 14) so the pinyin preedit line (0-14px) no longer overlaps the
  * candidates; applyHeight() reserves 78px for the landscape chrome. */
 body.landscape #candidateBar { height: 40px; margin-top: var(--preedit-band, 18px); margin-bottom: 4px; }
-body.landscape #toolboxRow { margin-top: 4px; margin-bottom: 4px; }
 body.landscape #candidateBar .tool,
-body.landscape #toolboxRow .tool,
 body.landscape #settingsPageBar .tool { width: 30px; height: 30px; }
 body.landscape #candidates { min-height: 40px; }
 body.landscape .candidate { min-height: 40px; line-height: normal; font-size: calc(16px * var(--cand-font-scale, 1)); display: flex; align-items: center; }
@@ -480,12 +478,12 @@ body[data-one-hand="right"] #sidePad { display: block; left: 0; }
 body[data-one-hand="right"] #preeditLine { left: calc(var(--side-pad-w, 64px) + 8px); right: auto; }
 /* 工具按钮在缩窄的候选条里临界溢出（8 键 + gap 会顶进侧边条）：单手
  * 模式下收紧行间距。 */
-body[data-one-hand] #candidateBar, body[data-one-hand] #toolboxRow { gap: 5px; }
+body[data-one-hand] #candidateBar { gap: 5px; }
 /* 收起键/设置键贴着让位边界时与侧边栏视觉压边（真机截图回归）。
  * 用容器 padding 内收：margin-right 对最后一个 flex 项无效（不改变
  * 自身位置），hide 是末项、setup 是首项，padding 两侧各留 8px 缝。 */
-body[data-one-hand="left"] #candidateBar, body[data-one-hand="left"] #toolboxRow { padding-right: 8px; }
-body[data-one-hand="right"] #candidateBar, body[data-one-hand="right"] #toolboxRow { padding-left: 8px; }
+body[data-one-hand="left"] #candidateBar { padding-right: 8px; }
+body[data-one-hand="right"] #candidateBar { padding-left: 8px; }
 
 /* ===== 工具栏编辑模式（issue #15）=====
  * 长按候选条任意可编辑工具进入；键区被 #toolbarEditor（未上栏 icon
@@ -584,15 +582,13 @@ body.toolbar-edit #numPadLayer { display: none; }
 /* 候选条编辑态：可编辑 icon 右上角 × 徽章（点按移除）；非编辑态隐藏
  * 且不参与按钮 flex 布局。 */
 .tool-x { display: none; }
-body.toolbar-edit #candidateBar .tool[data-tool],
-body.toolbar-edit #toolboxRow .tool[data-tool] {
+body.toolbar-edit #candidateBar .tool[data-tool] {
     position: relative;
     /* × 伸出按钮顶边 5px，左组紧邻候选区（DOM 靠后=绘制在上）时会被
      * 盖住点不到——编辑态把工具抬到候选区之上。 */
     z-index: 2;
 }
-body.toolbar-edit #candidateBar .tool[data-tool] .tool-x,
-body.toolbar-edit #toolboxRow .tool[data-tool] .tool-x {
+body.toolbar-edit #candidateBar .tool[data-tool] .tool-x {
     display: block;
     position: absolute;
     top: -5px;
@@ -730,23 +726,49 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     background: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) var(--bar-l, 50%) / calc(0.7 + var(--panel-alpha) * 0.26));
     box-shadow: inset 0 1px 0 var(--glass-sheen);
 }
-/* 工具箱行（2026-11-16）：与候选栏同款 40px 行高、圆角与玻璃底。
- * 行高计入 layoutChrome（竖屏 52px / 横屏 48px），键行随之缩短。 */
-#toolboxRow {
+.clip-groups { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 8px; }
+/* 剪贴板/常用语搜索行（2026-11-16）：面板头下方、列表上方常驻；
+ * 与候选条同材质（--pill 底），输入框透明占满，× 只在有字时出现。 */
+.panel-search {
     flex: none;
-    height: 40px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 2px;
-    margin-bottom: 10px;
-    padding: 0 4px;
-    border-radius: calc(var(--radius-key) + 6px);
-    background: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) var(--bar-l, 50%) / calc(0.7 + var(--panel-alpha) * 0.26));
-    box-shadow: inset 0 1px 0 var(--glass-sheen);
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    margin: 0 0 8px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--pill);
+    color: var(--icon);
 }
-#toolboxSpacer { flex: 1; }
-.clip-groups { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 8px; }
+.panel-search[hidden] { display: none; }
+.panel-search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    padding: 0;
+}
+.panel-search input::placeholder { color: var(--muted); }
+.panel-search-clear {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--pressed);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.panel-search-clear[hidden] { display: none; }
 .clip-chip, .clip-extract, .clip-group-input {
     border: 0;
     border-radius: 999px;
@@ -3585,14 +3607,12 @@ body[data-floating="on"] #floatHandles { display: block; }
  * fitFloatingToolbar 写 --ftool-s/--ftool-icon（26 上限→18 触摸下限），
  * 装不下的工具按容量截尾隐藏（pruneOverflowTools，setup/hide 不截，
  * 收起键永远可点）。放文件尾压过 landscape 30px 档。 */
-body[data-floating="on"] #candidateBar, body[data-floating="on"] #toolboxRow { gap: 5px; }
-body[data-floating="on"] #candidateBar .tool,
-body[data-floating="on"] #toolboxRow .tool {
+body[data-floating="on"] #candidateBar { gap: 5px; }
+body[data-floating="on"] #candidateBar .tool {
     width: var(--ftool-s, 26px);
     height: var(--ftool-s, 26px);
 }
-body[data-floating="on"] #candidateBar .tool svg,
-body[data-floating="on"] #toolboxRow .tool svg {
+body[data-floating="on"] #candidateBar .tool svg {
     width: var(--ftool-icon, 13px);
     height: var(--ftool-icon, 13px);
 }
