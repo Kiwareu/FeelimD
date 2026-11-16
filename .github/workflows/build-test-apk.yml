@@ -227,10 +227,10 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; uploading APK and updating notes."
             gh release upload "$TAG" "$APK" --clobber
-            gh release edit "$TAG" --title "Feelime $VERSION" --notes-file "$NOTES"
+            gh release edit "$TAG" --title "FeelimD $VERSION" --notes-file "$NOTES"
           else
             gh release create "$TAG" \
-              --title "Feelime $VERSION" \
+              --title "FeelimD $VERSION" \
               --notes-file "$NOTES" \
               "$ZIP" "$APK"
           fi
