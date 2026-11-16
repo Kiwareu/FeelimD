@@ -141,7 +141,7 @@ fi
 # 3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
 # 后缀）：FEELIME_PKG 显式指定优先，否则直接用正式包名
 # （与 device_verify._resolve_pkg 同规）。
-FEELIME_PKG_RESOLVED="${FEELIME_PKG:-com.feelime.ime}"
+FEELIME_PKG_RESOLVED="${FEELIME_PKG:-com.feelimd.kiw}"
 PKG="$FEELIME_PKG_RESOLVED"
 # shell `ime` 按 flattenToShortString 精确匹配（同 device_verify.IME_SVC）
 if [ "$PKG" = com.feelime.ime ]; then

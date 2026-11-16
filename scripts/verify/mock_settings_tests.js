@@ -2617,6 +2617,9 @@ test('update check compares the installed keyboard version against the fork tag 
     equal(sb.newerVersion('3.74.11', '3.74.10'), true, 'newer patch detected');
     equal(sb.newerVersion('3.74.10', '3.74.10'), false, 'same version is not newer');
     equal(sb.newerVersion('3.74.9', '3.74.10'), false, 'older tag is not newer');
+    // 3.75：两段式大版本号按数字分段比，75 > 74，第一段即判定更新。
+    equal(sb.newerVersion('3.75', '3.74.14'), true, '3.75 is newer than 3.74.14');
+    equal(sb.newerVersion('3.74.14', '3.75'), false, '3.74.14 is not newer than 3.75');
     // 比较对象是已装的键盘版本（热更 activeVersion），不是应用版本。
     equal(sb.activeKeyboardVersion({ update: { activeVersion: '3.74.10' }, keyboardVersion: '3.74.9' }),
         '3.74.10', 'active hot-update version wins');
@@ -2656,7 +2659,7 @@ test('rename dual recognition (3.74.13): old and new names both work', () => {
     assert(bridgeSrc.includes('const val DEFAULT_GITHUB_SOURCE = "https://github.com/Kiwareu/FeelimD"'), 'default update source is the new repo');
     assert(bridgeSrc.includes('const val LEGACY_GITHUB_SOURCE = "https://github.com/Kiwareu/feelime"'), 'legacy source kept for fallback');
     assert(bridgeSrc.includes('fetchGithubWithLegacyFallback'), 'default-source checks fall back to the legacy repo');
-    // 发布文件名本版不动：仍发旧名，3.74.14 再翻新。
+    // 发布文件名：3.74.14 起已翻新为新名，3.75 沿用。
     const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build-test-apk.yml'), 'utf8');
     assert(workflow.includes('ZIP="feelimd-keyboard-$VERSION.zip"'), 'keyboard zip publish name is the renamed one');
     assert(workflow.includes('APK="FeelimD-$VERSION.apk"'), 'APK publish name is the renamed one');
@@ -3004,7 +3007,7 @@ test('skin page row order: tints, saturations, hex codes, opacity, backgrounds, 
     equal(ids, ['themeHue', 'themeSat', 'themeHexSwatch', 'bgImageLight',
         'bgImageDark', 'keyFollow', 'keyHue', 'keySat', 'keyHexSwatch',
         'keyOpacity', 'themePreview', 'glassBlur', 'glassRadius', 'panelOpacity',
-        'preeditFrame'],
+        'keyboardUiVersion', 'preeditFrame'],
         'rows follow the agreed order');
 });
 

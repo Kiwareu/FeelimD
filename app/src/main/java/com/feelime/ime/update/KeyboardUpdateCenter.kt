@@ -11,7 +11,7 @@ import java.io.File
  * installer share this exact path.
  */
 object KeyboardUpdateCenter {
-    const val ACTION_KEYBOARD_UPDATED = "com.feelime.ime.KEYBOARD_UPDATED"
+    const val ACTION_KEYBOARD_UPDATED = "com.feelimd.kiw.KEYBOARD_UPDATED"
     const val INBOX_EXTRA = "feelime.install"
     private const val INBOX_DIR = "keyboard-inbox"
 

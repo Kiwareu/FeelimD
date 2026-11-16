@@ -121,6 +121,9 @@ body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; 
   <label>主题 <select id="previewTheme"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
   <label>色调 <select id="previewPreset"><option value="classic">默认绿</option><option value="ocean">海蓝</option><option value="violet">紫罗兰</option><option value="amber">蜜橙</option><option value="sakura">樱粉</option><option value="teal">青碧</option></select></label>
   <label>底部留白 <select id="previewBottomPad"><option value="0">0 dp</option><option value="12">12 dp</option><option value="24">24 dp</option><option value="36">36 dp</option><option value="48">48 dp</option></select></label>
+  <label>界面 <select id="previewUiVersion"><option value="glass">液态玻璃</option><option value="classic">经典</option></select></label>
+  <label>字母数字 <input type="checkbox" id="previewDigits" checked></label>
+  <label>App 底衬 <input type="checkbox" id="previewBehind" checked></label>
   <a href="settings-preview.html">完整设置预览</a>
   <button id="actLog">桥日志</button>
   <button id="actCheck">验收清单</button>
@@ -286,6 +289,8 @@ let voiceSegments = 0;
 /* 面板演示数据（预览工具专用）：剪贴板/常用语在内存里维护，桥调用
  * 后像真机原生一样异步回推 onClipboard/onFavorites，否则面板永远空白。 */
 let panelClip = [
+    // 3.75：长文本演示条目（选词视图滚动/去重验证用，超 200 字多句）。
+    { id: 'c0', text: '这是一段很长的测试文本，用来验证选词视图能不能正常上下滚动。第一句讲的是今天的天气很好，适合出门散步。第二句讲的是晚上要和朋友一起吃火锅，顺便聊聊最近的工作。第三句是一个链接 https://example.com/very/long/path 和一个邮箱 test@example.com，还有验证码 834921。第四句收尾，看看内容会不会重复显示。第五句再补一点长度，确认长卡片能在框里滑得动。', time: Date.now() - 300e3, group: '' },
     { id: 'c1', text: '订单号 13800138000 详见 https://example.com/a 谢谢', time: Date.now() - 600e3, group: '' },
     { id: 'c2', text: '这个需求周五前要上线', time: Date.now() - 3600e3, group: '工作' },
     { id: 'c3', text: 'https://example.com/pr/123', time: Date.now() - 86400e3, group: '工作' },
@@ -597,6 +602,9 @@ function pushHello() {
             : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
             ? 'light' : 'dark',
         themePreset: document.getElementById('previewPreset').value,
+        // 3.75：字母上方数字 + 键盘界面版本（真机由原生 hello 下发）。
+        showKeyDigits: document.getElementById('previewDigits').checked,
+        keyboardUiVersion: document.getElementById('previewUiVersion').value,
         orientation: landscape ? 'landscape' : 'portrait',
         // 手势条避让（真机由原生下发 px；预览默认 0）。
         safeBottom: previewSafeBottom,
@@ -684,6 +692,11 @@ html, body { background: #c7c9cf; }
 .host-caret { display: inline-block; width: 2px; height: 1.1em;
     background: #333; vertical-align: text-bottom; margin: 0 1px; }
 #softKeyboard { position: absolute; left: 0; right: 0; bottom: 0; }
+/* 3.75 背景模糊验收：假 App 底衬（仅预览注入，不进真机代码）。fixed 铺满
+   整个 iframe 视口、z-index -2 落在 #glassField（-1）之下——键盘底板
+   的 backdrop-filter 在同一文档内采样它；真机上采样的是 WebView 背后
+   的真实 App（原生 WebView 背景透明，FeelimeService 两处 TRANSPARENT）。 */
+#previewAppBackdrop { position: fixed; inset: 0; z-index: -2; pointer-events: none; overflow: hidden; }
 </style></head>`);
     if (patched === html) throw new Error('index.html 结构变化：内联替换未命中');
     frame.srcdoc = patched;
@@ -696,6 +709,15 @@ html, body { background: #c7c9cf; }
             host.innerHTML = '<span style="color:#98a">（模拟宿主 app 的输入框，输入内容会落在这里）</span>';
             doc.body.insertBefore(host, doc.body.firstChild);
         }
+        // 假 App 底衬（3.75 背景模糊验收）：彩色聊天界面，键盘底板的
+        // backdrop-filter 把它磨成朦胧影子；关掉开关可对比无底衬状态。
+        if (doc && doc.body && !doc.getElementById('previewAppBackdrop')) {
+            const bd = doc.createElement('div');
+            bd.id = 'previewAppBackdrop';
+            bd.innerHTML = '<div style="height:100%;background:linear-gradient(180deg,#dbeafe 0%,#fef3c7 45%,#fce7f3 100%)"><div style="height:52px;background:linear-gradient(90deg,#6366f1,#8b5cf6 55%,#ec4899);display:flex;align-items:center;padding:0 14px;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:#fff;opacity:.9"></div><div style="flex:1;height:12px;border-radius:6px;background:rgba(255,255,255,.75)"></div><div style="width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.5)"></div></div><div style="margin:14px 12px 0;height:120px;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899 45%,#8b5cf6);position:relative"><div style="position:absolute;top:14px;left:16px;width:34px;height:34px;border-radius:50%;background:#fff7cc"></div><div style="position:absolute;bottom:14px;left:16px;right:16px;height:10px;border-radius:5px;background:rgba(255,255,255,.8)"></div></div><div style="margin:16px 12px 0;display:flex;gap:8px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:#14b8a6;flex:none"></div><div style="max-width:70%;background:#fff;border-radius:4px 14px 14px 14px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.12)"><div style="height:10px;width:150px;border-radius:5px;background:#e2e8f0"></div><div style="height:10px;width:110px;border-radius:5px;background:#e2e8f0;margin-top:6px"></div></div></div><div style="margin:12px 12px 0;display:flex;gap:8px;justify-content:flex-end"><div style="max-width:70%;background:#95ec69;border-radius:14px 4px 14px 14px;padding:10px 12px"><div style="height:10px;width:130px;border-radius:5px;background:rgba(255,255,255,.85)"></div><div style="height:10px;width:90px;border-radius:5px;background:rgba(255,255,255,.85);margin-top:6px"></div></div><div style="width:30px;height:30px;border-radius:50%;background:#f59e0b;flex:none"></div></div><div style="margin:12px 12px 0;display:flex;gap:8px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:#ec4899;flex:none"></div><div style="max-width:70%;background:#dbeafe;border-radius:4px 14px 14px 14px;padding:10px 12px"><div style="height:10px;width:170px;border-radius:5px;background:#fff"></div></div></div></div>';
+            doc.body.insertBefore(bd, doc.body.firstChild);
+        }
+        applyBehind();
         applyDefaultKbHeight();
         // 视图高度刚被 JS 改写（native 侧是首次 layout 就绪），行高必须
         // 按最终高度重算一遍。
@@ -747,10 +769,19 @@ function setMode(name) {
     // floatBand/heightCeil 都随之换值）；预览页同步这个语义。
     setTimeout(pushHello, 60);
 }
+// App 底衬开关：显隐 iframe 内的假 App 底衬（默认开）。
+function applyBehind() {
+    const doc = frame.contentDocument;
+    const el = doc && doc.getElementById('previewAppBackdrop');
+    if (el) el.style.display = document.getElementById('previewBehind').checked ? '' : 'none';
+}
+document.getElementById('previewBehind').onchange = applyBehind;
 document.getElementById('previewLocale').onchange = pushHello;
 document.getElementById('previewTheme').onchange = pushHello;
     document.getElementById('previewPreset').onchange = pushHello;
 document.getElementById('previewBottomPad').onchange = pushHello;
+document.getElementById('previewUiVersion').onchange = pushHello;
+document.getElementById('previewDigits').onchange = pushHello;
 document.getElementById('modePortrait').onclick = () => setMode('portrait');
 document.getElementById('modeLandscape').onclick = () => setMode('landscape');
 document.getElementById('modeFill').onclick = () => setMode('fill');
@@ -941,8 +972,16 @@ build();
     if (!act) return;
     const theme = params.get('theme');
     const locale = params.get('locale');
+    const uiv = params.get('uiv');
+    const digits = params.get('digits');
+    const behind = params.get('behind');
     if (theme) document.getElementById('previewTheme').value = theme;
     if (locale) document.getElementById('previewLocale').value = locale;
+    if (uiv) document.getElementById('previewUiVersion').value = uiv;
+    if (digits === '0') document.getElementById('previewDigits').checked = false;
+    if (digits === '1') document.getElementById('previewDigits').checked = true;
+    if (behind === '0') document.getElementById('previewBehind').checked = false;
+    if (behind === '1') document.getElementById('previewBehind').checked = true;
     if (params.get('mode') === 'landscape') setMode('landscape');
     const touch = (win, el, type, x, y) => el.dispatchEvent(new win.TouchEvent(type, {
         bubbles: true, cancelable: true,
@@ -952,7 +991,7 @@ build();
     const run = () => {
         const win = frame.contentWindow;
         if (!win || !win.Feelime) return;
-        if (theme || locale) pushHello();
+        if (theme || locale || uiv || digits) pushHello();
         if (act === 'qs') {
             win.Feelime.toggleSettingsPanel();
             const page = Number(params.get('page')) || 1;
@@ -972,6 +1011,16 @@ build();
             setTimeout(() => {
                 const btn = frame.contentDocument.getElementById('clipboardButton');
                 if (btn) btn.click();
+            }, 80);
+        } else if (act === 'clipsplit') {
+            // 3.75：打开剪贴板面板，再点第一条（长文本）的 ⌄，直达选词视图。
+            setTimeout(() => {
+                const btn = frame.contentDocument.getElementById('clipboardButton');
+                if (btn) btn.click();
+                setTimeout(() => {
+                    const exp = frame.contentDocument.querySelector('.clip-expand-btn');
+                    if (exp) exp.click();
+                }, 300);
             }, 80);
         }
         if (act === 't9popup' || act === 't9cancel' || act === 't9track') {

@@ -387,7 +387,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.74.14";
+  const KEYBOARD_VERSION = "3.75";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1846,6 +1846,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.preeditScrub = false;
       this.scrubGestureId = null;
       this.bottomSymSplit = false;
+      this.showKeyDigits = true;
+      this.emojiIconAlt = false;
+      this.keyboardUiVersion = "glass";
       this.floating = false;
       this.floatGeom = null;
       this.bubbleLinger = 400;
@@ -2573,34 +2576,50 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         layer.append(row);
       });
       const bottom = this.row();
-      bottom.append(this.specialKey(
-        "globe",
-        ICONS.globe,
-        () => this.call(() => Native.switchInputMethod(this.token)),
+      bottom.classList.add("kb-bottom");
+      const left = document.createElement("div");
+      left.className = "kb-bottom-side kb-bottom-left";
+      const right = document.createElement("div");
+      right.className = "kb-bottom-side kb-bottom-right";
+      const emojiKey = this.specialKey(
+        "emoji",
+        this.emojiKeyIcon(),
+        () => {
+          this.toggleEmojiKeyIcon();
+          this.runPanelStep("emoji");
+        },
         "kb-wide-1_4 kb-special"
-      ));
+      );
+      emojiKey.setAttribute("aria-label", "emoji");
+      left.append(emojiKey);
       if (this.bottomSymSplit) {
-        bottom.append(this.specialKey(
+        left.append(this.specialKey(
           "symbols",
           t("\u7B26\u53F7"),
           () => this.showSymbols(),
           "kb-mod kb-special kb-unit-9"
         ));
-        bottom.append(this.specialKey(
+        left.append(this.specialKey(
           "numpad",
           "123",
           () => this.showNumpad(),
           "kb-special kb-bottom-num kb-unit-9"
         ));
       } else {
-        bottom.append(this.specialKey("symbols", "123", () => this.showSymbols(), "kb-wide-2_1 kb-special", "numpad"));
+        left.append(this.specialKey("symbols", "123", () => this.showSymbols(), "kb-wide-1_4 kb-special", "numpad"));
       }
-      bottom.append(this.letterKey("."));
+      left.append(this.letterKey("."));
       const space = this.spaceKey();
       space.dataset.key = " ";
-      bottom.append(space);
-      bottom.append(this.cnEnKey());
-      bottom.append(this.enterKey());
+      const cnEn = this.cnEnKey();
+      cnEn.classList.remove("kb-wide-1_15");
+      cnEn.classList.add("kb-wide-1_9");
+      right.append(cnEn);
+      const enter = this.enterKey();
+      enter.classList.remove("kb-wide-2_25");
+      enter.classList.add("kb-wide-1_9");
+      right.append(enter);
+      bottom.append(left, space, right);
       layer.append(bottom);
       this.updateLabels();
     }
@@ -3712,7 +3731,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       button.dataset.key = key;
       button.dataset.lp = "popup";
       button.innerHTML = '<span class="kb-alt"></span><span class="kb-main"></span>';
-      button.querySelector(".kb-alt").textContent = this.keyAltHint(key);
+      button.querySelector(".kb-alt").textContent = this.keyAltDisplay(key);
       button.addEventListener("click", () => this.sendKey(key));
       this.bindTouch(button);
       return button;
@@ -3741,6 +3760,58 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       button.addEventListener("click", action);
       this.bindTouch(button);
       return button;
+    }
+    /** emoji 键图标（3.75）：默认线条笑脸（按当前键帽风格重绘的
+     *  描边 SVG，不是用户截图原样贴图），点一次换 😋，再点换回，
+     *  交替循环；只换图标，不影响 emoji 面板的开/关。 */
+    emojiKeyIcon() {
+      if (this.emojiIconAlt) {
+        const face = document.createElement("span");
+        face.className = "emoji-key-face";
+        face.textContent = "\u{1F60B}";
+        return face;
+      }
+      return this.emojiOutlineIcon();
+    }
+    /** 线条笑脸：外圈描边 + 两点眼睛 + 张口弧线（图二风格重绘）。 */
+    emojiOutlineIcon() {
+      const NS = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("width", "22");
+      svg.setAttribute("height", "22");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("aria-hidden", "true");
+      const ring = document.createElementNS(NS, "circle");
+      ring.setAttribute("cx", "12");
+      ring.setAttribute("cy", "12");
+      ring.setAttribute("r", "8.5");
+      ring.setAttribute("stroke", "currentColor");
+      ring.setAttribute("stroke-width", "1.7");
+      svg.append(ring);
+      for (const cx of [8.6, 15.4]) {
+        const eye = document.createElementNS(NS, "circle");
+        eye.setAttribute("cx", String(cx));
+        eye.setAttribute("cy", "9.8");
+        eye.setAttribute("r", "1.25");
+        eye.setAttribute("fill", "currentColor");
+        svg.append(eye);
+      }
+      const mouth = document.createElementNS(NS, "path");
+      mouth.setAttribute("d", "M8 13.8 Q12 17.8 16 13.8");
+      mouth.setAttribute("stroke", "currentColor");
+      mouth.setAttribute("stroke-width", "1.7");
+      mouth.setAttribute("stroke-linecap", "round");
+      mouth.setAttribute("fill", "none");
+      svg.append(mouth);
+      return svg;
+    }
+    /** 点一次翻转图标并重渲染底行 emoji 键（只找 qwerty 层的键，
+     *  九宫格里的 emoji 键不动）。 */
+    toggleEmojiKeyIcon() {
+      this.emojiIconAlt = !this.emojiIconAlt;
+      const key = document.querySelector('#qwertyLayer [data-role="emoji"]');
+      if (key) key.replaceChildren(this.emojiKeyIcon());
     }
     // ---- #H 硬件键盘：hwKey 串行队列 + revision 屏障（design
     // hardware-keyboard.md §4.1）。物理键由 native 全认领后 evaluate
@@ -4691,6 +4762,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const value = layout.alts[key];
       if (!value) return "";
       return Array.isArray(value) ? value[0] : value;
+    }
+    /** 字母上方数字角标（3.75，设置页开关 showKeyDigits）：关时
+     *  只藏数字角标（1-0），符号角标（@# 等）不受影响。 */
+    keyAltDisplay(key) {
+      const hint = this.keyAltHint(key);
+      if (this.showKeyDigits === false && /^\d$/.test(hint)) return "";
+      return hint;
     }
     /** 长按全后选：数字 + 字母组逐个（4 → [4 g h i]）。 */
     /** T9 长按（issue #9）：三行弹层——上行=字母组小写、中行=左符号
@@ -6407,7 +6485,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           alt.textContent = chinese || upper ? key.toUpperCase() : key;
         } else {
           main.textContent = chinese || upper ? key.toUpperCase() : key;
-          alt.textContent = this.keyAltHint(key);
+          alt.textContent = this.keyAltDisplay(key);
         }
       });
     }
@@ -10102,11 +10180,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const fav = document.createElement("button");
           fav.type = "button";
           fav.className = "clip-fav-btn";
-          fav.textContent = "\u2606";
+          fav.textContent = this.isFavoriteText(item.text) ? "\u2605" : "\u2606";
           fav.setAttribute("aria-label", t("\u52A0\u5230\u5E38\u7528\u8BED"));
           fav.addEventListener("click", (event) => {
             event.stopPropagation();
             this.call(() => Native.favoritesAdd(item.text, "", 1, this.token));
+            fav.textContent = "\u2605";
             this.showToast(t("\u5DF2\u52A0\u5230\u5E38\u7528\u8BED"));
           });
           const body = document.createElement("span");
@@ -10869,7 +10948,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         label.textContent = t(piece.kind);
         const value = document.createElement("span");
         value.className = "clip-split-value";
-        value.textContent = piece.value;
+        const shownValue = [...piece.value];
+        value.textContent = shownValue.length > 36 ? shownValue.slice(0, 36).join("") + "\u2026" : piece.value;
         chip.append(label, value);
         chip.addEventListener("click", () => this.pasteClipPiece(piece.value));
         chipsEl.append(chip);
@@ -10968,6 +11048,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (this.expanded) this.renderExpanded();
       }
       if (this.panelOpen && this.panelTab === "favorites") this.renderPanel();
+      if (this.panelOpen && this.panelTab === "clipboard") this.renderPanel();
+    }
+    /** 剪贴板 ☆/★ 判定：该文本是否已在常用语里（onFavorites 数据）。 */
+    isFavoriteText(text) {
+      return (this.favoriteItems || []).some((f) => f.text === text);
     }
     /* ===== native callbacks ===== */
     onBridgeHello(payload) {
@@ -11081,6 +11166,15 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (typeof payload.deleteConfirm === "boolean") {
         this.deleteConfirm = payload.deleteConfirm;
       }
+      if (typeof payload.showKeyDigits === "boolean" && payload.showKeyDigits !== this.showKeyDigits) {
+        this.showKeyDigits = payload.showKeyDigits;
+        this.rerenderLangKeys();
+        this.renderFnLabels();
+      }
+      if (typeof payload.keyboardUiVersion === "string") {
+        this.keyboardUiVersion = payload.keyboardUiVersion === "classic" ? "classic" : "glass";
+      }
+      document.documentElement.classList.toggle("glass-v2", this.keyboardUiVersion !== "classic");
       this.applyGlass(payload);
       this.applyLandscapeChrome();
       {
@@ -11728,11 +11822,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
   function applyTheme(theme) {
     if (theme !== "auto" && theme !== "light" && theme !== "dark") theme = "auto";
     const root = document.documentElement;
+    const glassV2 = root.classList.contains("glass-v2");
     if (theme !== "auto") {
       root.className = `theme-${theme}`;
     } else {
       root.className = systemThemeKnown ? `theme-${systemTheme}` : "";
     }
+    if (glassV2) root.classList.add("glass-v2");
     try {
       keyboard.swapThemeGlyph(theme);
       keyboard.applyBackground();

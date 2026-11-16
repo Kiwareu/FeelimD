@@ -326,7 +326,7 @@ object CustomPhraseStore {
                 // 整引擎重载（stabledb 生命周期绑定引擎）。迁移只发生一次
                 // （版本戳落定），不会刷屏。
                 context.sendBroadcast(
-                    android.content.Intent("com.feelime.ime.CUSTOM_PHRASES_CHANGED")
+                    android.content.Intent("com.feelimd.kiw.CUSTOM_PHRASES_CHANGED")
                         .setPackage(context.packageName),
                 )
             }

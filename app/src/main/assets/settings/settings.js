@@ -936,6 +936,12 @@ const I18N = {
         "input.feel.preeditScrubHint": "输入拼音时左右滑动空格键，移动拼音串内的光标方便修改错字；没有输入时仍移动正文光标。默认开启，不需要可在本行关掉。目前支持全拼与双拼（#103）。",
         "input.feel.bottomSymSplit": "底行符号/数字分键",
         "input.feel.bottomSymSplitHint": "开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。",
+        "input.feel.showKeyDigits": "字母上方显示数字",
+        "input.feel.showKeyDigitsHint": "开 = 字母键上方显示数字 1-0；关 = 数字消失，只剩字母。默认开。",
+        "input.feel.keyboardUiVersion": "键盘界面版本",
+        "input.feel.keyboardUiVersionHint": "液态玻璃是新版界面（发丝描边、顶光、内圈辉光）；经典是原来的键面。两版调色方式一样。",
+        "input.feel.keyboardUiVersionGlass": "液态玻璃",
+        "input.feel.keyboardUiVersionClassic": "经典",
         "voice.readyHaptic": "语音就绪震动",
         "voice.readyHapticHint": "语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。",
         "input.feel.keyBubbleHint": "按下按键时在键帽正上方放大显示所按的字符，松手后停留一会儿再消失（默认开启）。",
@@ -1847,6 +1853,12 @@ const I18N = {
         "input.feel.preeditScrubHint": "While composing, swipe the space key sideways to move the caret inside the pinyin string for quick edits; with no composition it still moves the text caret. On by default; turn it off from this row. Pinyin & double-pinyin only for now (#103).",
         "input.feel.bottomSymSplit": "Split bottom symbols/digits key",
         "input.feel.bottomSymSplitHint": "Splits the bottom-left [123] key into [Symbols] and [123]: symbols opens the symbol panel, 123 goes straight to the number pad. Off by default; when off, tapping 123 opens symbols and long-press opens the number pad (#113).",
+        "input.feel.showKeyDigits": "Show digits above letters",
+        "input.feel.showKeyDigitsHint": "On = digits 1-0 show above the letter keys; off = digits hidden, letters only. On by default.",
+        "input.feel.keyboardUiVersion": "Keyboard interface version",
+        "input.feel.keyboardUiVersionHint": "Liquid glass is the new interface (hairline edge, top sheen, inner glow); classic is the previous key surface. Both tint the same way.",
+        "input.feel.keyboardUiVersionGlass": "Liquid glass",
+        "input.feel.keyboardUiVersionClassic": "Classic",
         "voice.readyHaptic": "Vibrate when voice is ready",
         "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
         "input.feel.keyBubbleHint": "Enlarge the pressed character right above the keycap and linger briefly after release (on by default).",
@@ -2009,7 +2021,13 @@ function call(action, ...args) {
 }
 
 function setTheme(theme) {
-    if (theme === "light" || theme === "dark") document.documentElement.className = `theme-${theme}`;
+    if (theme === "light" || theme === "dark") {
+        // 3.75：className 是整串重写——glass-v2（键盘界面版本）与主题
+        // 正交，换主题不能把它洗掉。
+        const glassV2 = document.documentElement.classList.contains("glass-v2");
+        document.documentElement.className = `theme-${theme}`;
+        if (glassV2) document.documentElement.classList.add("glass-v2");
+    }
 }
 
 /** 左上角 logo 换成真实的输入法应用图标（桥下发 base64）。失败/缺失
@@ -3033,6 +3051,11 @@ function renderFeel(state) {
     setToggle("keyHaptic", state.keyHaptic);
     setToggle("preeditBold", state.preeditBold);
     setToggle("preeditFrame", state.preeditFrame);
+    setToggle("showKeyDigits", state.showKeyDigits !== false);
+    const uiVersion = $("keyboardUiVersion");
+    if (uiVersion) uiVersion.value = state.keyboardUiVersion === "classic" ? "classic" : "glass";
+    // 3.75：设置页本身也按所选版本换材质（与键盘同 class）。
+    document.documentElement.classList.toggle("glass-v2", state.keyboardUiVersion !== "classic");
 }
 
 /** 双拼方案 + 键位图（dp-data.js 的 window.FeelimeDp 提供各方案键位）。 */
@@ -4652,6 +4675,8 @@ $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.ta
 $("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));
+$("showKeyDigits").addEventListener("change", event => call("setShowKeyDigits", event.target.checked));
+$("keyboardUiVersion").addEventListener("change", event => call("setKeyboardUiVersion", event.target.value));
 $("voiceReadyHaptic").addEventListener("change", event => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", event => {
     call("setBubbleLinger", parseInt(event.target.value, 10) || 0);

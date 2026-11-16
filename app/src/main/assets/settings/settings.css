@@ -251,6 +251,11 @@ main { max-width: 680px; margin: 0 auto; }
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 10px 28px #0002;
     animation: rise .26s ease both;
 }
+/* 3.75 液态玻璃新版（html.glass-v2）：设置页卡片也加强顶光 + 内圈
+ * 辉光（与键盘同材质语言）；经典版不动。 */
+html.glass-v2 .card {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 0 16px rgba(255, 255, 255, .05), 0 10px 28px #0002;
+}
 
 .section-heading {
     display: flex;
@@ -972,10 +977,12 @@ details summary {
     background-size: cover; background-position: center; }
 /* 3.74.11：预览系数与 keyboard.css 同步上调（键 dark 16%→55% 是
  * 最大一处：预览比键盘本身还淡，调色时看到的比装上的淡，无法所
- * 见即所得；board 22%/32%→40%/45%，accent 62%→85%）。 */
+ * 见即所得；board 22%/32%→40%/45%，accent 62%→85%）。
+ * 3.75：亮组亮度与 keyboard.css 同步改随饱和度走（键 96%→96%-18%·sat、
+ * special 72%→90%-14%·sat、板底 88%→88%-4%·sat），所见即所得。 */
 .tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(40% * var(--pv-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--pv-bg-lt, 0)));
     background-image: var(--pv-bg-img-dark, none); }
-.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(45% * var(--pv-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--pv-bg-lt, 0)));
+.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(45% * var(--pv-sat, 1)) calc(88% - 4% * var(--pv-sat, 1) + (100% - 88%) * 0.35 * var(--pv-bg-lt, 0)));
     background-image: var(--pv-bg-img-light, none); }
 .tp-row { display: flex; gap: 5px; }
 .tp-key { display: inline-flex; align-items: center; justify-content: center;
@@ -990,16 +997,16 @@ details summary {
 .tp-board-dark .tp-special-key {
     background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(48% * var(--pv-key-sat, var(--pv-sat, 1))) calc(26% + (100% - 26%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #e8e8e8; }
-/* 亮组键帽：对齐 keyboard.css html.theme-light 公式（键 65%/97%、
- * accent 85%/42%、special 55%/72%）。 */
+/* 亮组键帽：对齐 keyboard.css html.theme-light 公式（键 65%/96%-18%·sat、
+ * accent 85%/42%、special 55%/90%-14%·sat）。 */
 .tp-board-light .tp-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(65% * var(--pv-key-sat, var(--pv-sat, 1))) calc(97% + (100% - 97%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(65% * var(--pv-key-sat, var(--pv-sat, 1))) calc(96% - 18% * var(--pv-key-sat, var(--pv-sat, 1)) + (100% - 96%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #181818; }
 .tp-board-light .tp-accent-key {
     background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(85% * var(--pv-key-sat, var(--pv-sat, 1))) calc(42% + (100% - 42%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(60% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + (100% - 95%) * 0.75 * var(--pv-key-lt, 0))); }
 .tp-board-light .tp-special-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(55% * var(--pv-key-sat, var(--pv-sat, 1))) calc(72% + (100% - 72%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(55% * var(--pv-key-sat, var(--pv-sat, 1))) calc(90% - 14% * var(--pv-key-sat, var(--pv-sat, 1)) + (100% - 90%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #181818; }
 .preset-swatches { display: flex; gap: 10px; align-items: center; flex: none; }
 .preset-swatch {

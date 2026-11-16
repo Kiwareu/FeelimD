@@ -53,7 +53,7 @@ const val ACTION_FUZZY_PINYIN_CHANGED = "com.feelime.ime.FUZZY_PINYIN_CHANGED"
 
 /** 自定义短语变更广播：设置页发（saveCustomPhrases 已落盘+派生 txt），
  *  IME 收到后整引擎重载（stabledb 生命周期绑定引擎而非会话）。 */
-const val ACTION_CUSTOM_PHRASES_CHANGED = "com.feelime.ime.CUSTOM_PHRASES_CHANGED"
+const val ACTION_CUSTOM_PHRASES_CHANGED = "com.feelimd.kiw.CUSTOM_PHRASES_CHANGED"
 
 /** 设置页改动键盘侧偏好（底部留白/手感参数）后通知 IME 重推 hello。 */
 const val ACTION_KEYBOARD_PREFS_CHANGED = "com.feelime.ime.KEYBOARD_PREFS_CHANGED"
@@ -202,6 +202,27 @@ const val PREF_DELETE_CONFIRM = "delete_confirm"
 fun readDeleteConfirm(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_DELETE_CONFIRM, true)
+
+/** 字母上方数字角标（3.75）：开 = 字母键上方显示数字 1-0（默认开，
+ *  保持现有外观）；关 = 只藏数字角标，符号角标不受影响。 */
+const val PREF_SHOW_KEY_DIGITS = "show_key_digits"
+
+fun readShowKeyDigits(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_SHOW_KEY_DIGITS, true)
+
+/** 键盘界面版本（3.75）：classic = 经典版，glass = 液态玻璃新版
+ *  （默认）。非法值一律回落 glass；两版共用同一套调色管线。 */
+const val PREF_KEYBOARD_UI_VERSION = "keyboard_ui_version"
+const val KEYBOARD_UI_VERSION_CLASSIC = "classic"
+const val KEYBOARD_UI_VERSION_GLASS = "glass"
+
+fun readKeyboardUiVersion(context: Context): String {
+    val raw = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_KEYBOARD_UI_VERSION, KEYBOARD_UI_VERSION_GLASS)
+    return if (raw == KEYBOARD_UI_VERSION_CLASSIC) KEYBOARD_UI_VERSION_CLASSIC
+    else KEYBOARD_UI_VERSION_GLASS
+}
 
 /** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。
  *  #50 起由 space_hold_tap（虚拟定制键）接管，此布尔仅作读侧迁移源
@@ -1087,6 +1108,8 @@ class SettingsBridge(
             .put("keyHapticStrength", readKeyHapticStrength(context))
             .put("keyHapticFollowSystem", readKeyHapticFollowSystem(context))
             .put("deleteConfirm", readDeleteConfirm(context))
+            .put("showKeyDigits", readShowKeyDigits(context))
+            .put("keyboardUiVersion", readKeyboardUiVersion(context))
             // 设备能力：无幅度马达的机型强度档按时长近似（hint 说明）。
             .put("keyHapticAmplitude", hapticAmplitudeSupported())
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
@@ -2271,6 +2294,30 @@ class SettingsBridge(
     fun setBottomSymSplit(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_BOTTOM_SYM_SPLIT, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 字母上方数字角标（3.75，默认开）。 */
+    @JavascriptInterface
+    fun setShowKeyDigits(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_SHOW_KEY_DIGITS, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 键盘界面版本（3.75）：classic | glass，非法值回落 glass。 */
+    @JavascriptInterface
+    fun setKeyboardUiVersion(version: String, token: String) = guarded(token) {
+        val value = if (version == KEYBOARD_UI_VERSION_CLASSIC) KEYBOARD_UI_VERSION_CLASSIC
+        else KEYBOARD_UI_VERSION_GLASS
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_KEYBOARD_UI_VERSION, value).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

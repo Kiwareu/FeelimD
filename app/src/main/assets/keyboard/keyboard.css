@@ -35,20 +35,27 @@
     /* 液态玻璃：键帽默认略透（文字仍实色）。用户「按键不透明度」
      * 仍写这个变量，100 = 完全实心。 */
     --key-alpha: 0.86;
-    /* 面板通透度仍由设置控制。底板另有一层更厚的霜，避免页面文字穿透。 */
+    /* 3.75 背景模糊（苹果原生键盘式）：底板不再是近不透明的厚霜——
+     * sheet 渐变只留 .62–.72 的半透明底色，配合 --glass-blur 22px，
+     * 后面的 App 内容透过来是柔和的朦胧影子（看得出颜色和形状、看不
+     * 清文字）；完全透明不行、糊成纯色也不行。省电模式 blur 归零时
+     * 下方 body.power-saving 规则把底色补回实色 --bg，避免无模糊
+     * 透出清晰文字。 */
     --panel-alpha: 0.72;
-    --glass-blur: 28px;
+    --glass-blur: 22px;
     /* 3.74.11：饱和度设计系数上调——旧系数把滑杆顶格也压在
      * 22%（键）/62%（accent），再鲜艳的主题都显淡；磨砂
      * （--key-alpha 0.86 透底 + 28px 模糊）又冲掉一层。新系数
      * 让滑杆拉满 = 鲜艳准确（键 55%/accent 85%），默认樱花粉
      * （sat 52）也真正显粉；低饱和皮肤（墨/霜）仍映射得低，
      * 层次不变。设置页预览系数同步对齐（见 settings.css）。 */
-    --sheet-top: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) 22% / .90);
-    --sheet-bottom: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 12% / .94);
+    --sheet-top: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) 22% / .66);
+    --sheet-bottom: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 12% / .72);
     --bar-l: 18%;
     --glass-sheen: rgba(255, 255, 255, .55);
     --glass-edge: rgba(255, 255, 255, .28);
+    /* 3.75 液态玻璃新版发丝描边（BiliPai 式 0.7dp 描边转写）：暗色白 14%。 */
+    --glass-v2-edge: rgba(255, 255, 255, .14);
     --glass-veil: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) 16% / .72);
     --glass-veil-2: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) 10% / .82);
     --bg: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--bg-lt, 0)));
@@ -84,10 +91,15 @@ html.theme-light {
     color-scheme: light;
     /* 3.74.11：亮模式饱和度系数同步上调（同 dark 模式原因：滑杆
      * 顶格键只有 38%，显淡；新系数键 65%/accent 85%。 */
-    --key: hsl(var(--key-hue) calc(65% * var(--key-sat, 1)) calc(96% + (100% - 96%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --special: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(90% + (100% - 90%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --pressed: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(86% + (100% - 86%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --bg: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
+    /* 3.75 浅色根因重做：旧式把亮度钉在 96%——HSL 里 L=96% 时饱和度再
+     * 高也是近白（3.74.11 只抬系数治标）。新式亮度随饱和度走
+     * （主流皮肤做法：键帽=主题色向白的 tint）：sat=1 时键 L=78%
+     * （肉眼浓艳），默认樱花 sat=0.52 时 L≈87%（柔粉），sat=0
+     * 时回 96% 白（黑白灰不变）。亮度偏移（--key-lt）仍叠加。 */
+    --key: hsl(var(--key-hue) calc(65% * var(--key-sat, 1)) calc(96% - 18% * var(--key-sat, 1) + (100% - 96%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --special: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(90% - 14% * var(--key-sat, 1) + (100% - 90%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --pressed: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(86% - 12% * var(--key-sat, 1) + (100% - 86%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --bg: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(88% - 4% * var(--bg-sat, 1) + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
     --text: #181818;
     /* The old #b0b0b0 sat at ~2.1:1 on the light surfaces -
      * quick-settings text was effectively invisible. #5c616b keeps the
@@ -99,12 +111,12 @@ html.theme-light {
     --accent-strong: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
     --danger: #d93025;
     --recording: #e5484d;
-    --panel: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-    --panel-a: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-    --pill: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
-    --logo-bg: hsl(var(--bg-hue) calc(30% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+    --panel: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% - 6% * var(--bg-sat, 1) + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --panel-a: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% - 6% * var(--bg-sat, 1) + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --pill: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(99% - 8% * var(--bg-sat, 1) + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+    --logo-bg: hsl(var(--bg-hue) calc(30% * var(--bg-sat, 1)) calc(99% - 6% * var(--bg-sat, 1) + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
     --icon: hsl(var(--bg-hue) calc(10% * var(--bg-sat, 1)) calc(47% + (100% - 47%) * 0.35 * var(--bg-lt, 0)));
-    --card-bg: hsl(var(--bg-hue) calc(28% * var(--bg-sat, 1)) calc(97% + (100% - 97%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --card-bg: hsl(var(--bg-hue) calc(28% * var(--bg-sat, 1)) calc(97% - 6% * var(--bg-sat, 1) + (100% - 97%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
     --card-text: #1c1c24;
     --card-sub: #6a6a78;
     --input-placeholder: #5c616b;
@@ -113,14 +125,15 @@ html.theme-light {
     --accent-ink: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
     --line: hsl(var(--bg-hue) calc(38% * var(--bg-sat, 1)) calc(82% + (100% - 82%) * 0.35 * var(--bg-lt, 0)));
     --scrim: #ffffffb0;
-    --mod-active-bg: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(89% + (100% - 89%) * 0.75 * var(--key-lt, 0)));
+    --mod-active-bg: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(89% - 10% * var(--key-sat, 1) + (100% - 89%) * 0.75 * var(--key-lt, 0)));
+    --glass-v2-edge: rgba(0, 0, 0, .14);
     --bar-l: 96%;
-    --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) 97% / .90);
-    --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) 90% / .84);
+    --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(97% - 8% * var(--bg-sat, 1)) / .62);
+    --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) calc(90% - 8% * var(--bg-sat, 1)) / .68);
     --glass-sheen: rgba(255, 255, 255, .92);
     --glass-edge: rgba(255, 255, 255, .55);
-    --glass-veil: hsl(var(--bg-hue) calc(52% * var(--bg-sat, 1)) 96% / .78);
-    --glass-veil-2: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 90% / .86);
+    --glass-veil: hsl(var(--bg-hue) calc(52% * var(--bg-sat, 1)) calc(96% - 8% * var(--bg-sat, 1)) / .78);
+    --glass-veil-2: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(90% - 6% * var(--bg-sat, 1)) / .86);
 }
 
 /* ===== #31 预置色调：六预置=六个固定 --kb-hue（classic=默认绿 160），
@@ -143,38 +156,41 @@ html.theme-dark {
 @media (prefers-color-scheme: light) {
     html:not(.theme-light):not(.theme-dark) {
         color-scheme: light;
-        --key: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(96% + (100% - 96%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-        --special: hsl(var(--key-hue) calc(32% * var(--key-sat, 1)) calc(90% + (100% - 90%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-        --pressed: hsl(var(--key-hue) calc(36% * var(--key-sat, 1)) calc(86% + (100% - 86%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-        --bg: hsl(var(--bg-hue) calc(32% * var(--bg-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
+        /* 3.75：与 html.theme-light 同步——3.74.11 只改了 theme-light，auto
+         * 模式（未等 bridge 报主题前）仍走这组旧系数（键 38%/accent 62%）。 */
+        --key: hsl(var(--key-hue) calc(65% * var(--key-sat, 1)) calc(96% - 18% * var(--key-sat, 1) + (100% - 96%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+        --special: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(90% - 14% * var(--key-sat, 1) + (100% - 90%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+        --pressed: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(86% - 12% * var(--key-sat, 1) + (100% - 86%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+        --bg: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(88% - 4% * var(--bg-sat, 1) + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
         --text: #181818;
         --muted: #5c616b; /* See html.theme-light */
-        --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)));
-    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
+        --accent: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)));
+        --accent-strong: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
         --danger: #d93025;
         --recording: #e5484d;
-        --panel: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-        --panel-a: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-        --pill: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
-        --logo-bg: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+        --panel: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% - 6% * var(--bg-sat, 1) + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+        --panel-a: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% - 6% * var(--bg-sat, 1) + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+        --pill: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(99% - 8% * var(--bg-sat, 1) + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+        --logo-bg: hsl(var(--bg-hue) calc(30% * var(--bg-sat, 1)) calc(99% - 6% * var(--bg-sat, 1) + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
         --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(47% + (100% - 47%) * 0.35 * var(--bg-lt, 0)));
-        --card-bg: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(97% + (100% - 97%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+        --card-bg: hsl(var(--bg-hue) calc(28% * var(--bg-sat, 1)) calc(97% - 6% * var(--bg-sat, 1) + (100% - 97%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
         --card-text: #1c1c24;
         --card-sub: #6a6a78;
         --input-placeholder: #5c616b;
         --key-subtext: #5c616b;
-        --accent-text: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(26% + (100% - 26%) * 0.75 * var(--key-lt, 0)));
-    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
-        --line: hsl(var(--bg-hue) calc(26% * var(--bg-sat, 1)) calc(82% + (100% - 82%) * 0.35 * var(--bg-lt, 0)));
+        --accent-text: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(26% + (100% - 26%) * 0.75 * var(--key-lt, 0)));
+        --accent-ink: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
+        --line: hsl(var(--bg-hue) calc(38% * var(--bg-sat, 1)) calc(82% + (100% - 82%) * 0.35 * var(--bg-lt, 0)));
         --scrim: #ffffffb0;
-        --mod-active-bg: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(89% + (100% - 89%) * 0.75 * var(--key-lt, 0)));
+        --mod-active-bg: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(89% - 10% * var(--key-sat, 1) + (100% - 89%) * 0.75 * var(--key-lt, 0)));
         --bar-l: 96%;
-        --sheet-top: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 97% / .90);
-        --sheet-bottom: hsl(var(--bg-hue) calc(42% * var(--bg-sat, 1)) 90% / .84);
+        --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(97% - 8% * var(--bg-sat, 1)) / .62);
+        --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) calc(90% - 8% * var(--bg-sat, 1)) / .68);
         --glass-sheen: rgba(255, 255, 255, .92);
         --glass-edge: rgba(255, 255, 255, .55);
-        --glass-veil: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) 96% / .78);
-        --glass-veil-2: hsl(var(--bg-hue) calc(36% * var(--bg-sat, 1)) 90% / .86);
+        --glass-veil: hsl(var(--bg-hue) calc(52% * var(--bg-sat, 1)) calc(96% - 8% * var(--bg-sat, 1)) / .78);
+        --glass-veil-2: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(90% - 6% * var(--bg-sat, 1)) / .86);
+        --glass-v2-edge: rgba(0, 0, 0, .14);
     }
 }
 
@@ -706,8 +722,8 @@ body[data-bg-image="on"] #softKeyboard { background: transparent; }
         linear-gradient(180deg, var(--glass-sheen), transparent 24%),
         radial-gradient(70% 42% at 50% -8%, rgba(255, 255, 255, .42), transparent 68%),
         linear-gradient(180deg, var(--sheet-top), var(--sheet-bottom));
-    -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.45);
-    backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.45);
+    -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(1.45);
+    backdrop-filter: blur(var(--glass-blur, 22px)) saturate(1.45);
 }
 body[data-bg-image="on"] #softKeyboard {
     background: transparent;
@@ -720,8 +736,19 @@ body[data-bg-image="on"] #glassField {
     backdrop-filter: none;
 }
 body[data-bg-image="on"] #bgImage {
-    filter: blur(calc(var(--glass-blur, 28px) + 10px));
+    filter: blur(calc(var(--glass-blur, 22px) + 10px));
     transform: scale(1.14);
+}
+/* 3.75 省电模式：blur 被 applyGlass 强制归 0，半透明底板会直接透出
+ * 下方 App 的清晰文字——底色补回实色 --bg（上沿高光保留），同时显
+ * 式关掉 backdrop-filter。背景图模式不进这条（veil + 自身模糊已够）。 */
+body.power-saving:not([data-bg-image="on"]) #glassField {
+    background:
+        linear-gradient(180deg, var(--glass-sheen), transparent 24%),
+        radial-gradient(70% 42% at 50% -8%, rgba(255, 255, 255, .42), transparent 68%),
+        var(--bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 /* 拼音加粗（issue #8）：设置开关，默认关。 */
 body[data-preedit-bold="1"] #preeditLine { font-weight: 600; }
@@ -839,8 +866,13 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     position: fixed;
     z-index: 37;
     left: 50%;
-    transform: translateX(-50%);
+    /* 3.75：旧版没有 top/max-height/overflow——卡片按文档流位置
+     * 顶出视口、内容一多就下滑卡住；现居中 + 自身可滚动。 */
+    top: 50%;
+    transform: translate(-50%, -50%);
     width: min(348px, calc(100% - 16px));
+    max-height: min(78vh, 560px);
+    overflow-y: auto;
 }
 #clipSplitCard.open { display: block; }
 #clipSplitCard[hidden] { display: none; }
@@ -1115,6 +1147,34 @@ body.landscape { --kb-gap: 6px; }
     transform: scale(0.94);
     transition-duration: 45ms;
 }
+/* ===== 液态玻璃新版（3.75，html.glass-v2）=====
+ * BiliPai 式材质语言（Compose 侧 drawBackdrop + 0.7dp 描边 + 顶光 +
+ * 内圈辉光，转写成 WebView 可用的 CSS）：底色仍是 --key/--bg 令牌
+ * （调色管线两版共用，调色在两版下都生效）；发丝描边 1px +
+ * 顶部高光渐变 + 内圈辉光 + 轻投影。模糊沿用 --glass-blur（用户
+ * 磨砂滑杆），不另起大模糊——重质感不靠糊。折射透镜（lens）CSS
+ * 做不了，以高光 + 内圈辉光近似。经典版（无 glass-v2）一律不动。
+ * 省电模式下高光/投影去掉（只留描边）。 */
+html.glass-v2 .kb-key,
+html.glass-v2 .sym-tab {
+    border: 1px solid var(--glass-v2-edge);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, 0) 45%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 0 12px rgba(255, 255, 255, .07), 0 2px 6px rgba(0, 0, 0, .10);
+}
+html.glass-v2 .pc-card,
+html.glass-v2 #panelLayer {
+    border: 1px solid var(--glass-v2-edge);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 24px rgba(0, 0, 0, .16);
+}
+html.glass-v2 #candidateBar .tool,
+html.glass-v2 #toolboxRow .tool {
+    border: 1px solid var(--glass-v2-edge);
+}
+html.glass-v2 body.power-saving .kb-key,
+html.glass-v2 body.power-saving .sym-tab {
+    background-image: none;
+    box-shadow: none;
+}
 .candidate { transition: transform 100ms ease-out, background-color 100ms ease-out; }
 .candidate:active, .candidate.active-touch {
     transform: scale(0.97);
@@ -1194,6 +1254,14 @@ body[data-cap-single="on"] .kb-key.kb-letter .kb-main {
 .kb-special { background: var(--special); font-size: min(calc(15px * var(--keycap-font-scale, 1)), max(15px, calc(var(--kb-row-h, 44px) - 16px))); font-weight: 500; }
 .kb-mod.active, .kb-mod.locked { color: var(--accent-text); background: var(--mod-active-bg, #103a24); box-shadow: inset 0 0 0 1px var(--accent); }
 .kb-wide-1_4 { flex: 1.4; }
+/* 3.75：底行拼/En 与换行（1.15/2.25 → 1.9），配三区等宽居中。 */
+.kb-wide-1_9 { flex: 1.9; }
+/* 3.75 底行三区：左区/空格/右区等宽 flex（3.8 / 4.15 / 3.8），空格
+ * （语音）天然居中；区内键宽只影响区内分配，不漂移中心。区是
+ * .kb-row 的直接 flex 子项，区内再 flex 排键（同 gap）。 */
+.kb-bottom-side { flex: 3.8; min-width: 0; display: flex; gap: var(--kb-gap); }
+.kb-bottom-left { justify-content: flex-start; }
+.kb-bottom-right { justify-content: flex-end; }
 .kb-wide-2_1 { flex: 2.1; }
 .kb-wide-2_25 { flex: 2.25; }
 .kb-wide-1_15 { flex: 1.15; }
@@ -1903,6 +1971,8 @@ body.landscape .ink-rail .kb-key {
     padding: 0;
 }
 .emoji-key:active { background: var(--pressed); }
+/* 3.75 emoji 键图标交替态（图一）：系统 emoji 字形 😋，无底色问题。 */
+.emoji-key-face { font-size: 22px; line-height: 1; }
 .emoji-cats { display: flex; gap: 4px; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
 body.landscape .num-grid { gap: 3px; }
 
@@ -1934,6 +2004,12 @@ body.landscape .num-grid { gap: 3px; }
     background: var(--key-subtext);
     pointer-events: none;
 }
+/* 3.75：123（numpad）/ 语音（空格 space-hold）/ 拼En（mode-menu）
+ * 三个键的长按黑点只藏显示——display:none 只关 ::after 视觉，
+ * 长按绑定（data-lp + 手势层）一律不动。Shift（lock）黑点保留。 */
+.kb-key[data-lp="numpad"]::after,
+.kb-key[data-lp="mode-menu"]::after,
+.kb-key[data-lp="space-hold"]::after { display: none; }
 
 /* In-space mic glyph: the space key shows ONLY
  * a centered mic - the mode shorthand lives on the adjacent toggle key.

@@ -37,7 +37,7 @@ SH
     cat > "$T/sdk/build-tools/99.0.0/aapt2" <<'SH'
 #!/usr/bin/env bash
 [ "$1" = dump ] && [ "$2" = badging ] && \
-  echo "package: name='com.feelime.ime' versionCode='69' versionName='9.9.9'"
+  echo "package: name='com.feelimd.kiw' versionCode='69' versionName='9.9.9'"
 exit 0
 SH
     # stub apksigner：吐 release 签名 DN

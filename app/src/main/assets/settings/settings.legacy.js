@@ -1022,6 +1022,12 @@ const I18N = {
     "input.feel.preeditScrubHint": "\u8F93\u5165\u62FC\u97F3\u65F6\u5DE6\u53F3\u6ED1\u52A8\u7A7A\u683C\u952E\uFF0C\u79FB\u52A8\u62FC\u97F3\u4E32\u5185\u7684\u5149\u6807\u65B9\u4FBF\u4FEE\u6539\u9519\u5B57\uFF1B\u6CA1\u6709\u8F93\u5165\u65F6\u4ECD\u79FB\u52A8\u6B63\u6587\u5149\u6807\u3002\u9ED8\u8BA4\u5F00\u542F\uFF0C\u4E0D\u9700\u8981\u53EF\u5728\u672C\u884C\u5173\u6389\u3002\u76EE\u524D\u652F\u6301\u5168\u62FC\u4E0E\u53CC\u62FC\uFF08#103\uFF09\u3002",
     "input.feel.bottomSymSplit": "\u5E95\u884C\u7B26\u53F7/\u6570\u5B57\u5206\u952E",
     "input.feel.bottomSymSplitHint": "\u5F00\u542F\u540E\u952E\u76D8\u5E95\u884C\u5DE6\u4E0B\u7684\u3010123\u3011\u62C6\u6210\u3010\u7B26\u53F7\u3011\u548C\u3010123\u3011\u4E24\u4E2A\u952E\uFF1A\u7B26\u53F7\u8FDB\u7B26\u53F7\u9762\u677F\uFF0C123 \u76F4\u63A5\u8FDB\u6570\u5B57\u952E\u76D8\u3002\u9ED8\u8BA4\u5173\u95ED\uFF0C\u5173\u95ED\u65F6\u70B9 123 \u8FDB\u7B26\u53F7\u9762\u677F\u3001\u957F\u6309\u8FDB\u6570\u5B57\u952E\u76D8\uFF08#113\uFF09\u3002",
+    "input.feel.showKeyDigits": "\u5B57\u6BCD\u4E0A\u65B9\u663E\u793A\u6570\u5B57",
+    "input.feel.showKeyDigitsHint": "\u5F00 = \u5B57\u6BCD\u952E\u4E0A\u65B9\u663E\u793A\u6570\u5B57 1-0\uFF1B\u5173 = \u6570\u5B57\u6D88\u5931\uFF0C\u53EA\u5269\u5B57\u6BCD\u3002\u9ED8\u8BA4\u5F00\u3002",
+    "input.feel.keyboardUiVersion": "\u952E\u76D8\u754C\u9762\u7248\u672C",
+    "input.feel.keyboardUiVersionHint": "\u6DB2\u6001\u73BB\u7483\u662F\u65B0\u7248\u754C\u9762\uFF08\u53D1\u4E1D\u63CF\u8FB9\u3001\u9876\u5149\u3001\u5185\u5708\u8F89\u5149\uFF09\uFF1B\u7ECF\u5178\u662F\u539F\u6765\u7684\u952E\u9762\u3002\u4E24\u7248\u8C03\u8272\u65B9\u5F0F\u4E00\u6837\u3002",
+    "input.feel.keyboardUiVersionGlass": "\u6DB2\u6001\u73BB\u7483",
+    "input.feel.keyboardUiVersionClassic": "\u7ECF\u5178",
     "voice.readyHaptic": "\u8BED\u97F3\u5C31\u7EEA\u9707\u52A8",
     "voice.readyHapticHint": "\u8BED\u97F3\u6A21\u578B\u52A0\u8F7D\u5B8C\u6210\u3001\u5F00\u59CB\u8046\u542C\u65F6\u9707\u52A8\u63D0\u793A\u4E00\u4E0B\uFF1B\u6A21\u578B\u5DF2\u5C31\u7EEA\u7684\u518D\u6B21\u8FDB\u5165\u4E0D\u9707\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09\u3002",
     "input.feel.keyBubbleHint": "\u6309\u4E0B\u6309\u952E\u65F6\u5728\u952E\u5E3D\u6B63\u4E0A\u65B9\u653E\u5927\u663E\u793A\u6240\u6309\u7684\u5B57\u7B26\uFF0C\u677E\u624B\u540E\u505C\u7559\u4E00\u4F1A\u513F\u518D\u6D88\u5931\uFF08\u9ED8\u8BA4\u5F00\u542F\uFF09\u3002",
@@ -1935,6 +1941,12 @@ const I18N = {
     "input.feel.preeditScrubHint": "While composing, swipe the space key sideways to move the caret inside the pinyin string for quick edits; with no composition it still moves the text caret. On by default; turn it off from this row. Pinyin & double-pinyin only for now (#103).",
     "input.feel.bottomSymSplit": "Split bottom symbols/digits key",
     "input.feel.bottomSymSplitHint": "Splits the bottom-left [123] key into [Symbols] and [123]: symbols opens the symbol panel, 123 goes straight to the number pad. Off by default; when off, tapping 123 opens symbols and long-press opens the number pad (#113).",
+    "input.feel.showKeyDigits": "Show digits above letters",
+    "input.feel.showKeyDigitsHint": "On = digits 1-0 show above the letter keys; off = digits hidden, letters only. On by default.",
+    "input.feel.keyboardUiVersion": "Keyboard interface version",
+    "input.feel.keyboardUiVersionHint": "Liquid glass is the new interface (hairline edge, top sheen, inner glow); classic is the previous key surface. Both tint the same way.",
+    "input.feel.keyboardUiVersionGlass": "Liquid glass",
+    "input.feel.keyboardUiVersionClassic": "Classic",
     "voice.readyHaptic": "Vibrate when voice is ready",
     "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
     "input.feel.keyBubbleHint": "Enlarge the pressed character right above the keycap and linger briefly after release (on by default).",
@@ -2095,7 +2107,11 @@ function call(action, ...args) {
 }
 __name(call, "call");
 function setTheme(theme) {
-  if (theme === "light" || theme === "dark") document.documentElement.className = `theme-${theme}`;
+  if (theme === "light" || theme === "dark") {
+    const glassV2 = document.documentElement.classList.contains("glass-v2");
+    document.documentElement.className = `theme-${theme}`;
+    if (glassV2) document.documentElement.classList.add("glass-v2");
+  }
 }
 __name(setTheme, "setTheme");
 function applyAppIcon(dataUri) {
@@ -2963,6 +2979,10 @@ function renderFeel(state) {
   setToggle("keyHaptic", state.keyHaptic);
   setToggle("preeditBold", state.preeditBold);
   setToggle("preeditFrame", state.preeditFrame);
+  setToggle("showKeyDigits", state.showKeyDigits !== false);
+  const uiVersion = $("keyboardUiVersion");
+  if (uiVersion) uiVersion.value = state.keyboardUiVersion === "classic" ? "classic" : "glass";
+  document.documentElement.classList.toggle("glass-v2", state.keyboardUiVersion !== "classic");
 }
 __name(renderFeel, "renderFeel");
 function renderDoublePinyin(state) {
@@ -4422,6 +4442,8 @@ $("keyBubble").addEventListener("change", (event) => call("setKeyBubble", event.
 $("cnEnComposingGuard").addEventListener("change", (event) => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", (event) => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", (event) => call("setBottomSymSplit", event.target.checked));
+$("showKeyDigits").addEventListener("change", (event) => call("setShowKeyDigits", event.target.checked));
+$("keyboardUiVersion").addEventListener("change", (event) => call("setKeyboardUiVersion", event.target.value));
 $("voiceReadyHaptic").addEventListener("change", (event) => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", (event) => {
   call("setBubbleLinger", parseInt(event.target.value, 10) || 0);

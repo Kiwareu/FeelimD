@@ -38,7 +38,7 @@ import org.json.JSONObject
  *   全量回滚到内置词库，杜绝半截产物进入运行时。
  */
 object BaseDictInstaller {
-    const val ACTION_BASE_DICT_CHANGED = "com.feelime.ime.BASE_DICT_CHANGED"
+    const val ACTION_BASE_DICT_CHANGED = "com.feelimd.kiw.BASE_DICT_CHANGED"
     const val PREF_FILE = "feelime_base_dict"
     private const val KEY_MODE = "mode" // builtin | custom
     private const val KEY_NAME = "name"

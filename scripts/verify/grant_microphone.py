@@ -10,14 +10,14 @@ import time
 
 SERIAL = os.environ.get("FEELIME_ADB_SERIAL", os.environ.get("ANDROID_SERIAL", ""))
 
-# 3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
+# 3.75 起正式包名改成 com.feelimd.kiw（3.74.12 起 debug 构建就是正式包名，不再带 .dev
 # 后缀）：显式 FEELIME_PKG 优先，否则直接用正式包名
 # （与 device_verify._resolve_pkg 同规）。
 def _resolve_pkg():
     explicit = os.environ.get("FEELIME_PKG", "").strip()
     if explicit:
         return explicit
-    return "com.feelime.ime"
+    return "com.feelimd.kiw"
 
 
 PKG = _resolve_pkg()
@@ -64,7 +64,7 @@ if not tap_text(xml, ["仅在使用中允许", "使用应用时允许", "允许"
     sys.exit(1)
 time.sleep(1.0)
 sh(f"ime set {IME_SVC}")
-out = sh("dumpsys package com.feelime.ime")
+out = sh("dumpsys package com.feelimd.kiw")
 granted = re.search(r"RECORD_AUDIO: granted=(\w+)", out)
 print("RECORD_AUDIO granted =", granted.group(1) if granted else "unknown")
 sys.exit(0 if granted and granted.group(1) == "true" else 1)

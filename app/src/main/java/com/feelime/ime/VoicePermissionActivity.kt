@@ -65,7 +65,7 @@ class VoicePermissionActivity : Activity() {
 
     companion object {
         private const val REQUEST_CODE = 4201
-        const val ACTION_VOICE_PERMISSION_GRANTED = "com.feelime.ime.VOICE_PERMISSION_GRANTED"
-        const val ACTION_VOICE_PERMISSION_DENIED = "com.feelime.ime.VOICE_PERMISSION_DENIED"
+        const val ACTION_VOICE_PERMISSION_GRANTED = "com.feelimd.kiw.VOICE_PERMISSION_GRANTED"
+        const val ACTION_VOICE_PERMISSION_DENIED = "com.feelimd.kiw.VOICE_PERMISSION_DENIED"
     }
 }

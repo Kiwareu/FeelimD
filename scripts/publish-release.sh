@@ -7,7 +7,7 @@
 # 签名与构建类型）——照老序列走会把 debug 产物发上 release（issue #40，
 # 用户装出「Feelime Dev」）。本脚本把「必须 release 产物」固化成门禁：
 #   1. 只构建 assembleDirectRelease
-#   2. 逐个产物校验 applicationId 精确等于 com.feelime.ime（任何后缀/别名
+#   2. 逐个产物校验 applicationId 精确等于 com.feelimd.kiw（任何后缀/别名
 #      一律拒绝）、versionName 精确等于 tag、签名者非 debug 证书
 #   3. thin→cp→full→cp 顺序坑固化（同路径输出互相覆盖，memory 1.0.14）
 #
@@ -90,8 +90,8 @@ verify_apk() {
     badging="$("$AAPT2" dump badging "$apk" 2>/dev/null)"
     name="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<<"$badging" | head -1)"
     ver="$(sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p" <<<"$badging" | head -1)"
-    if [[ "$name" != "com.feelime.ime" ]]; then
-        echo "REJECT $apk: applicationId='$name' != com.feelime.ime (dev/debug leak)" >&2
+    if [[ "$name" != "com.feelimd.kiw" ]]; then
+        echo "REJECT $apk: applicationId='$name' != com.feelimd.kiw (dev/debug leak)" >&2
         exit 1
     fi
     if [[ "$ver" != "$expect_ver" ]]; then

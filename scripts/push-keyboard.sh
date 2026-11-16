@@ -21,7 +21,7 @@ ADB=(adb)
 [ -n "$SERIAL" ] && ADB=(adb -s "$SERIAL")
 # 3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
 # 后缀）：显式 FEELIME_PKG 优先，否则直接用正式包名。
-PKG=${FEELIME_PKG:-com.feelime.ime}
+PKG=${FEELIME_PKG:-com.feelimd.kiw}
 
 "${ADB[@]}" shell pm path "$PKG" >/dev/null || {
     echo "Feelime is not installed on the connected device." >&2

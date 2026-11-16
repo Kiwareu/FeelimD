@@ -308,7 +308,7 @@ android {
     // output when it changes, so full↔thin transitions cannot retain stale
     // model bytes in an incremental build.
     defaultConfig {
-        applicationId = "com.feelime.ime"
+        applicationId = "com.feelimd.kiw"
         minSdk = 26
         targetSdk = 36
         versionCode = 80
@@ -372,8 +372,8 @@ android {
 
     buildTypes {
         debug {
-            // 3.74.12 起 debug 构建就是正式包名 com.feelime.ime（用户要
-            // 求：全都改成正式版，不要 .dev 版本）。不再加
+            // 3.75 起正式包名改成 com.feelimd.kiw（3.74.12 起 debug 构建
+            // 就是正式包名，不再带 .dev 后缀；用户要求全都改成正式版）。不再加
             // applicationIdSuffix，与正式包同名、同数据目录——设备上若
             // 已有正式签名的同包名应用，需先卸载才能装 debug 包（签名
             // 不同）。debug 签名仍走下方固定 debug keystore

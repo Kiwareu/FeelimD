@@ -32,7 +32,7 @@ import fv_common as shared
 import device_verify as d
 
 
-PKG = "com.feelime.ime"
+PKG = "com.feelimd.kiw"
 SETTINGS_MARKER = "settings/index.html"
 MODEL_TIMEOUT_SECONDS = int(os.environ.get("FEELIME_MODEL_TIMEOUT_S", "1200"))
 VOICE_TIMEOUT_SECONDS = int(os.environ.get("FEELIME_VOICE_TIMEOUT_S", "240"))
@@ -492,7 +492,7 @@ def physical_mic_point():
 
 
 def voice_smoke():
-    d.shell("pm grant com.feelime.ime android.permission.RECORD_AUDIO 2>/dev/null")
+    d.shell("pm grant com.feelimd.kiw android.permission.RECORD_AUDIO 2>/dev/null")
     d.app_hard_reset()
     keyboard = d.fresh_kb(refocus=True)
     if not keyboard:

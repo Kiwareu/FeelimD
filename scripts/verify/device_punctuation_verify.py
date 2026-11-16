@@ -74,11 +74,11 @@ def shell_quote(value):
 
 
 def installed_production_sha():
-    output = d.shell("pm path com.feelime.ime", timeout=30)
+    output = d.shell("pm path com.feelimd.kiw", timeout=30)
     paths = [line.removeprefix("package:").strip()
              for line in output.splitlines() if line.startswith("package:")]
     if not paths:
-        raise ProbeFailure("production package com.feelime.ime is not installed")
+        raise ProbeFailure("production package com.feelimd.kiw is not installed")
     base = next((path for path in paths if path.endswith("/base.apk")), paths[0])
     remote = d.shell("sha256sum " + shell_quote(base), timeout=60)
     match = re.search(r"\b([0-9a-fA-F]{64})\b", remote)

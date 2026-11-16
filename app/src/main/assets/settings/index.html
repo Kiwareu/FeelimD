@@ -6,7 +6,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Feelime 设置</title>
+<title>FeelimD 设置</title>
 <link rel="stylesheet" href="settings.css">
 </head>
 <body>
@@ -17,7 +17,7 @@
     <div class="hero-mark">
       <span class="hero-logo" id="heroLogo" aria-hidden="true">F.</span>
       <div class="hero-titles">
-        <h1>Feelime</h1>
+        <h1>FeelimD</h1>
         <p class="hero-tag" data-i18n="hero.tag">离线中英混合语音输入法</p>
       </div>
     </div>
@@ -48,7 +48,7 @@
       <div class="rows">
         <div class="row" id="imeEnabledRow">
           <span class="led" data-led aria-hidden="true"></span>
-          <span class="row-label" data-i18n="ime.enabled">在系统中启用 Feelime</span>
+          <span class="row-label" data-i18n="ime.enabled">在系统中启用 FeelimD</span>
           <button class="btn" id="btnEnableIme" type="button" data-i18n="ime.enableAction">去启用</button>
         </div>
         <div class="row" id="imeDefaultRow">
@@ -71,7 +71,7 @@
       <div class="row language-row">
         <span class="row-label">
           <span data-i18n="language.label">显示语言</span>
-          <small data-i18n="language.hint">默认跟随系统；只影响 Feelime 界面，不改变输入语言。</small>
+          <small data-i18n="language.hint">默认跟随系统；只影响 FeelimD 界面，不改变输入语言。</small>
         </span>
         <select id="uiLanguage" class="select" aria-describedby="languageHint" data-i18n-aria="language.label" aria-label="显示语言">
           <option value="auto" data-i18n="language.auto">跟随系统</option>
@@ -422,7 +422,7 @@
   </section>
   <section class="card" aria-labelledby="glassHead">
     <div class="section-heading"><h2 id="glassHead" data-i18n="input.feel.glassTitle">液态玻璃</h2><span class="eyebrow" data-i18n="input.feel.glassBadge">皮肤</span></div>
-    <p class="hint block" data-i18n="input.feel.systemBarNote">地球仪和收起键盘那一行由手机系统设置显示或隐藏，Feelime 不另画一条，也没有开关去关它。系统画出这一条时，键盘会按系统报来的底部空白把按键抬上去，避免挡住系统按钮。</p>
+    <p class="hint block" data-i18n="input.feel.systemBarNote">地球仪和收起键盘那一行由手机系统设置显示或隐藏，FeelimD 不另画一条，也没有开关去关它。系统画出这一条时，键盘会按系统报来的底部空白把按键抬上去，避免挡住系统按钮。</p>
     <div class="row stack" id="glassSkinRow" data-keywords="皮肤 液态玻璃 主题 磨砂 圆角 透明度">
       <span class="row-label">
         <span data-i18n="input.feel.glassSkin">内置皮肤</span>
@@ -450,6 +450,17 @@
         <small data-i18n="input.feel.panelOpacityHint">候选条、菜单和语音卡片有多透。文字保持实色，方便看清。</small>
       </span>
       <input type="range" id="panelOpacity" class="slider" min="35" max="100" step="1" aria-label="面板透明度" data-i18n-aria="input.feel.panelOpacity">
+    </div>
+    <!-- 键盘界面版本（3.75）：经典 vs 液态玻璃新版，默认新版；两版共用同一套调色管线。 -->
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyboardUiVersion">键盘界面版本</span>
+        <small data-i18n="input.feel.keyboardUiVersionHint">液态玻璃是新版界面（发丝描边、顶光、内圈辉光）；经典是原来的键面。两版调色方式一样。</small>
+      </span>
+      <select id="keyboardUiVersion" data-keywords="键盘界面 版本 经典 液态玻璃 新版 旧版 ui version classic glass" class="select" aria-label="键盘界面版本" data-i18n-aria="input.feel.keyboardUiVersion">
+        <option value="glass" data-i18n="input.feel.keyboardUiVersionGlass">液态玻璃</option>
+        <option value="classic" data-i18n="input.feel.keyboardUiVersionClassic">经典</option>
+      </select>
     </div>
     <label class="row switch-row" for="preeditFrame">
       <span class="row-label">
@@ -711,6 +722,15 @@
           <small data-i18n="input.feel.bottomSymSplitHint">开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。</small>
         </span>
         <input type="checkbox" id="bottomSymSplit" data-keywords="底行 符号 数字 123 九宫格 分键 拆分 numpad symbols split bottom" class="toggle">
+      </label>
+
+      <!-- 字母上方数字（3.75）：默认开；关 = 字母键上方的数字 1-0 消失。 -->
+      <label class="row switch-row" for="showKeyDigits">
+        <span class="row-label">
+          <span data-i18n="input.feel.showKeyDigits">字母上方显示数字</span>
+          <small data-i18n="input.feel.showKeyDigitsHint">开 = 字母键上方显示数字 1-0；关 = 数字消失，只剩字母。默认开。</small>
+        </span>
+        <input type="checkbox" id="showKeyDigits" data-keywords="字母 数字 角标 数字键 123 显示 隐藏 digits numbers" class="toggle">
       </label>
 
       <div class="row language-row">
@@ -1402,7 +1422,7 @@
 
     <section class="card" id="sec-privacy" aria-labelledby="privacyTitle">
       <div class="section-heading"><h2 id="privacyTitle" data-i18n="privacy.title">隐私与离线</h2><span class="eyebrow" data-i18n="privacy.badge">本机</span></div>
-      <p class="hint block" data-i18n="privacy.note">按键、候选、语音和壁纸都只留在这台手机上。Feelime 不上传输入内容，也不带统计上报。语音模型是随安装包或你手动下载的离线模型。诊断开关只在你打开之后记录引擎事件，不含你打过的字。</p>
+      <p class="hint block" data-i18n="privacy.note">按键、候选、语音和壁纸都只留在这台手机上。FeelimD 不上传输入内容，也不带统计上报。语音模型是随安装包或你手动下载的离线模型。诊断开关只在你打开之后记录引擎事件，不含你打过的字。</p>
     </section>
 
     <section class="card" id="sec-diagnostics" aria-labelledby="diagTitle">
@@ -1653,12 +1673,12 @@
   <main>
     <section class="card" id="sec-license-self" aria-labelledby="licenseSelfTitle">
       <div class="section-heading"><h2 id="licenseSelfTitle" data-i18n="licenses.self.title">本应用许可</h2><span class="eyebrow">GPL-3.0</span></div>
-      <p class="hint" data-i18n="licenses.self.note">Feelime 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。</p>
+      <p class="hint" data-i18n="licenses.self.note">FeelimD 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。</p>
     </section>
 
     <section class="card" id="sec-license-components" aria-labelledby="licenseComponentsTitle">
       <div class="section-heading"><h2 id="licenseComponentsTitle" data-i18n="licenses.components.title">致谢组件</h2><span class="eyebrow" data-i18n="licenses.components.badge">开源</span></div>
-      <p class="hint" data-i18n="licenses.thanks">Feelime 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。</p>
+      <p class="hint" data-i18n="licenses.thanks">FeelimD 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。</p>
       <div class="rows">
         <div class="row license-row">
           <span class="row-label">
@@ -1732,7 +1752,7 @@
       <div class="section-heading"><h2 id="testTitle" data-i18n="test.title">试输入一段文字</h2><span class="eyebrow" data-i18n="test.badge">测试</span></div>
       <!-- 多行 textarea（反馈：测试框要支持多行）——rows 起步 4 行，
            JS 随内容自适应增高，IME 弹出时窗口压缩也完整可见。 -->
-      <textarea id="testInput" rows="4" data-i18n-placeholder="test.placeholder" data-i18n-aria="test.title" aria-label="试输入一段文字" placeholder="点这里唤起 Feelime 试一试" autocomplete="off"></textarea>
+      <textarea id="testInput" rows="4" data-i18n-placeholder="test.placeholder" data-i18n-aria="test.title" aria-label="试输入一段文字" placeholder="点这里唤起 FeelimD 试一试" autocomplete="off"></textarea>
       <p class="hint" data-i18n="test.note">输入内容只留在当前编辑框中。</p>
     </section>
   </main>

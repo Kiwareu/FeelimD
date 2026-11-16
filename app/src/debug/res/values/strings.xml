@@ -1,5 +1,5 @@
 <resources>
-    <!-- 3.74.12 起 debug 构建就是正式包名 com.feelime.ime，不再加
+    <!-- 3.75 起正式包名改成 com.feelimd.kiw（3.74.12 起 debug 构建就是正式包名，不再加
          .dev 后缀；显示名称与正式包一致叫 FeelimD。 -->
     <string name="app_name">FeelimD</string>
     <string name="ime_name">FeelimD 中英语音输入法</string>

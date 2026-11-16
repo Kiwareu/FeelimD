@@ -2829,6 +2829,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
             .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
             .put("bottomSymSplit", com.feelime.ime.readBottomSymSplit(this))
+            .put("showKeyDigits", com.feelime.ime.readShowKeyDigits(this))
+            .put("keyboardUiVersion", com.feelime.ime.readKeyboardUiVersion(this))
+            // 3.75 补漏：deleteConfirm 只在设置页 hello 里、键盘 hello
+            // 一直漏了（3.74.11）——键盘拿不到，关掉开关也不生效。
+            .put("deleteConfirm", com.feelime.ime.readDeleteConfirm(this))
             .put("bubbleLinger", readBubbleLinger(this))
             .put("toastMs", readToastMs(this))
             // #39 横屏三级页三项 + 挖孔安全区实测值（css px，竖屏恒 0）。

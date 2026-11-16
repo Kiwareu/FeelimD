@@ -20,20 +20,22 @@ if not SERIAL:
 
 
 def _resolve_pkg():
-    """3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
-    后缀）：FEELIME_PKG 显式指定优先，否则直接用正式包名。"""
+    """3.75 起正式包名改成 com.feelimd.kiw（3.74.12 起 debug 构建就是正式
+    包名，不再带 .dev 后缀）：FEELIME_PKG 显式指定优先，否则直接用正式包名。"""
     import os as _os
     explicit = _os.environ.get("FEELIME_PKG", "").strip()
     if explicit:
         return explicit
-    return "com.feelime.ime"
+    return "com.feelimd.kiw"
 
 
 PKG = _resolve_pkg()
 
 # shell `ime` 命令按 ComponentName.flattenToShortString 精确匹配注册表
-# （ColorOS 实测）：包名与类 namespace 一致时注册为 pkg/.Svc 缩写形态，
-# 全类名反而不匹配。am start 宽松，不受影响。
+# （ColorOS 实测）：3.75 起包名（com.feelimd.kiw）与类 namespace
+# （com.feelime.ime）不再一致，注册形态是全类名
+# com.feelimd.kiw/com.feelime.ime.FeelimeService（PKG==旧包名时才走
+# pkg/.Svc 缩写形态）。am start 宽松，不受影响。
 if PKG == "com.feelime.ime":
     IME_SVC = f"{PKG}/.FeelimeService"
 else:
@@ -1641,10 +1643,10 @@ def wait_password_binding(timeout_steps=10):
     last = ""
     for _ in range(timeout_steps):
         last = current_ime()
-        if "securitykeyboard" in last and "com.feelime.ime" not in last:
+        if "securitykeyboard" in last and PKG not in last:
             return "claimed", last
         time.sleep(0.5)
-    if "com.feelime.ime" in last and input_shown():
+    if PKG in last and input_shown():
         # The IME column can lag the actual EditorInfo handover: trust only
         # our own onStartInput receipt of a password inputType (0x81 class
         # text = 129 decimal), logged by the service.
@@ -1660,7 +1662,7 @@ def wait_password_binding(timeout_steps=10):
 def platform_claims_password_editors():
     """True when a vendor security IME force-claims password fields."""
     ime = current_ime()
-    return "com.feelime.ime" not in ime and "securitykeyboard" in ime, ime
+    return PKG not in ime and "securitykeyboard" in ime, ime
 
 
 def ensure_keyboard_down():

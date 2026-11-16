@@ -500,11 +500,22 @@ test('enter/hide/globe taps', () => {
     equal(world.native.of('hideKeyboard').length, 1, 'hide');
     world.tap(world.$('mic'));
     equal(world.native.of('startVoice').length, 1, 'mic toggles voice on');
-    // 3.74.9: the restored bottom-row globe opens the system picker.
-    const globe = world.document.querySelector('[data-role="globe"]');
-    assert(globe, 'globe key present');
-    world.tap(globe);
-    equal(world.native.of('switchInputMethod').length, 1, 'globe opens the picker');
+    // 3.75: bottom-row globe removed (toolbar already switches IME);
+    // its slot is now the emoji key — opens the emoji panel, icon flips
+    // line-smiley -> 😋 on each press.
+    assert(world.$('qwertyLayer').querySelector('[data-role="globe"]') === null,
+        'no globe key left on the bottom row');
+    const emojiKey = world.$('qwertyLayer').querySelector('[data-role="emoji"]');
+    assert(emojiKey, 'emoji key present at the bottom row start');
+    assert(emojiKey.querySelector('svg'), 'default icon is the outline smiley');
+    world.tap(emojiKey);
+    assert(emojiKey.querySelector('.emoji-key-face'), 'one tap flips the icon to 😋');
+    equal(emojiKey.querySelector('.emoji-key-face').textContent, '😋', 'alt icon is the 😋 glyph');
+    // window.Feelime 是门面（只有钩子，无实例字段），面板状态走 DOM：
+    // 九宫格层显示 + emoji 区域渲染 = 面板已打开。
+    assert(!world.$('numPadLayer').hidden, 'emoji panel opened (numpad layer shown)');
+    assert(world.$('qwertyLayer').hidden, 'letter layer hidden while the emoji panel is open');
+    assert(world.document.querySelector('.emoji-area'), 'emoji area rendered');
 });
 
 // ---------------------------------------------------------------- J voice
@@ -1695,14 +1706,29 @@ test('switching key layers closes the open mode menu (#39-5)', {since: '3.69.19'
         'layer switch dismisses the floating mode menu');
 });
 
-test('bottom row roles: globe key, no toolbar mode button, shorthand labels', {since: '3.74.9'}, () => {
+test('bottom row roles: emoji key, three-zone centering, shorthand labels (3.75)', {since: '3.75'}, () => {
     const world = fresh();
-    // 3.74.9（用户 2026-11-16 要求恢复）：底行首键是地球仪，点按开
-    // 系统输入法选择器；中/英长按仍能开选择器。
-    const globe = world.document.querySelector('[data-role="globe"]');
-    assert(globe, 'globe key restored at the bottom row start');
-    world.tap(globe);
-    equal(world.native.of('switchInputMethod').length, 1, 'globe opens the system picker');
+    // 3.75：地球键已撤（工具栏已有切换输入法），原位是 emoji 键；
+    // 底行三区等宽 flex（左 3.8 / 空格 4.15 / 右 3.8），空格（语音）
+    // 天然居中，区内键宽怎么变都不漂移。
+    const bottom = world.document.querySelector('.kb-bottom');
+    assert(bottom, 'bottom row carries the kb-bottom class');
+    equal(bottom.children.length, 3, 'three zones: left / space / right');
+    const left = bottom.children[0];
+    const space = bottom.children[1];
+    const right = bottom.children[2];
+    assert(left.classList.contains('kb-bottom-left'), 'first zone is the left zone');
+    assert(right.classList.contains('kb-bottom-right'), 'last zone is the right zone');
+    equal(space.id, 'spaceKey', 'space key is the center child');
+    const leftRoles = [...left.querySelectorAll('.kb-key')].map(el => el.dataset.role);
+    assert(leftRoles.includes('emoji'), 'emoji key is first in the left zone');
+    assert(leftRoles.includes('symbols'), '123 key follows emoji');
+    assert(right.querySelector('#modeToggle'), 'cn/en toggle lives in the right zone');
+    assert(right.querySelector('#enterKey'), 'enter lives in the right zone');
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    assert(/\.kb-bottom-side\s*\{[^}]*flex:\s*3\.8/.test(css), 'both side zones flex 3.8');
+    assert(/\.kb-wide-1_9\s*\{[^}]*flex:\s*1\.9/.test(css), 'cn/en and enter are 1.9 wide');
     assert(world.$('modeButton') === null, 'toolbar mode button removed ');
     equal(world.$('enterKey').dataset.role, 'enter', 'enter role kept');
     equal(world.$('enterKey').textContent, '换行', 'enter text idle');
@@ -1713,6 +1739,209 @@ test('bottom row roles: globe key, no toolbar mode button, shorthand labels', {s
     equal(world.$('spaceKey').textContent, '', 'space key carries no text');
     const mic = [...world.$('spaceKey').children].some(c => (c.tagName || '').toUpperCase() === 'SVG');
     assert(mic, 'space key shows the mic glyph');
+});
+
+// ---------------------------------------------------------------- 3.75
+
+test('clipboard favorite star: favorited rows render ★, tap flips ☆ to ★ at once (3.75)', {since: '3.75'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.favorites([{ id: 'f1', text: '麻烦确认一下，谢谢', code: '', time: 1 }]);
+    world.clipboard([
+        { id: 'c1', time: 1, text: '麻烦确认一下，谢谢' },
+        { id: 'c2', time: 2, text: '还没收藏的句子' },
+    ]);
+    world.tap(world.$('clipboardButton'));
+    const favBtn = row => row.querySelector('.clip-fav-btn');
+    const rows = [...world.document.querySelectorAll('.panel-item')];
+    equal(favBtn(rows[0]).textContent, '★', 'already-favorited row renders ★');
+    equal(favBtn(rows[1]).textContent, '☆', 'unfavorited row renders ☆');
+    world.tap(favBtn(rows[1]));
+    equal(favBtn(rows[1]).textContent, '★', 'tap ☆ flips to ★ immediately');
+    equal(world.native.of('favoritesAdd').length, 1, 'favoritesAdd called once');
+    // 在别处被移出常用语 → onFavorites 回推，剪贴板页重渲染变回 ☆。
+    world.favorites([]);
+    const rows2 = [...world.document.querySelectorAll('.panel-item')];
+    equal(favBtn(rows2[0]).textContent, '☆', 'removed elsewhere renders back to ☆');
+});
+
+test('clipboard split view: long text shows each sentence once and the card scrolls (3.75)', {since: '3.75'}, () => {
+    const world = fresh();
+    world.hello({});
+    // 38 字长句：chip 显示截断到 36 字，全句只可能出现在预览里。
+    const sentence = '今天天气很好适合出门散步顺便去市场买点新鲜的蔬菜和水果回家做一顿丰盛的晚饭。';
+    assert([...sentence].length > 36, 'test sentence is longer than the chip cap');
+    const long = sentence + '晚上和朋友一起吃火锅，顺便聊聊最近的工作。链接 https://example.com/x，邮箱 a@b.com，验证码 834921。'
+        + '收尾看看内容会不会重复显示。'.repeat(6);
+    world.clipboard([{ id: 'L', time: 1, text: long }]);
+    world.tap(world.$('clipboardButton'));
+    world.tap(world.document.querySelectorAll('.panel-item')[0].querySelector('.clip-expand-btn'));
+    const card = world.$('clipSplitCard');
+    assert(!card.hidden, 'split card opens');
+    const occurrences = card.textContent.split(sentence).length - 1;
+    equal(occurrences, 1, 'each long sentence appears exactly once in the card');
+    // chip 显示截断到 36 字 + 省略号（点 chip 仍贴完整片段，见 3.74.10 用例）。
+    const values = [...world.document.querySelectorAll('.clip-split-value')].map(el => el.textContent);
+    assert(values.length > 0, 'piece chips present');
+    assert(values.every(v => [...v].length <= 37), 'chip display truncated to 36 chars + ellipsis');
+    // 卡片自身可滚动（fake DOM 无样式计算，断言发版 CSS）。
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    const cardRule = css.match(/#clipSplitCard\s*\{[^}]*\}/);
+    assert(cardRule, '#clipSplitCard rule exists');
+    assert(/overflow-y:\s*auto/.test(cardRule[0]), 'split card scrolls vertically');
+    assert(/max-height:\s*min\(78vh,\s*560px\)/.test(cardRule[0]), 'split card height capped');
+    assert(/top:\s*50%/.test(cardRule[0]), 'split card centered in the viewport');
+});
+
+test('emoji key icon alternates outline -> 😋 -> outline on successive presses (3.75)', {since: '3.75'}, () => {
+    const world = fresh();
+    const key = () => world.$('qwertyLayer').querySelector('[data-role="emoji"]');
+    assert(key().querySelector('svg'), 'default icon is the outline smiley');
+    assert(!key().querySelector('.emoji-key-face'), 'no 😋 face by default');
+    // 九宫格里的 emoji 键不受影响：长按 123 进数字键盘（emojiView 关），
+    // 那里的 emoji 键仍是旧笑脸图标（emoji 面板打开时九宫格渲染的是
+    // emoji 区域、没有这个切换键，所以必须在数字视图里查）。
+    const k123 = world.document.querySelector('[data-lp="numpad"]');
+    assert(k123, '123 key carries the numpad long-press');
+    world.dispatch(k123, 'touchstart', 20, 20, { touches: [{ clientX: 20, clientY: 20 }] });
+    world.clock.advance(400);
+    assert(!world.$('numPadLayer').hidden, 'long-press 123 opens the numpad');
+    const numEmoji = world.$('numPadLayer').querySelector('[data-role="emoji"]');
+    assert(numEmoji && numEmoji.querySelector('svg'), 'numpad emoji key keeps its own icon');
+    assert(!numEmoji.querySelector('.emoji-key-face'), 'numpad emoji key never shows 😋');
+    // 回字母层再点底行 emoji 键：图标变 😋，emoji 面板打开。
+    world.tap(world.document.querySelector('.num-back'));
+    world.tap(key());
+    assert(key().querySelector('.emoji-key-face'), 'one tap shows 😋');
+    equal(key().querySelector('.emoji-key-face').textContent, '😋', 'alt icon is the 😋 glyph');
+    assert(world.document.querySelector('.emoji-area'), 'emoji area rendered');
+    // 回字母层再点一次，图标换回线条笑脸。
+    world.tap(world.document.querySelector('.num-back'));
+    world.tap(key());
+    assert(key().querySelector('svg'), 'second tap restores the outline smiley');
+    assert(!key().querySelector('.emoji-key-face'), '😋 face gone after the second tap');
+});
+
+test('long-press dots hidden on 123 / voice / cn-en, kept on Shift (3.75)', {since: '3.75'}, () => {
+    // fake DOM 无样式计算，断言发版 CSS；长按绑定（data-lp）一律不动。
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    const hidden = css.match(/\.kb-key\[data-lp="numpad"\]::after,\s*\.kb-key\[data-lp="mode-menu"\]::after,\s*\.kb-key\[data-lp="space-hold"\]::after\s*\{[^}]*\}/);
+    assert(hidden, 'dot-hiding rule exists for the three keys');
+    assert(/display:\s*none/.test(hidden[0]), 'dots hidden by display:none');
+    assert(!/\[data-lp="lock"\]/.test(hidden[0]), 'Shift (lock) dot is not hidden');
+    const world = fresh();
+    // 长按绑定仍在：123 仍带 data-lp="numpad"。
+    const numpad = [...world.document.querySelectorAll('.kb-key')].find(el => el.dataset.lp === 'numpad');
+    assert(numpad, '123 key still carries its long-press binding');
+    const cnEn = [...world.document.querySelectorAll('.kb-key')].find(el => el.dataset.lp === 'mode-menu');
+    assert(cnEn, 'cn/en key still carries its long-press binding');
+});
+
+test('letter-key digit hints follow the showKeyDigits preference (3.75)', {since: '3.75'}, () => {
+    const off = fresh();
+    off.hello({ showKeyDigits: false });
+    equal(off.key('q').querySelector('.kb-alt').textContent, '', 'digits hidden when the switch is off');
+    // 符号角标不受影响（j 的 ~ 仍在）。
+    equal(off.key('j').querySelector('.kb-alt').textContent, '~', 'symbol hints kept when digits are off');
+    const on = fresh();
+    on.hello({});
+    equal(on.key('q').querySelector('.kb-alt').textContent, '1', 'digits shown by default');
+    // 关后再开：hello 重推即时生效。
+    off.hello({ showKeyDigits: true });
+    equal(off.key('q').querySelector('.kb-alt').textContent, '1', 'digits return when the switch is turned back on');
+});
+
+test('light key tint: saturation max makes the key visibly pink, not near-white (3.75)', {since: '3.75'}, () => {
+    // 根因：旧式亮度钉在 96%，HSL 里 L=96% 时饱和度再高也是近白
+    // （3.74.11 只抬系数治标）。新式亮度随饱和度走：L = 96% - 18%·sat。
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    const light = css.match(/html\.theme-light\s*\{([\s\S]*?)\n\}/);
+    assert(light, 'html.theme-light block exists');
+    const keyRule = light[1].match(/--key:\s*hsl\(var\(--key-hue\)\s*calc\((\d+)% \* var\(--key-sat, 1\)\)\s*calc\(96% - ([\d.]+)% \* var\(--key-sat, 1\)/);
+    assert(keyRule, 'light --key uses the saturation-dependent lightness formula');
+    const satCoeff = Number(keyRule[1]) / 100; // 0.65
+    const lightSlope = Number(keyRule[2]); // 18
+    const hslSpread = (h, s, l) => {
+        // HSL -> RGB 通道极差（0 = 灰/白，越大越浓艳）。
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = l - c / 2;
+        const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+            : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+        const vals = [r + m, g + m, b + m];
+        return Math.max(...vals) - Math.min(...vals);
+    };
+    const sakuraHue = 344;
+    // 拉满：L=78%，色散约 0.29（旧式 L=96% 只有 0.05，肉眼近白）。
+    const spreadMax = hslSpread(sakuraHue, satCoeff, (96 - lightSlope) / 100);
+    assert(spreadMax >= 0.2, 'max saturation is visibly vivid, spread ' + spreadMax.toFixed(2));
+    // 默认樱花 sat=0.52：L≈86.6%，仍带粉。
+    const spreadDefault = hslSpread(sakuraHue, satCoeff, (96 - lightSlope * 0.52) / 100);
+    assert(spreadDefault >= 0.1, 'default sakura still tinted, spread ' + spreadDefault.toFixed(2));
+    // sat=0（黑白灰）：L 回 96% 白，不变色。
+    equal(96 - lightSlope * 0, 96, 'zero saturation stays white');
+    // auto 模式的 @media 块与 theme-light 同步（3.74.11 漏同步的教训）。
+    const media = css.match(/@media \(prefers-color-scheme: light\)\s*\{([\s\S]*?)\n    \}/);
+    assert(media && /96% - 18% \* var\(--key-sat, 1\)/.test(media[1]),
+        'media-query light block uses the same formula');
+});
+
+test('keyboard UI version: glass-v2 class follows the hello payload, classic keeps the old surface (3.75)', {since: '3.75'}, () => {
+    const world = fresh();
+    world.hello({});
+    assert(world.document.documentElement.classList.contains('glass-v2'), 'glass is the default version');
+    world.hello({ keyboardUiVersion: 'classic' });
+    assert(!world.document.documentElement.classList.contains('glass-v2'), 'classic removes the glass-v2 class');
+    world.hello({ keyboardUiVersion: 'glass' });
+    assert(world.document.documentElement.classList.contains('glass-v2'), 'glass re-applies the class');
+    // 两版共用调色管线：glass-v2 块只加描边/高光，不重定义 --key/--bg。
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    const v2 = css.match(/html\.glass-v2 \.kb-key,[\s\S]*?\n\}/);
+    assert(v2, 'glass-v2 key rule exists');
+    assert(!/--key:/.test(v2[0]) && !/--bg:/.test(v2[0]), 'glass-v2 does not redefine the color tokens');
+    assert(/border:\s*1px solid var\(--glass-v2-edge\)/.test(v2[0]), 'glass-v2 adds the hairline edge');
+});
+
+test('keyboard background blur: translucent sheet over a 22px blur, opaque again in power-saving (3.75)', {since: '3.75'}, () => {
+    // 根因：底板 sheet 渐变近不透明（.90/.94），backdrop-filter 再强也
+    // 透不出后面的 App。新式是半透明底色 + 18–24px 模糊（苹果原生键
+    // 盘式）：后面内容隐约可见、呈柔和的朦胧影子，既非清晰透明、也非
+    // 糊成一片纯色。原生 WebView 背景本就是透明的（FeelimeService
+    // 两处 TRANSPARENT），CSS 是唯一的挡板。
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    // 默认 blur 落在用户定的 18–24px 区间正中（樱花皮肤 hello 下发 18px，同区间）。
+    const blur = css.match(/--glass-blur:\s*(\d+)px;/);
+    assert(blur, '--glass-blur default exists');
+    const blurPx = Number(blur[1]);
+    assert(blurPx >= 18 && blurPx <= 24, 'default blur in the 18-24px zone, got ' + blurPx);
+    // #glassField 确实有 backdrop-filter 模糊（不是只靠底色不透明度）。
+    assert(/backdrop-filter:\s*blur\(var\(--glass-blur, 22px\)\)/.test(css),
+        '#glassField blurs the app behind the keyboard');
+    // 底板半透明带 .55–.75：深色上/下、浅色上/下（浅色在 theme-light 与
+    // @media 两块都要同步，跟 3.74.11 漏同步的教训）。
+    const alphas = (re) => [...css.matchAll(new RegExp(re, 'g'))].map(m => Number(m[1]));
+    const darkTop = alphas('--sheet-top:\\s*hsl\\(var\\(--bg-hue\\) calc\\(55% \\* var\\(--bg-sat, 1\\)\\) 22% / ([\\d.]+)\\)');
+    const darkBottom = alphas('--sheet-bottom:\\s*hsl\\(var\\(--bg-hue\\) calc\\(48% \\* var\\(--bg-sat, 1\\)\\) 12% / ([\\d.]+)\\)');
+    const lightTop = alphas('--sheet-top:\\s*hsl\\(var\\(--bg-hue\\) calc\\(60% \\* var\\(--bg-sat, 1\\)\\) calc\\(97% - 8% \\* var\\(--bg-sat, 1\\)\\) / ([\\d.]+)\\)');
+    const lightBottom = alphas('--sheet-bottom:\\s*hsl\\(var\\(--bg-hue\\) calc\\(55% \\* var\\(--bg-sat, 1\\)\\) calc\\(90% - 8% \\* var\\(--bg-sat, 1\\)\\) / ([\\d.]+)\\)');
+    assert(darkTop.length === 1 && darkBottom.length === 1, 'dark sheet tokens exist once each');
+    assert(lightTop.length === 2 && lightBottom.length === 2, 'light sheet tokens exist in theme-light and the media block');
+    for (const [name, list] of [['dark top', darkTop], ['dark bottom', darkBottom],
+        ['light top', lightTop], ['light bottom', lightBottom]]) {
+        for (const a of list) {
+            assert(a >= 0.55 && a <= 0.75, name + ' sheet alpha is translucent, got ' + a);
+        }
+    }
+    // 省电模式 blur 归零时底色补回实色 --bg（无模糊可遮，不能透清晰文字）。
+    const saving = css.match(/body\.power-saving:not\(\[data-bg-image="on"\]\) #glassField\s*\{([\s\S]*?)\n\}/);
+    assert(saving, 'power-saving glassField rule exists');
+    assert(/var\(--bg\)/.test(saving[1]), 'power-saving restores the opaque background');
+    assert(/backdrop-filter:\s*none/.test(saving[1]), 'power-saving disables backdrop-filter');
 });
 
 test('B5b Chinese modes swap Shift for the 分词 separator key', () => {
@@ -7490,7 +7719,7 @@ test('theme switches auto/light/dark from the settings panel', () => {
     const world = new KeyboardWorld().build();
     world.hello();
     const doc = world.document;
-    equal(doc.documentElement.className, 'theme-light', 'auto follows default system light');
+    equal(doc.documentElement.classList.contains('theme-light'), true, 'auto follows default system light');
     world.tap(world.$('setupButton'));
     if (verAtLeast(KEYBOARD_VERSION, '3.38.0')) {
         // 3.38.0: the theme tile CYCLES auto → light → dark → auto;
@@ -7503,13 +7732,13 @@ test('theme switches auto/light/dark from the settings panel', () => {
         };
         equal(state(), '跟随系统', 'state line shows auto');
         world.tap(world.tile('色彩模式'));
-        equal(doc.documentElement.className, 'theme-light', 'light selected');
+        equal(doc.documentElement.classList.contains('theme-light'), true, 'light selected');
         equal(state(), '浅色', 'state line follows light');
         world.tap(world.tile('色彩模式'));
-        equal(doc.documentElement.className, 'theme-dark', 'dark selected');
+        equal(doc.documentElement.classList.contains('theme-dark'), true, 'dark selected');
         equal(state(), '深色', 'state line follows dark');
         world.tap(world.tile('色彩模式'));
-        equal(doc.documentElement.className, 'theme-light', 'auto back (system light)');
+        equal(doc.documentElement.classList.contains('theme-light'), true, 'auto back (system light)');
         equal(state(), '跟随系统', 'state line back to auto');
     } else {
         const themeRow = [...world.$('settingsPanel').querySelectorAll('.set-row')]
@@ -7518,11 +7747,11 @@ test('theme switches auto/light/dark from the settings panel', () => {
         const pick = text => [...themeRow.querySelectorAll('.set-opt')]
             .find(b => b.textContent === text);
         world.tap(pick('浅色'));
-        equal(doc.documentElement.className, 'theme-light', 'light selected');
+        equal(doc.documentElement.classList.contains('theme-light'), true, 'light selected');
         world.tap(pick('深色'));
-        equal(doc.documentElement.className, 'theme-dark', 'dark selected');
+        equal(doc.documentElement.classList.contains('theme-dark'), true, 'dark selected');
         world.tap(pick('跟随系统'));
-        equal(doc.documentElement.className, 'theme-light', 'auto back (system light)');
+        equal(doc.documentElement.classList.contains('theme-light'), true, 'auto back (system light)');
     }
 });
 test('quick tiles: toggles write setQuickPref, hello echo re-reads state', {since: '3.38.0'}, () => {
@@ -7624,18 +7853,18 @@ test('theme tile writes theme_mode pref; in-flight intent survives stale hello',
     equal(lastPref(), 'themeMode=light', 'tile cycle writes the native pref');
     world.tap(world.tile('色彩模式'));
     equal(lastPref(), 'themeMode=dark', 'second tap lands dark');
-    equal(world.document.documentElement.className, 'theme-dark', 'keyboard is dark now');
+    equal(world.document.documentElement.classList.contains('theme-dark'), true, 'keyboard is dark now');
 
     // 先发的旧快照（上一档的广播回来）不许把新意图洗掉——真机实录：
     // 暗色下调不透明度滑块，hello 按旧 pref 把键盘弹回系统亮色。
     world.hello({ themeMode: 'light' });
-    equal(world.document.documentElement.className, 'theme-dark',
+    equal(world.document.documentElement.classList.contains('theme-dark'), true,
         'stale hello cannot wash the in-flight intent');
 
     // 匹配意图的快照撤签；此后不同值照常单向推送（外观页 select 路径）。
     world.hello({ themeMode: 'dark' });
     world.hello({ themeMode: 'light' });
-    equal(world.document.documentElement.className, 'theme-light',
+    equal(world.document.documentElement.classList.contains('theme-light'), true,
         'after confirm, native push applies again');
 });
 
@@ -7813,17 +8042,17 @@ test('first paint: never guess a system theme before the bridge speaks', () => {
 test('auto theme follows system payload; themeMode from the shell wins', {since: '3.59.0'}, () => {
     const dark = new KeyboardWorld().build();
     dark.hello({ theme: 'dark' });
-    equal(dark.document.documentElement.className, 'theme-dark', 'auto adopts system dark');
+    equal(dark.document.documentElement.classList.contains('theme-dark'), true, 'auto adopts system dark');
 
     const pinned = new KeyboardWorld().build();
     pinned.hello({ themeMode: 'light', theme: 'dark' });
-    equal(pinned.document.documentElement.className, 'theme-light',
+    equal(pinned.document.documentElement.classList.contains('theme-light'), true,
         'shell themeMode beats the system payload');
 
     const again = new KeyboardWorld().build();
     again.hello({ theme: 'dark' });
     again.hello({ theme: 'light' });
-    equal(again.document.documentElement.className, 'theme-light', 'config change repushes theme');
+    equal(again.document.documentElement.classList.contains('theme-light'), true, 'config change repushes theme');
 });
 
 test('theme comes from the shell; legacy localStorage migrates once', {since: '3.59.0'}, () => {
@@ -7831,14 +8060,14 @@ test('theme comes from the shell; legacy localStorage migrates once', {since: '3
     const second = new KeyboardWorld().build();
     equal(second.document.documentElement.className, '', 'pre-hello paint stays on the CSS fallback');
     second.hello({ themeMode: 'light' });
-    equal(second.document.documentElement.className, 'theme-light', 'hello replays the shell pref');
+    equal(second.document.documentElement.classList.contains('theme-light'), true, 'hello replays the shell pref');
 
     // 老版本遗留的 localStorage 值：首次 hello 上报一次并沿用，升级不丢主题。
     const legacy = new KeyboardWorld();
     legacy.storage.set('feelime_theme', 'dark');
     const world = legacy.build();
     world.hello({ theme: 'light' });
-    equal(world.document.documentElement.className, 'theme-dark', 'legacy value applies');
+    equal(world.document.documentElement.classList.contains('theme-dark'), true, 'legacy value applies');
     const up = world.native.of('setQuickPref').filter(c => c.args[0] === 'themeMode');
     equal(up.length, 1, 'legacy value reported to the shell once');
     equal(up[0].args[1], 'dark', 'reported value is the legacy theme');
@@ -7846,7 +8075,7 @@ test('theme comes from the shell; legacy localStorage migrates once', {since: '3
 
     // 迁移完成后 localStorage 残留值被无视。
     world.hello({ themeMode: 'light' });
-    equal(world.document.documentElement.className, 'theme-light', 'shell pref wins after migration');
+    equal(world.document.documentElement.classList.contains('theme-light'), true, 'shell pref wins after migration');
 });
 
 // ------------------------------------------------- userdata stores mirror

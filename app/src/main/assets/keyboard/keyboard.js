@@ -396,7 +396,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.14';
+    const KEYBOARD_VERSION = '3.75';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1831,6 +1831,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #113 底行符号/数字分键（默认关）：开=底行左下拆【符号】+【123】
             // 两键（123 直达数字键盘）；关=存量单键（点=符号面板/长按=数字）。
             this.bottomSymSplit = false;
+            // 3.75：字母上方数字角标（默认开）、emoji 键图标交替态
+            // （默认 false=线条笑脸）、键盘界面版本（默认 glass）。
+            this.showKeyDigits = true;
+            this.emojiIconAlt = false;
+            this.keyboardUiVersion = 'glass';
             // #55 悬浮键盘几何（css px，画布坐标=WebView 视口）：
             // spike 首版内存态（方向无关），进悬浮时按视口给安全初值。
             this.floating = false;
@@ -2872,39 +2877,55 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (config.backspace) row.append(this.specialKey('backspace', ICONS.backspace, () => this.backspaceAction(), 'kb-wide-1_4 kb-special', 'repeat'));
                 layer.append(row);
             });
-            // Bottom row:
-            // [🌐] [123] [punct] [space(+mic)] [中/英] [enter]; the globe
-            // is the dedicated tap entry for the system IME picker
-            // (3.74.9, user 2026-11-16: restore it; the 中/英 long-press
-            // still opens the picker too). No separate corner buttons
-            // below the row — switching stays with the system picker.
+            // Bottom row (3.75):
+            // [emoji] [123] [punct] [space(+mic)] [中/英] [enter]，三区
+            // 等宽 flex（左区 3.8 / 空格 4.15 / 右区 3.8）：空格（语音）
+            // 天然居中，左右区内部键宽怎么变都不漂移。地球键已撤——顶部
+            // 工具栏已有切换输入法（3.74.9 加它是为了补入口，现已多余）；
+            // 原位换成 emoji 键（微信/搜狗式：点开 emoji 面板）。
             const bottom = this.row();
-            bottom.append(this.specialKey('globe', ICONS.globe,
-                () => this.call(() => Native.switchInputMethod(this.token)),
-                'kb-wide-1_4 kb-special'));
+            bottom.classList.add('kb-bottom');
+            const left = document.createElement('div');
+            left.className = 'kb-bottom-side kb-bottom-left';
+            const right = document.createElement('div');
+            right.className = 'kb-bottom-side kb-bottom-right';
+            const emojiKey = this.specialKey('emoji', this.emojiKeyIcon(),
+                () => { this.toggleEmojiKeyIcon(); this.runPanelStep('emoji'); },
+                'kb-wide-1_4 kb-special');
+            emojiKey.setAttribute('aria-label', 'emoji');
+            left.append(emojiKey);
             // #113（默认关）：开=左下拆【符号】+【123】两键，123 直达数字
             // 键盘；两键恒用英文键盘宽（kb-unit-9 的 Shift/字母 calc，
             // 2026-11-16 用户裁定：俄语 11 格布局下随格变窄会让 123
             // 装不下，跨布局统一）。关=存量单键：点=符号面板、长按=
             // 数字键盘。
             if (this.bottomSymSplit) {
-                bottom.append(this.specialKey('symbols', t("符号"), () => this.showSymbols(),
+                left.append(this.specialKey('symbols', t("符号"), () => this.showSymbols(),
                     'kb-mod kb-special kb-unit-9'));
-                bottom.append(this.specialKey('numpad', '123', () => this.showNumpad(),
+                left.append(this.specialKey('numpad', '123', () => this.showNumpad(),
                     'kb-special kb-bottom-num kb-unit-9'));
             } else {
-                bottom.append(this.specialKey('symbols', '123', () => this.showSymbols(), 'kb-wide-2_1 kb-special', 'numpad'));
+                // 123 从 2.1 收窄到 1.4（用户反馈：123 占宽稍大）。
+                left.append(this.specialKey('symbols', '123', () => this.showSymbols(), 'kb-wide-1_4 kb-special', 'numpad'));
             }
-            bottom.append(this.letterKey('.'));
+            left.append(this.letterKey('.'));
             // 26 键空格挂 data-key 借横滑光标 scrub 通道（手势层只认
             // .kb-key[data-key]，同 T9/手写空格）。值取 ' '：bubbleGlyph
             // 对空格本就免气泡（不会按下冒 "0"），垂直 flick 无字面语义
             // 由手势层的 spaceKey guard 让路。
             const space = this.spaceKey();
             space.dataset.key = ' ';
-            bottom.append(space);
-            bottom.append(this.cnEnKey());
-            bottom.append(this.enterKey());
+            // 拼/En 与换行各从 1.15/2.25 调到 1.9（用户反馈：拼/En 稍小）；
+            // cnEnKey/enterKey 本体不动（T9/手写层共用），只换底行实例的 class。
+            const cnEn = this.cnEnKey();
+            cnEn.classList.remove('kb-wide-1_15');
+            cnEn.classList.add('kb-wide-1_9');
+            right.append(cnEn);
+            const enter = this.enterKey();
+            enter.classList.remove('kb-wide-2_25');
+            enter.classList.add('kb-wide-1_9');
+            right.append(enter);
+            bottom.append(left, space, right);
             layer.append(bottom);
             this.updateLabels();
         }
@@ -4191,7 +4212,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.dataset.key = key;
             button.dataset.lp = 'popup';
             button.innerHTML = '<span class="kb-alt"></span><span class="kb-main"></span>';
-            button.querySelector('.kb-alt').textContent = this.keyAltHint(key);
+            button.querySelector('.kb-alt').textContent = this.keyAltDisplay(key);
             button.addEventListener('click', () => this.sendKey(key));
             this.bindTouch(button);
             return button;
@@ -4222,6 +4243,59 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.addEventListener('click', action);
             this.bindTouch(button);
             return button;
+        }
+
+        /** emoji 键图标（3.75）：默认线条笑脸（按当前键帽风格重绘的
+         *  描边 SVG，不是用户截图原样贴图），点一次换 😋，再点换回，
+         *  交替循环；只换图标，不影响 emoji 面板的开/关。 */
+        emojiKeyIcon() {
+            if (this.emojiIconAlt) {
+                const face = document.createElement('span');
+                face.className = 'emoji-key-face';
+                face.textContent = '😋';
+                return face;
+            }
+            return this.emojiOutlineIcon();
+        }
+
+        /** 线条笑脸：外圈描边 + 两点眼睛 + 张口弧线（图二风格重绘）。 */
+        emojiOutlineIcon() {
+            const NS = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(NS, 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('width', '22');
+            svg.setAttribute('height', '22');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('aria-hidden', 'true');
+            const ring = document.createElementNS(NS, 'circle');
+            ring.setAttribute('cx', '12'); ring.setAttribute('cy', '12');
+            ring.setAttribute('r', '8.5');
+            ring.setAttribute('stroke', 'currentColor');
+            ring.setAttribute('stroke-width', '1.7');
+            svg.append(ring);
+            for (const cx of [8.6, 15.4]) {
+                const eye = document.createElementNS(NS, 'circle');
+                eye.setAttribute('cx', String(cx)); eye.setAttribute('cy', '9.8');
+                eye.setAttribute('r', '1.25');
+                eye.setAttribute('fill', 'currentColor');
+                svg.append(eye);
+            }
+            const mouth = document.createElementNS(NS, 'path');
+            mouth.setAttribute('d', 'M8 13.8 Q12 17.8 16 13.8');
+            mouth.setAttribute('stroke', 'currentColor');
+            mouth.setAttribute('stroke-width', '1.7');
+            mouth.setAttribute('stroke-linecap', 'round');
+            mouth.setAttribute('fill', 'none');
+            svg.append(mouth);
+            return svg;
+        }
+
+        /** 点一次翻转图标并重渲染底行 emoji 键（只找 qwerty 层的键，
+         *  九宫格里的 emoji 键不动）。 */
+        toggleEmojiKeyIcon() {
+            this.emojiIconAlt = !this.emojiIconAlt;
+            const key = document.querySelector('#qwertyLayer [data-role="emoji"]');
+            if (key) key.replaceChildren(this.emojiKeyIcon());
         }
 
         // ---- #H 硬件键盘：hwKey 串行队列 + revision 屏障（design
@@ -5468,6 +5542,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const value = layout.alts[key];
             if (!value) return '';
             return Array.isArray(value) ? value[0] : value;
+        }
+
+        /** 字母上方数字角标（3.75，设置页开关 showKeyDigits）：关时
+         *  只藏数字角标（1-0），符号角标（@# 等）不受影响。 */
+        keyAltDisplay(key) {
+            const hint = this.keyAltHint(key);
+            if (this.showKeyDigits === false && /^\d$/.test(hint)) return '';
+            return hint;
         }
 
         /** 长按全后选：数字 + 字母组逐个（4 → [4 g h i]）。 */
@@ -7479,7 +7561,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     alt.textContent = (chinese || upper) ? key.toUpperCase() : key;
                 } else {
                     main.textContent = (chinese || upper) ? key.toUpperCase() : key;
-                    alt.textContent = this.keyAltHint(key);
+                    alt.textContent = this.keyAltDisplay(key);
                 }
             });
         }
@@ -12122,11 +12204,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const fav = document.createElement('button');
                     fav.type = 'button';
                     fav.className = 'clip-fav-btn';
-                    fav.textContent = '☆';
+                    // 3.75：已在常用语里的条目渲染成实心 ★（以
+                    // onFavorites 下发的数据为准）；点 ☆ 后立即变 ★
+                    // （favoritesAdd 是本机写操作，随后 onFavorites
+                    // 回推还会再对一次账）。
+                    fav.textContent = this.isFavoriteText(item.text) ? '★' : '☆';
                     fav.setAttribute('aria-label', t("加到常用语"));
                     fav.addEventListener('click', event => {
                         event.stopPropagation();
                         this.call(() => Native.favoritesAdd(item.text, '', 1, this.token));
+                        fav.textContent = '★';
                         this.showToast(t("已加到常用语"));
                     });
                     const body = document.createElement('span');
@@ -12995,7 +13082,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 label.textContent = t(piece.kind);
                 const value = document.createElement('span');
                 value.className = 'clip-split-value';
-                value.textContent = piece.value;
+                // 3.75：chip 只显示片段前 36 字——全文已在上方预览里，
+                // 文字片段整句重贴就是截图里的「重复显示」；点 chip
+                // 仍贴完整片段值。
+                const shownValue = [...piece.value];
+                value.textContent = shownValue.length > 36
+                    ? shownValue.slice(0, 36).join('') + '…'
+                    : piece.value;
                 chip.append(label, value);
                 chip.addEventListener('click', () => this.pasteClipPiece(piece.value));
                 chipsEl.append(chip);
@@ -13101,6 +13194,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (this.expanded) this.renderExpanded();
             }
             if (this.panelOpen && this.panelTab === 'favorites') this.renderPanel();
+            // 3.75：剪贴板页的 ☆/★ 也要跟着常用语变化走——在别处
+            // 被移出常用语时，重渲染变回 ☆。
+            if (this.panelOpen && this.panelTab === 'clipboard') this.renderPanel();
+        }
+
+        /** 剪贴板 ☆/★ 判定：该文本是否已在常用语里（onFavorites 数据）。 */
+        isFavoriteText(text) {
+            return (this.favoriteItems || []).some(f => f.text === text);
         }
 
         /* ===== native callbacks ===== */
@@ -13262,6 +13363,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.deleteConfirm === 'boolean') {
                 this.deleteConfirm = payload.deleteConfirm;
             }
+            // 字母上方数字（3.75，默认开）：值变化重画字母层角标。
+            if (typeof payload.showKeyDigits === 'boolean' &&
+                payload.showKeyDigits !== this.showKeyDigits) {
+                this.showKeyDigits = payload.showKeyDigits;
+                this.rerenderLangKeys();
+                this.renderFnLabels();
+            }
+            // 键盘界面版本（3.75，默认 glass）：只换材质层 class，
+            // 调色管线（--kb-* 令牌）两版共用，调色在两版下都生效。
+            if (typeof payload.keyboardUiVersion === 'string') {
+                this.keyboardUiVersion = payload.keyboardUiVersion === 'classic' ? 'classic' : 'glass';
+            }
+            document.documentElement.classList.toggle('glass-v2', this.keyboardUiVersion !== 'classic');
             this.applyGlass(payload);
             this.applyLandscapeChrome();
             // #31 预置色调：native pref 经 hello 下发，html[data-preset]
@@ -14201,6 +14315,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // 壳没说话前留空类让 CSS media-query 兜底画。
         if (theme !== 'auto' && theme !== 'light' && theme !== 'dark') theme = 'auto';
         const root = document.documentElement;
+        // 3.75：className 是整串重写——glass-v2（键盘界面版本）是正交
+        // 的 class，主题切换（hello / tile 循环）不能把它洗掉。
+        const glassV2 = root.classList.contains('glass-v2');
         if (theme !== 'auto') {
             root.className = `theme-${theme}`;
         } else {
@@ -14210,6 +14327,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // paints.
             root.className = systemThemeKnown ? `theme-${systemTheme}` : '';
         }
+        if (glassV2) root.classList.add('glass-v2');
         // 主题切换即换对应组的背景图与工具栏图形（两组拆分后这里必须
         // 跟；真机翻车：非 auto 分支提前 return，手动切深色后背景停在
         // 另一组的图上）。hello 首轮走构造路径时 keyboard 还在 TDZ

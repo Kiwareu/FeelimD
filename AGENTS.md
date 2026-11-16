@@ -46,8 +46,8 @@ third_party/                    许可证清单与来源闭包
 ./scripts/push-keyboard.sh --local # 键盘热更新：打包本仓键盘并推到设备（裸调需要 zip 参数）
 ```
 
-**debug 构建就是正式包名**（`com.feelime.ime`，名称 "FeelimD"，3.74.12 起
-不再带 `.dev` 后缀）——与正式包同名、同数据目录，debug 签名仍走固定
+**debug 构建就是正式包名**（`com.feelimd.kiw`，名称 "FeelimD"，3.74.12 起
+不再带 `.dev` 后缀，3.75 起包名从 `com.feelime.ime` 改成 `com.feelimd.kiw`）——与正式包同名、同数据目录，debug 签名仍走固定
 debug keystore（`FEELIME_DEBUG_*`），与正式签名不同：设备上已有正式签名
 的同包名应用时，须先卸载才能装 debug 包。配套约定：
 
@@ -184,7 +184,7 @@ panelEditor/phraseCard）语义上是叠放小部件，不进表。
 1. **必查默认 IME**：设备上可能装着多个输入法，点编辑框唤起的是**系统默认
    IME** 的键盘——CDP 会连到旧代码的键盘页白忙一场（症状：新行为完全不生效
    / strictReady 模式恒 preparing）。动手前先
-   `adb shell ime set com.feelime.ime/.FeelimeService`
+   `adb shell ime set com.feelimd.kiw/com.feelime.ime.FeelimeService`
    并核对设置页首页状态为「默认输入法在线」。
 2. **覆盖安装新包后必须 `am force-stop` 重启 IME 进程**：输入法服务进程
    跨 `install -r` 存活并继续跑旧 dex，hello/新逻辑全是旧行为。CDP 的

@@ -484,6 +484,8 @@ class UserdataBackup(
                 // 3.74.11 的删除前确认一并登记。
                 PREF_KEY_HAPTIC_FOLLOW_SYSTEM,
                 PREF_DELETE_CONFIRM,
+                // 3.75：字母上方数字角标开关一并登记。
+                PREF_SHOW_KEY_DIGITS,
                 PREF_PREEDIT_FRAME,
             ),
             UPDATE_PREFS to setOf("update_auto_check_enabled"),
