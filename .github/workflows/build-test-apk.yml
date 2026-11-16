@@ -163,9 +163,11 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # Fork 自有键盘热更通道：把当前键盘打包成签名 zip，发到本仓库的
-  # keyboard-<版本> release 上（只含一个 feelime-keyboard-<版本>.zip
-  # 资产，应用内更新检查读的就是 releases/latest）。
+  # Fork 自有键盘热更通道 + 正式版发布：把当前键盘打包成签名 zip，
+  # 连同本次构建的测试 APK 一起发到本仓库的 keyboard-<版本> release 上。
+  # release 里只含一个 feelime-keyboard-<版本>.zip 键盘资产（应用内更新
+  # 检查读的就是 releases/latest，只认这个命名）；APK 是附加资产，
+  # 不影响更新检查。release 正文取 CHANGELOG.md 里对应版本的章节。
   # 签名身份：FEELIME_SIGNING_KEY（Ed25519 私钥 PEM 内容）+
   # FEELIME_KEY_ID（feelime-fork-2026-11），与 ReleaseKeys.kt 的
   # fork 公钥对应；上游的包从此验不过（键盘已领先上游，无需再收
@@ -176,9 +178,16 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download test APK
+        uses: actions/download-artifact@v4
+        with:
+          name: feelime-test-apk
+          path: /tmp/feelime-apk
 
       - name: Publish keyboard package
         env:
@@ -192,9 +201,19 @@ jobs:
           VERSION=$(tr -d '\n' < app/src/main/assets/keyboard/VERSION)
           TAG="keyboard-$VERSION"
           ZIP="feelime-keyboard-$VERSION.zip"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; skipping."
-            exit 0
+          APK="Feelime-$VERSION.apk"
+          cp /tmp/feelime-apk/app-direct-debug.apk "$APK"
+          # release 正文：CHANGELOG.md 里对应版本的章节；没有就用默认说明。
+          NOTES=/tmp/release-notes.md
+          awk -v ver="## $VERSION" '
+            /^## / { if (index($0, ver) == 1) { in_section=1; next } else if (in_section) { exit } }
+            in_section
+          ' CHANGELOG.md > "$NOTES" || true
+          if [ ! -s "$NOTES" ]; then
+            printf 'Feelime %s\n\n键盘热更包（fork 自有签名通道）。应用内设置页 → 检查更新即可拉取；也可手动下载后用设置页的安装包地址安装。\n' "$VERSION" > "$NOTES"
+          else
+            { printf '版本 %s\n\n' "$VERSION"; cat "$NOTES"; } > /tmp/notes-with-version.md
+            mv /tmp/notes-with-version.md "$NOTES"
           fi
           if [ -z "$SIGNING_KEY" ]; then
             echo "FEELIME_SIGNING_KEY secret is not configured; cannot publish." >&2
@@ -204,8 +223,14 @@ jobs:
           FEELIME_SIGNING_KEY=/tmp/feelime-signing-key.pem \
             FEELIME_KEY_ID="${KEY_ID:-feelime-fork-2026-11}" \
             ./scripts/package-keyboard.sh "$ZIP"
-          gh release create "$TAG" \
-            --title "键盘热更包 $VERSION" \
-            --notes "Feelime 键盘热更包（fork 自有签名通道）。应用内设置页 → 检查更新即可拉取；也可手动下载后用设置页的安装包地址安装。" \
-            "$ZIP"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading APK and updating notes."
+            gh release upload "$TAG" "$APK" --clobber
+            gh release edit "$TAG" --title "Feelime $VERSION" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" \
+              --title "Feelime $VERSION" \
+              --notes-file "$NOTES" \
+              "$ZIP" "$APK"
+          fi
 
