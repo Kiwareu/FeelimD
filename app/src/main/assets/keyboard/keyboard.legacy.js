@@ -72,7 +72,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u6761\u5FAE\u535A": "weibo posts",
     "\u518D\u6765": "",
     "\u5B57\u5C31\u662F\u4E00\u6761\u5FAE\u535A": " more chars make a weibo post",
-    "\u4E0E Feelime \u76F8\u4F34": "with Feelime for",
+    "\u4E0E FeelimD \u76F8\u4F34": "with FeelimD for",
     "\u82F1\u6587 Direct": "English",
     "\u5168\u62FC Pinyin": "Pinyin",
     "\u53CC\u62FC": "Double Pinyin",
@@ -387,7 +387,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.74.12";
+  const KEYBOARD_VERSION = "3.74.13";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -8211,7 +8211,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       } else {
         fun = t("\u518D\u6765") + " <b>" + (140 - total) + "</b> " + t("\u5B57\u5C31\u662F\u4E00\u6761\u5FAE\u535A");
       }
-      wrap.append(el("stats-fun", fun + " \xB7 " + t("\u4E0E Feelime \u76F8\u4F34") + " <b>" + withDays + "</b> " + t("\u5929")));
+      wrap.append(el("stats-fun", fun + " \xB7 " + t("\u4E0E FeelimD \u76F8\u4F34") + " <b>" + withDays + "</b> " + t("\u5929")));
       const badges = el("stats-badges");
       [100, 1e3, 1e4, 1e5, 1e6].forEach((m) => {
         const b = el("stats-badge" + (total >= m ? " earned" : ""));

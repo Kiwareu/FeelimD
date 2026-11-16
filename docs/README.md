@@ -1,4 +1,4 @@
-# Feelime 文档导航
+# FeelimD 文档导航
 
 按主题组织。给 AI agent / 新贡献者的阅读顺序建议：
 根目录 [AGENTS.md](../AGENTS.md)（工程约定与命令）→ 本索引 → 按任务挑对应主题。

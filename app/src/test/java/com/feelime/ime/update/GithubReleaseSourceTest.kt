@@ -18,22 +18,27 @@ class GithubReleaseSourceTest {
         private val codes: IntArray,
         private val body: String,
         private val openIndex: Int,
+        private val locations: List<String?> = emptyList(),
     ) : UrlConnection {
         override val responseCode: Int
             get() = codes[minOf(openIndex, codes.size - 1)]
-        override val location: String? get() = null
+        override val location: String? get() = locations.getOrNull(openIndex)
         override fun body(): InputStream = ByteArrayInputStream(body.toByteArray(Charsets.UTF_8))
         override fun disconnect() {}
     }
 
-    private class FakeFactory(private val codes: IntArray, private val body: String) : UrlConnectionFactory {
+    private class FakeFactory(
+        private val codes: IntArray,
+        private val body: String,
+        private val locations: List<String?> = emptyList(),
+    ) : UrlConnectionFactory {
         var opens = 0
         val urls = mutableListOf<URI>()
         override fun open(url: URI): UrlConnection {
             val index = opens
             opens += 1
             urls += url
-            return FakeConnection(codes, body, index)
+            return FakeConnection(codes, body, index, locations)
         }
     }
 
@@ -156,6 +161,63 @@ class GithubReleaseSourceTest {
         assertEquals("尚无可用发布", notFound.message)
         val noAssets = GithubReleaseSource(FakeFactory(intArrayOf(200), "{}")).fetch("https://github.com/f/ke")
         assertEquals("NO_INSTALLABLE_ASSET", (noAssets as GithubReleaseSource.GithubResult.Error).code)
+    }
+
+    @Test
+    fun renamedPrefixKeyboardZipIsAccepted() {
+        val body = releaseJson(
+            "feelimd-keyboard-3.74.13.zip" to "https://github.com/f/ke/releases/download/v1/feelimd-keyboard-3.74.13.zip",
+        )
+        val result = GithubReleaseSource(FakeFactory(intArrayOf(200), body), sleep = {})
+            .fetch("https://github.com/Kiwareu/FeelimD")
+        val release = result as GithubReleaseSource.GithubResult.Release
+        assertEquals("https://github.com/f/ke/releases/download/v1/feelimd-keyboard-3.74.13.zip", release.installUrl)
+        assertFalse(release.isMetainfo)
+    }
+
+    @Test
+    fun oldAndNewPrefixZipsTogetherAreAmbiguous() {
+        val body = releaseJson(
+            "feelime-keyboard-3.74.12.zip" to "https://github.com/f/ke/releases/download/v1/a.zip",
+            "feelimd-keyboard-3.74.13.zip" to "https://github.com/f/ke/releases/download/v1/b.zip",
+        )
+        val result = GithubReleaseSource(FakeFactory(intArrayOf(200), body), sleep = {})
+            .fetch("https://github.com/Kiwareu/feelime")
+        assertEquals("AMBIGUOUS_ASSET", (result as GithubReleaseSource.GithubResult.Error).code)
+    }
+
+    @Test
+    fun repoRenameRedirectIsFollowed() {
+        val body = releaseJson(
+            "metainfo.json" to "https://github.com/f/ke/releases/download/v1/metainfo.json",
+        )
+        val factory = FakeFactory(
+            intArrayOf(301, 200),
+            body,
+            listOf("https://api.github.com/repos/Kiwareu/FeelimD/releases/latest"),
+        )
+        val result = GithubReleaseSource(factory, sleep = {})
+            .fetch("https://github.com/Kiwareu/feelime")
+        assertTrue(result is GithubReleaseSource.GithubResult.Release)
+        assertEquals(2, factory.opens)
+        assertEquals(
+            "https://api.github.com/repos/Kiwareu/FeelimD/releases/latest",
+            factory.urls.last().toString(),
+        )
+    }
+
+    @Test
+    fun redirectToAnotherHostIsNotFollowed() {
+        val factory = FakeFactory(
+            intArrayOf(301),
+            "{}",
+            listOf("https://evil.example/repos/Kiwareu/FeelimD/releases/latest"),
+        )
+        val result = GithubReleaseSource(factory, sleep = {})
+            .fetch("https://github.com/Kiwareu/feelime")
+        val error = result as GithubReleaseSource.GithubResult.Error
+        assertEquals("NETWORK_ERROR", error.code)
+        assertEquals(GithubReleaseSource.MAX_ATTEMPTS, factory.opens)
     }
 
     @Test

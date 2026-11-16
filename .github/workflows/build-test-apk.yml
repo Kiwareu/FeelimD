@@ -211,7 +211,7 @@ jobs:
             in_section
           ' CHANGELOG.md > "$NOTES" || true
           if [ ! -s "$NOTES" ]; then
-            printf 'Feelime %s\n\n键盘热更包（fork 自有签名通道）。应用内设置页 → 检查更新即可拉取；也可手动下载后用设置页的安装包地址安装。\n' "$VERSION" > "$NOTES"
+            printf 'FeelimD %s\n\n键盘热更包（fork 自有签名通道）。应用内设置页 → 检查更新即可拉取；也可手动下载后用设置页的安装包地址安装。\n' "$VERSION" > "$NOTES"
           else
             { printf '版本 %s\n\n' "$VERSION"; cat "$NOTES"; } > /tmp/notes-with-version.md
             mv /tmp/notes-with-version.md "$NOTES"

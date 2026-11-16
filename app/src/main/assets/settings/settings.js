@@ -1,4 +1,4 @@
-/* Feelime full settings page.
+/* FeelimD full settings page.
  *
  * The bridge remains the source of truth for settings and device state. The
  * page owns only presentation: tokens, page routing, and this small zh/en
@@ -133,11 +133,11 @@ const PRESET_HUE = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 3
 
 const I18N = {
     zh: {
-        "title": "Feelime 设置",
+        "title": "FeelimD 设置",
         "hero.tag": "离线中英混合语音输入法",
         "status.title": "状态",
         "ime.title": "输入法状态",
-        "ime.enabled": "在系统中启用 Feelime",
+        "ime.enabled": "在系统中启用 FeelimD",
         "ime.default": "设为默认输入法",
         "ime.enableAction": "去启用",
         "ime.pickAction": "去切换",
@@ -146,7 +146,7 @@ const I18N = {
         "language.title": "界面语言",
         "language.badge": "界面",
         "language.label": "显示语言",
-        "language.hint": "默认跟随系统；只影响 Feelime 界面，不改变输入语言。",
+        "language.hint": "默认跟随系统；只影响 FeelimD 界面，不改变输入语言。",
         "language.note": "输入语言仍由键盘模式决定。",
         "language.auto": "跟随系统",
         "language.zh": "中文",
@@ -676,8 +676,8 @@ const I18N = {
         "backup.failed.export": "导出失败",
         "backup.failed.import": "导入失败",
         "backup.error.FORMAT": "文件不是有效的 JSON。",
-        "backup.error.KIND": "这不是 Feelime 备份文件。",
-        "backup.error.VERSION": "备份文件版本较新，请先升级 Feelime。",
+        "backup.error.KIND": "这不是 FeelimD 备份文件。",
+        "backup.error.VERSION": "备份文件版本较新，请先升级 FeelimD。",
         "backup.error.IO_ERROR": "读取或写入文件失败。",
         "backup.error.PATH": "备份里包含不安全的路径，已拒绝。",
         "backup.error.BASE64": "备份中的词库数据损坏。",
@@ -713,10 +713,10 @@ const I18N = {
         "page.licenses": "开源许可与致谢",
         "nav.backAbout": "返回关于",
         "licenses.self.title": "本应用许可",
-        "licenses.self.note": "Feelime 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。",
+        "licenses.self.note": "FeelimD 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。",
         "licenses.components.title": "致谢组件",
         "licenses.components.badge": "开源",
-        "licenses.thanks": "Feelime 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。",
+        "licenses.thanks": "FeelimD 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。",
         "licenses.full.title": "完整说明",
         "licenses.cmp.frost": "中文基底词库（语料词频重统）",
         "licenses.cmp.librime": "中文输入引擎（内嵌 Boost/OpenCC/marisa-trie 等）",
@@ -729,7 +729,7 @@ const I18N = {
         "licenses.cmp.others": "Commons Compress、yaml-cpp、LevelDB、RapidJSON 等 · 见下方完整说明",
         "test.title": "试输入一段文字",
         "test.badge": "测试",
-        "test.placeholder": "点这里唤起 Feelime 试一试",
+        "test.placeholder": "点这里唤起 FeelimD 试一试",
         "test.note": "输入内容只留在当前编辑框中。",
         "model.builtIn": "已随安装包提供",
         "model.transferSize": "下载 {download}（整包包含额外文件）\n安装后占用 {installed}",
@@ -899,7 +899,7 @@ const I18N = {
         "input.feel.kbHeightHint": "竖屏键盘的高度；键盘上拖拽调节与此处等效。",
         "input.feel.kbHeightReset": "恢复默认",
         "input.feel.keyOpacityHint": "键帽有多透。默认略透，像玻璃；拉到最右是实心。文字始终实色。",
-        "input.feel.systemBarNote": "地球仪和收起键盘那一行由手机系统设置显示或隐藏，Feelime 不另画一条，也没有开关去关它。系统画出这一条时，键盘会按系统报来的底部空白把按键抬上去，避免挡住系统按钮。",
+        "input.feel.systemBarNote": "地球仪和收起键盘那一行由手机系统设置显示或隐藏，FeelimD 不另画一条，也没有开关去关它。系统画出这一条时，键盘会按系统报来的底部空白把按键抬上去，避免挡住系统按钮。",
         "input.feel.glassTitle": "液态玻璃",
         "input.feel.glassBadge": "皮肤",
         "input.feel.glassSkin": "内置皮肤",
@@ -928,7 +928,7 @@ const I18N = {
         "voice.asr.honest": "当前离线模型对较标准的普通话效果最好：语速放稳、环境安静，说完一句再点「说完了」。标点由本机标点模型自动补上（不是喊「逗号」），句尾句号可以在下面关掉。这里不会把声音传到网上，也不能靠换设置凭空提高识别率。",
         "privacy.title": "隐私与离线",
         "privacy.badge": "本机",
-        "privacy.note": "按键、候选、语音和壁纸都只留在这台手机上。Feelime 不上传输入内容，也不带统计上报。语音模型是随安装包或你手动下载的离线模型。诊断开关只在你打开之后记录引擎事件，不含你打过的字。",
+        "privacy.note": "按键、候选、语音和壁纸都只留在这台手机上。FeelimD 不上传输入内容，也不带统计上报。语音模型是随安装包或你手动下载的离线模型。诊断开关只在你打开之后记录引擎事件，不含你打过的字。",
         "input.feel.keyBubble": "按键气泡",
         "input.feel.cnEnComposingGuard": "拼音组词中禁止切换语言",
         "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
@@ -1021,7 +1021,7 @@ const I18N = {
         "error.SIGNATURE_BAD": "键盘包签名校验失败。",
         "error.PAYLOAD_HASH": "键盘文件校验失败。",
         "error.VERSION_MISMATCH": "键盘版本信息不一致。",
-        "error.COMPAT_MIN_NATIVE_API": "当前版本的 Feelime 不支持此键盘包。",
+        "error.COMPAT_MIN_NATIVE_API": "当前版本的 FeelimD 不支持此键盘包。",
         "error.COMPAT_CAPABILITIES": "此键盘包需要未提供的能力。",
         "error.FRAGMENT_PIN_MISMATCH": "键盘包校验指纹不匹配。",
         "error.IO_ERROR": "本地文件操作失败。",
@@ -1053,11 +1053,11 @@ const I18N = {
         "error.INVALID_MODEL_SOURCE": "自定义源需要 HTTPS 仓库地址和对应的 tar.bz2 归档地址。",
     },
     en: {
-        "title": "Feelime Settings",
+        "title": "FeelimD Settings",
         "hero.tag": "Offline Chinese-English voice input",
         "status.title": "Status",
         "ime.title": "Input method status",
-        "ime.enabled": "Enable Feelime in system settings",
+        "ime.enabled": "Enable FeelimD in system settings",
         "ime.default": "Set as the default input method",
         "ime.enableAction": "Enable",
         "ime.pickAction": "Switch",
@@ -1066,7 +1066,7 @@ const I18N = {
         "language.title": "Interface language",
         "language.badge": "UI",
         "language.label": "Display language",
-        "language.hint": "Follows the system by default; this changes Feelime UI only, not input language.",
+        "language.hint": "Follows the system by default; this changes FeelimD UI only, not input language.",
         "language.note": "Input language is still controlled by the keyboard mode.",
         "language.auto": "Follow system",
         "language.zh": "中文",
@@ -1101,7 +1101,7 @@ const I18N = {
         "entry.about.title": "About",
         "entry.about.subtitle": "Version info · Components",
         "entry.test.title": "Input test",
-        "entry.test.subtitle": "Wake Feelime and try it",
+        "entry.test.subtitle": "Wake FeelimD and try it",
         "page.input": "Keyboard & input",
         "page.dict": "Lexicon",
         "dict.badge": "Overlay",
@@ -1595,8 +1595,8 @@ const I18N = {
         "backup.failed.export": "Export failed",
         "backup.failed.import": "Import failed",
         "backup.error.FORMAT": "The file is not valid JSON.",
-        "backup.error.KIND": "This is not a Feelime backup file.",
-        "backup.error.VERSION": "The backup is from a newer version; update Feelime first.",
+        "backup.error.KIND": "This is not a FeelimD backup file.",
+        "backup.error.VERSION": "The backup is from a newer version; update FeelimD first.",
         "backup.error.IO_ERROR": "Could not read or write the file.",
         "backup.error.PATH": "The backup contains unsafe paths and was rejected.",
         "backup.error.BASE64": "The lexicon data in the backup is corrupted.",
@@ -1632,10 +1632,10 @@ const I18N = {
         "page.licenses": "Licenses & credits",
         "nav.backAbout": "Back to about",
         "licenses.self.title": "This app's license",
-        "licenses.self.note": "Feelime as a whole is offered under GPL-3.0: the built-in Chinese base lexicon comes from rime-frost (also GPL-3.0), and the corresponding source is the app's source repository.",
+        "licenses.self.note": "FeelimD as a whole is offered under GPL-3.0: the built-in Chinese base lexicon comes from rime-frost (also GPL-3.0), and the corresponding source is the app's source repository.",
         "licenses.components.title": "Credits",
         "licenses.components.badge": "Open source",
-        "licenses.thanks": "Feelime stands on the shoulders of these open-source projects; tap a link to visit the upstream.",
+        "licenses.thanks": "FeelimD stands on the shoulders of these open-source projects; tap a link to visit the upstream.",
         "licenses.full.title": "Full notices",
         "licenses.cmp.frost": "Chinese base lexicon (re-curated word frequencies)",
         "licenses.cmp.librime": "Chinese input engine (bundles Boost/OpenCC/marisa-trie etc.)",
@@ -1648,7 +1648,7 @@ const I18N = {
         "licenses.cmp.others": "Commons Compress, yaml-cpp, LevelDB, RapidJSON etc. · see the full notices below",
         "test.title": "Type a test sentence",
         "test.badge": "Test",
-        "test.placeholder": "Tap here to wake Feelime and try it",
+        "test.placeholder": "Tap here to wake FeelimD and try it",
         "test.note": "Text stays in this editor.",
         "model.builtIn": "Included with the app",
         "model.transferSize": "Download {download} (archive includes extra files)\nInstalled size {installed}",
@@ -1810,7 +1810,7 @@ const I18N = {
         "input.feel.kbHeightHint": "Portrait keyboard height; dragging on the keyboard stays equivalent.",
         "input.feel.kbHeightReset": "Reset",
         "input.feel.keyOpacityHint": "How see-through the keycaps are. The default is lightly translucent glass; the right end is solid. Labels stay opaque.",
-        "input.feel.systemBarNote": "The globe and hide-keyboard row is shown or hidden by the phone’s system settings. Feelime does not draw a second row and has no switch for it. When the system shows that row, the keys move up by the inset the system reports so they do not cover its buttons.",
+        "input.feel.systemBarNote": "The globe and hide-keyboard row is shown or hidden by the phone’s system settings. FeelimD does not draw a second row and has no switch for it. When the system shows that row, the keys move up by the inset the system reports so they do not cover its buttons.",
         "input.feel.glassTitle": "Liquid glass",
         "input.feel.glassBadge": "Skin",
         "input.feel.glassSkin": "Built-in skins",
@@ -1839,7 +1839,7 @@ const I18N = {
         "voice.asr.honest": "The current offline model works best with fairly standard Mandarin: steady pace, a quiet room, then tap Done. Punctuation is added by the on-device model (saying the word “comma” does not insert one). Trailing periods can be stripped below. Audio is never uploaded, and no setting here can invent higher accuracy.",
         "privacy.title": "Privacy and offline",
         "privacy.badge": "On device",
-        "privacy.note": "Keystrokes, candidates, voice, and wallpapers stay on this phone. Feelime does not upload what you type and does not include analytics. Voice models ship with the app or are downloaded by you. Diagnostics, if you turn them on, record engine events and not the text you typed.",
+        "privacy.note": "Keystrokes, candidates, voice, and wallpapers stay on this phone. FeelimD does not upload what you type and does not include analytics. Voice models ship with the app or are downloaded by you. Diagnostics, if you turn them on, record engine events and not the text you typed.",
         "input.feel.keyBubble": "Key bubble",
         "input.feel.cnEnComposingGuard": "Block language switch while composing",
         "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
@@ -1937,7 +1937,7 @@ const I18N = {
         "error.SIGNATURE_BAD": "Keyboard package signature verification failed.",
         "error.PAYLOAD_HASH": "Keyboard file verification failed.",
         "error.VERSION_MISMATCH": "Keyboard version information is inconsistent.",
-        "error.COMPAT_MIN_NATIVE_API": "This Feelime version does not support the package.",
+        "error.COMPAT_MIN_NATIVE_API": "This FeelimD version does not support the package.",
         "error.COMPAT_CAPABILITIES": "The package requires unavailable capabilities.",
         "error.FRAGMENT_PIN_MISMATCH": "The keyboard package fingerprint does not match.",
         "error.IO_ERROR": "A local file operation failed.",
@@ -7180,8 +7180,10 @@ $("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"
 $("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
 
 // 关于页「检查更新」：Play 渠道跳商店详情页（版本/更新由商店管理）；
-// 直装渠道查本 fork（Kiwareu/feelime）的 GitHub Releases——ghproxy
-// 镜像先行（国内可达），直连回退（海外更快）。WebView 的 file://
+// 直装渠道查本 fork 的 GitHub Releases——ghproxy
+// 镜像先行（国内可达），直连回退（海外更快）。双认版：新旧两个仓库
+// 地址都问（新仓库在前，改名前新地址 404 时回落旧仓库；改名后旧
+// 地址 301 到新仓库，fetch 自动跟随）。WebView 的 file://
 // origin 依赖目标端 ACAO:*（GitHub API 满足；镜像若拦截 CORS 则该源
 // 失败，两个源都挂才报错）。
 // 3.74.11 修正（之前四处全错，检测恒报“已是最新”）：
@@ -7191,6 +7193,7 @@ $("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
 //    形态，须先剥掉 "keyboard-" 前缀再比，否则 [0,74,10] < [1,4,10]
 //    恒判已最新；④ fork 只发 Feelime-<版本>.apk（完整包），旧的
 //    /-(thin|full)\.apk$/ 永远匹配不上，下载按钮出不来。
+//    3.74.13 双认：同时认 Feelime- 与 FeelimD- 两种 APK 文件名。
 let latestReleaseAssets = null;
 /** fork 的 release tag 是 keyboard-3.74.11 形态：剥掉前缀再比版本
  *  （直接比会把 tag 读成 [0,74,11]，恒判已是最新）。 */
@@ -7214,6 +7217,8 @@ async function checkGithubUpdate() {
     // 比的是已装键盘版本（VERSION），不是 App 版本（1.4.10）。
     const current = lastState ? activeKeyboardVersion(lastState) : "?";
     const endpoints = [
+        "https://gh-proxy.com/https://api.github.com/repos/Kiwareu/FeelimD/releases/latest",
+        "https://api.github.com/repos/Kiwareu/FeelimD/releases/latest",
         "https://gh-proxy.com/https://api.github.com/repos/Kiwareu/feelime/releases/latest",
         "https://api.github.com/repos/Kiwareu/feelime/releases/latest",
     ];
@@ -7235,8 +7240,8 @@ async function checkGithubUpdate() {
             setNote("aboutNote", t("update.available", [tag, current]));
             latestReleaseAssets = {};
             (rel.assets || []).forEach(asset => {
-                // fork 只发一个完整包 Feelime-<版本>.apk。
-                if (/^Feelime-.*\.apk$/.test(asset.name || "") && asset.browser_download_url) {
+                // fork 只发一个完整包（Feelime-<版本>.apk，改名后 FeelimD-<版本>.apk）。
+                if (/^Feelim[eD]-.*\.apk$/.test(asset.name || "") && asset.browser_download_url) {
                     latestReleaseAssets.full = asset.browser_download_url;
                 }
             });

@@ -8,7 +8,7 @@ import java.net.URI
  *
  * The GitHub API is only a release index. We still apply the same package
  * trust boundary as the direct metainfo path: the selected asset must be an
- * HTTPS URL and the filename must identify a signed Feelime keyboard package.
+ * HTTPS URL and the filename must identify a signed FeelimD keyboard package.
  * The ZIP's Ed25519 envelope is checked later by [KeyboardPackageVerifier].
  */
 class GithubReleaseSource(
@@ -36,7 +36,7 @@ class GithubReleaseSource(
     fun fetch(sourceUrl: String): GithubResult {
         val repo = parseRepo(sourceUrl)
             ?: return error("INVALID_SOURCE", "GitHub 源地址需为 https://github.com/<owner>/<repo>")
-        val api = runCatching {
+        var api = runCatching {
             URI(
                 "${apiBase.toString().trimEnd('/')}/repos/" +
                     "${repo.first}/${repo.second}/releases/latest",
@@ -48,6 +48,7 @@ class GithubReleaseSource(
         var backoffMs = 1_000L
         var lastCode = 0
         var lastWasRateLimited = false
+        var redirects = 0
         for (attempt in 1..MAX_ATTEMPTS) {
             val connection = try {
                 connectionFactory.open(api)
@@ -62,6 +63,25 @@ class GithubReleaseSource(
                         200 -> {
                             val body = connection.body().use { it.readBytes() }.decodeToString()
                             return parse(body)
+                        }
+                        301, 302, 307, 308 -> {
+                            // GitHub 301s a renamed repo's API path to the new
+                            // name, and the production transport never follows
+                            // redirects internally (instanceFollowRedirects =
+                            // false), so follow same-host API redirects here
+                            // (bounded). Without this, every saved old-repo
+                            // source breaks the moment the repo is renamed.
+                            val next = connection.location?.let { loc ->
+                                runCatching { api.resolve(loc) }.getOrNull()
+                            }
+                            if (next != null && redirects < MAX_REDIRECTS &&
+                                next.host == apiBase.host
+                            ) {
+                                api = next
+                                redirects++
+                            }
+                            lastCode = code
+                            lastWasRateLimited = false
                         }
                         403, 429 -> {
                             // Anonymous GitHub clients are rate limited. Retry
@@ -133,7 +153,7 @@ class GithubReleaseSource(
         if (keyboardZips.isEmpty()) {
             return error(
                 "NO_INSTALLABLE_ASSET",
-                "release 中没有符合 feelime-keyboard-<semver>.zip 命名的签名键盘包",
+                "release 中没有符合 feelime-keyboard-<semver>.zip 或 feelimd-keyboard-<semver>.zip 命名的签名键盘包",
             )
         }
         // Multiple matching ZIPs do not have a safe ordering: GitHub's asset
@@ -167,7 +187,8 @@ class GithubReleaseSource(
 
     private fun isCanonicalKeyboardZip(name: String): Boolean {
         if (!KEYBOARD_ZIP_NAME.matches(name)) return false
-        val version = name.removePrefix("feelime-keyboard-").removeSuffix(".zip")
+        val version = name.removePrefix("feelime-keyboard-")
+            .removePrefix("feelimd-keyboard-").removeSuffix(".zip")
         val prerelease = version.substringBefore('+').substringAfter('-', "")
         // The debug packaging convention uses an `unsigned` prerelease label.
         // It is never an automatic GitHub candidate, regardless of whether a
@@ -181,6 +202,7 @@ class GithubReleaseSource(
     companion object {
         const val METAINFO_ASSET = "metainfo.json"
         const val MAX_ATTEMPTS = 3
+        const val MAX_REDIRECTS = 3
         val API_BASE: URI = URI("https://api.github.com")
 
         private val GITHUB_SEGMENT = Regex("^[A-Za-z0-9_.-]+$")
@@ -188,8 +210,10 @@ class GithubReleaseSource(
         // In particular, a file called *-unsigned.zip is not selected even
         // when someone happened to embed a signature in it: this adapter only
         // sees metadata, while the package verifier owns signature truth.
+        // Both the old (feelime-keyboard-) and the new (feelimd-keyboard-)
+        // prefixes are accepted while the repo rename is rolling out.
         private val KEYBOARD_ZIP_NAME = Regex(
-            "^feelime-keyboard-(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)" +
+            "^(?:feelime|feelimd)-keyboard-(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)" +
                 "(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?" +
                 "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\.zip$",
         )

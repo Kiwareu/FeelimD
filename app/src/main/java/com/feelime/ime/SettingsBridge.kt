@@ -4013,6 +4013,27 @@ class SettingsBridge(
         startUpdateCheck(if (sourceConfigured) savedSource else DEFAULT_GITHUB_SOURCE)
     }
 
+    /**
+     * 双认窗口：默认源已指向改名后的仓库地址。改名落地前新地址 404
+     * （NO_RELEASE），或旧地址 301 未被跟随（NETWORK_ERROR），都回退到
+     * 旧仓库地址再试一次；改名落地后默认源直接命中，回退不再触发。
+     * 用户手填的自定义源不走回退（填错地址应如实报错）。
+     */
+    private fun fetchGithubWithLegacyFallback(
+        github: GithubReleaseSource,
+        source: String,
+    ): GithubReleaseSource.GithubResult {
+        val first = github.fetch(source)
+        if (first is GithubReleaseSource.GithubResult.Release) return first
+        val error = first as GithubReleaseSource.GithubResult.Error
+        if (source == DEFAULT_GITHUB_SOURCE &&
+            (error.code == "NO_RELEASE" || error.code == "NETWORK_ERROR")
+        ) {
+            return github.fetch(LEGACY_GITHUB_SOURCE)
+        }
+        return first
+    }
+
     private fun startUpdateCheck(sourceUrl: String) {
         // Both channels may install a signed HTML/CSS/JS keyboard package.
         // Native APK updates have no path through this bridge; Play app
@@ -4024,7 +4045,7 @@ class SettingsBridge(
                 setState(KeyboardStore.STATE_UPDATE_STATE, "DOWNLOADING")
                 pushState()
                 if (github.accepts(source)) {
-                    when (val result = github.fetch(source)) {
+                    when (val result = fetchGithubWithLegacyFallback(github, source)) {
                         is GithubReleaseSource.GithubResult.Error -> failUpdate(result.code, result.message)
                         is GithubReleaseSource.GithubResult.Release -> {
                             if (result.isMetainfo) {
@@ -4144,14 +4165,18 @@ class SettingsBridge(
     }
 
     /** 关于页「下载新版」：浏览器打开 GitHub release 资产地址（ghproxy
-     *  镜像前缀或仓库直链）。只放行 feelime 仓库的 release download 路径
-     *  ——openGithub 同原则，WebView 不驱动任意跳转。 */
+     *  镜像前缀或仓库直链）。只放行本仓库（改名新旧两个名字）的 release
+     *  download 路径——openGithub 同原则，WebView 不驱动任意跳转。 */
     @JavascriptInterface
     fun openReleaseDownload(url: String, token: String) = guarded(token) {
         val onGithub = url.startsWith(
-            "https://github.com/Kiwareu/feelime/releases/download/")
+            "https://github.com/Kiwareu/feelime/releases/download/") ||
+            url.startsWith(
+                "https://github.com/Kiwareu/FeelimD/releases/download/")
         val onMirror = url.startsWith(
-            "https://gh-proxy.com/https://github.com/Kiwareu/feelime/releases/download/")
+            "https://gh-proxy.com/https://github.com/Kiwareu/feelime/releases/download/") ||
+            url.startsWith(
+                "https://gh-proxy.com/https://github.com/Kiwareu/FeelimD/releases/download/")
         if (!onGithub && !onMirror) return@guarded
         runCatching {
             context.startActivity(
@@ -4317,7 +4342,9 @@ class SettingsBridge(
 
     private companion object {
         const val TAG = "FeelimeSettings"
-        const val DEFAULT_GITHUB_SOURCE = "https://github.com/Kiwareu/feelime"
+        const val DEFAULT_GITHUB_SOURCE = "https://github.com/Kiwareu/FeelimD"
+        // 仓库改名前旧地址；双认窗口的回退源（改名落地后仍可留作兼容）。
+        const val LEGACY_GITHUB_SOURCE = "https://github.com/Kiwareu/feelime"
         const val STATE_AUTO_CHECK_ENABLED = "update_auto_check_enabled"
         const val STATE_AUTO_CHECK_LAST_ATTEMPT_AT = "update_auto_check_last_attempt_at"
 

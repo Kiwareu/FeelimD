@@ -20,6 +20,8 @@ require('./check_legacy_web'); // #90 legacy WebView 产物一致性 gate
 const ROOT = path.resolve(__dirname, '../..');
 const HTML_PATH = path.join(ROOT, 'app/src/main/assets/settings/index.html');
 const JS_PATH = path.join(ROOT, 'app/src/main/assets/settings/settings.js');
+const KT_SOURCE_PATH = path.join(ROOT, 'app/src/main/java/com/feelime/ime/update/GithubReleaseSource.kt');
+const KT_BRIDGE_PATH = path.join(ROOT, 'app/src/main/java/com/feelime/ime/SettingsBridge.kt');
 
 const RESULTS = [];
 function test(name, fn) {
@@ -516,7 +518,7 @@ test('backup: export calls straight through; import gates on overwrite consent; 
     world.FeelimeSettings().onEvent({ type: 'backupStatus', direction: 'import', ok: true });
     assert(world.$('backupNote').textContent.includes('导入完成'), 'success note');
     world.FeelimeSettings().onEvent({ type: 'backupStatus', direction: 'import', ok: false, code: 'KIND' });
-    assert(world.$('backupNote').textContent.includes('不是 Feelime 备份'), 'wrong-kind note');
+    assert(world.$('backupNote').textContent.includes('不是 FeelimD 备份'), 'wrong-kind note');
 });
 
 test('keyboard signature mismatch: confirmable errors open the consent; confirm reinstalls once', () => {
@@ -2623,9 +2625,42 @@ test('update check compares the installed keyboard version against the fork tag 
     // 检查本身问的是 fork 的 releases/latest（fetch 在本套件里是桩，
     // 这里断言发出的地址与 APK 文件名形态）。
     const src = fs.readFileSync(JS_PATH, 'utf8');
-    assert(src.includes('repos/Kiwareu/feelime/releases/latest'), 'update check queries the fork releases');
+    assert(src.includes('repos/Kiwareu/feelime/releases/latest'), 'update check still queries the old repo releases (fallback)');
+    assert(src.includes('repos/Kiwareu/FeelimD/releases/latest'), 'update check queries the new repo releases first');
     assert(!src.includes('repos/feelime/feelime/releases/latest'), 'no upstream releases endpoint remains');
-    assert(src.includes('/^Feelime-.*\\.apk$/'), 'update check matches the fork APK name');
+    assert(src.includes('/^Feelim[eD]-.*\\.apk$/'), 'update check matches both old and new APK names');
+});
+
+test('rename dual recognition (3.74.13): old and new names both work', () => {
+    // APK 文件名：新旧两种都被认，其他前缀仍拒绝（行为级断言）。
+    const apkRe = /^Feelim[eD]-.*\.apk$/;
+    equal(apkRe.test('Feelime-3.74.12.apk'), true, 'old APK name accepted');
+    equal(apkRe.test('FeelimD-3.74.14.apk'), true, 'new APK name accepted');
+    equal(apkRe.test('Feelime-3.74.12.zip'), false, 'non-APK rejected');
+    equal(apkRe.test('Other-1.0.apk'), false, 'other prefix rejected');
+    // 键盘包文件名：Kotlin 侧正则同时认新旧两种前缀，版本号两种都能剥。
+    const ktSrc = fs.readFileSync(KT_SOURCE_PATH, 'utf8');
+    assert(ktSrc.includes('(?:feelime|feelimd)-keyboard-'), 'keyboard zip regex accepts both prefixes');
+    assert(ktSrc.includes('.removePrefix("feelimd-keyboard-")'), 'version extraction strips the new prefix');
+    assert(ktSrc.includes('.removePrefix("feelime-keyboard-")'), 'version extraction still strips the old prefix');
+    // 301 跟随：传输层不自动跟随重定向，GithubReleaseSource 自己跟随同域重定向。
+    assert(ktSrc.includes('301, 302, 307, 308'), 'redirect status codes handled');
+    assert(ktSrc.includes('next.host == apiBase.host'), 'redirects only followed on the same API host');
+    // 下载白名单：新旧两个仓库前缀都放行（直链 + gh-proxy），其他前缀仍拦截。
+    const bridgeSrc = fs.readFileSync(KT_BRIDGE_PATH, 'utf8');
+    assert(bridgeSrc.includes('"https://github.com/Kiwareu/FeelimD/releases/download/'), 'whitelist allows the new repo prefix');
+    assert(bridgeSrc.includes('"https://github.com/Kiwareu/feelime/releases/download/'), 'whitelist still allows the old repo prefix');
+    assert(bridgeSrc.includes('"https://gh-proxy.com/https://github.com/Kiwareu/FeelimD/releases/download/'), 'whitelist allows the new repo via gh-proxy');
+    assert(bridgeSrc.includes('if (!onGithub && !onMirror) return@guarded'), 'non-whitelisted downloads still blocked');
+    // 默认更新源指向新仓库，旧地址留作回退。
+    assert(bridgeSrc.includes('const val DEFAULT_GITHUB_SOURCE = "https://github.com/Kiwareu/FeelimD"'), 'default update source is the new repo');
+    assert(bridgeSrc.includes('const val LEGACY_GITHUB_SOURCE = "https://github.com/Kiwareu/feelime"'), 'legacy source kept for fallback');
+    assert(bridgeSrc.includes('fetchGithubWithLegacyFallback'), 'default-source checks fall back to the legacy repo');
+    // 发布文件名本版不动：仍发旧名，3.74.14 再翻新。
+    const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build-test-apk.yml'), 'utf8');
+    assert(workflow.includes('ZIP="feelime-keyboard-$VERSION.zip"'), 'keyboard zip publish name unchanged this version');
+    assert(workflow.includes('APK="Feelime-$VERSION.apk"'), 'APK publish name unchanged this version');
+    assert(workflow.includes("printf 'FeelimD %s"), 'release title uses the new name');
 });
 
 test('appearance no longer auto-pops the keyboard; skin page does (2026-10-13 裁定)', () => {

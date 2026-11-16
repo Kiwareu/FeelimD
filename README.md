@@ -1,10 +1,10 @@
-# Feelime 输入法
+# FeelimD 输入法
 
 本仓库是上游 [Feelime](https://github.com/feelime/feelime) 的修改版，不是官方原版。
 源码与发布均以 [GPL-3.0](LICENSE) 提供，并保留上游 LICENSE 与版权声明。
 本 fork：<https://github.com/Kiwareu/feelime>
 
-> **Feelime** is an open-source, fully offline Android keyboard with modern
+> **FeelimD** is an open-source, fully offline Android keyboard with modern
 > visuals and built-in voice input. Everything — keystrokes, candidates,
 > speech recognition — stays on your device.
 >
@@ -16,7 +16,7 @@
 >
 > English details: [README.en.md](README.en.md)
 
-Feelime 是一个 Android 离线输入法：键盘区域由本地 HTML/CSS/JavaScript
+FeelimD 是一个 Android 离线输入法：键盘区域由本地 HTML/CSS/JavaScript
 渲染，通过受控 JS Bridge 调用 Android `InputConnection`；语音识别采用
 双通道——流式 Zipformer 实时出临时文本，停顿段由 Paraformer 整句纠错，
 最后恢复英文大小写、缩写与标点。全部计算发生在设备本地。
@@ -59,7 +59,7 @@ adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
 
 完整包内置语音模型；`-PfeelimeModels=thin` 可构建不含模型的精简包
 （首次使用语音前在设置页下载）。启用方式：授予麦克风权限、在系统输入法
-设置里启用 Feelime，然后切换输入法选择 Feelime。
+设置里启用 FeelimD，然后切换输入法选择 FeelimD。
 
 ## 键盘热更新
 
@@ -70,7 +70,7 @@ adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
 ./scripts/push-keyboard.sh --local  # 打包本仓键盘并推到设备，秒级生效
 ```
 
-脚本写入应用私有目录并广播更新，运行中的 Feelime 免重启重载页面。
+脚本写入应用私有目录并广播更新，运行中的 FeelimD 免重启重载页面。
 设置页可随时「恢复 APK 内置键盘」；键盘包安装走签名/能力校验与原子
 激活（详见 [docs/design/keyboard.md §8](docs/design/keyboard.md)）。
 

@@ -1,5 +1,5 @@
 /*
- * Feelime HTML keyboard: config-rendered rows, flick characters, long-press
+ * FeelimD HTML keyboard: config-rendered rows, flick characters, long-press
  * popup, symbol recents. Native access goes through the FeelimeNative bridge
  * (token-gated, design §5.3) with engine candidates, input modes and the
  * recording-only voice overlay.
@@ -81,7 +81,7 @@
         "日": "Su", "一": "Mo", "二": "Tu", "三": "We", "四": "Th", "五": "Fr", "六": "Sa",
         "≈": "≈", "篇高考作文": "exam essays", "条微博": "weibo posts",
         "再来": "", "字就是一条微博": " more chars make a weibo post",
-        "与 Feelime 相伴": "with Feelime for",
+        "与 FeelimD 相伴": "with FeelimD for",
         "英文 Direct": "English",
         "全拼 Pinyin": "Pinyin",
         "双拼": "Double Pinyin",
@@ -396,7 +396,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.12';
+    const KEYBOARD_VERSION = '3.74.13';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -9741,7 +9741,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             } else {
                 fun = t("再来") + ' <b>' + (140 - total) + '</b> ' + t("字就是一条微博");
             }
-            wrap.append(el('stats-fun', fun + ' · ' + t("与 Feelime 相伴") + ' <b>' + withDays + '</b> ' + t("天")));
+            wrap.append(el('stats-fun', fun + ' · ' + t("与 FeelimD 相伴") + ' <b>' + withDays + '</b> ' + t("天")));
             // 里程碑徽章：达成亮起（pop 动画）。
             const badges = el('stats-badges');
             [100, 1000, 10000, 100000, 1000000].forEach(m => {

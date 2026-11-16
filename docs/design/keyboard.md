@@ -1,4 +1,4 @@
-# Feelime 设计文档：键盘与产品语义
+# FeelimD 设计文档：键盘与产品语义
 
 本文档是产品与交互语义的**权威出处**。代码注释里的「design §N」「§N」都指
 本文档的节号，改语义时先改这里再改代码。配套阅读：
@@ -875,6 +875,13 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   检查、保留手动入口。
 - debug 构建可放行 `http://` 内网源与未签名包（红色警示标明）；
   release 一律 HTTPS + 强制签名。
+- 品牌改名双认（3.74.13）：键盘包文件名同时认 `feelime-keyboard-` 与
+  `feelimd-keyboard-` 两种前缀；APK 文件名同时认 `Feelime-` 与 `FeelimD-`；
+  下载白名单同时放行新旧两个仓库前缀；默认更新源指向新仓库地址
+  `Kiwareu/FeelimD`，改名落地前新地址 404 时回退旧地址再试一次。
+  GitHub 仓库改名后 API 返回 301，传输层不自动跟随重定向
+  （`instanceFollowRedirects = false`），由 `GithubReleaseSource` 自行
+  跟随同域重定向（最多 3 跳，跨域不跟随）。发布文件名本版不动，3.74.14 再翻新。
 
 ### 8.2 包结构与校验
 
@@ -1422,7 +1429,7 @@ CANCEL+DOWN+UP 终结流）不授权清理新指、注入脚本在渲染侧执�
   不收 `systemGestures`（左右返回热区过大，系统条关闭时也会垫高键盘）。
   系统报 0 且横屏时取平台 `navigation_bar_height` 兜底（上限 32dp；
   竖屏不兜）。旋转时 `onConfigurationChanged` → 重推 hello。
-- **系统底部栏（地球仪 / 收起键盘）**：由系统设置显示或隐藏，Feelime
+- **系统底部栏（地球仪 / 收起键盘）**：由系统设置显示或隐藏，FeelimD
   不绘制、不提供开关、也不再在横屏 `hide(navigationBars)`。系统画出
   这一条时，上面的 inset 会变大，键区用 `--safe-bottom` 让开，触摸仍
   留给系统自己的按钮。系统条关闭且 inset 为 0 时，键盘铺满到底。
