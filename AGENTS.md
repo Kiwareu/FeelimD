@@ -281,8 +281,8 @@ DevTools 合成 TouchEvent 切到符号层（`<123>`）时会触发 qemu **静�
 - **GitHub release 产物走 publish-release.sh**（issue #40 事故后固化，
   2026-09-27）：`scripts/publish-release.sh v<ver> [--upload]
   [--notes-file <f>]` 只构建 assembleDirectRelease 并逐产物硬校验——
-  applicationId 精确等于 `com.feelime.ime`（3.74.12 起 debug 构建也是正式
-  包名，包名已无法区分 debug 与 release，**绝不复用 direct/debug 产物发版**）、
+  applicationId 精确等于 `com.feelimd.kiw`（3.75 起包名改成
+  com.feelimd.kiw；3.74.12 起 debug 构建也是正式包名，包名已无法区分 debug 与 release，**绝不复用 direct/debug 产物发版**）、
   versionName 精确
   等于 tag、签名者 CN=Feelime Release；任何一项失败拒绝输出/上传。
   `--upload` 自动完成全套发布：release 不存在先 create（1.2.2 实录：

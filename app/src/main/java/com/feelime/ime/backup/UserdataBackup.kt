@@ -16,6 +16,7 @@ import com.feelime.ime.PREF_KEY_HAPTIC
 import com.feelime.ime.PREF_KEY_HAPTIC_FOLLOW_SYSTEM
 import com.feelime.ime.PREF_KEY_SOUND
 import com.feelime.ime.PREF_PREEDIT_FRAME
+import com.feelime.ime.PREF_SHOW_KEY_DIGITS
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
