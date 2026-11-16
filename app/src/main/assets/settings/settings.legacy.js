@@ -660,6 +660,8 @@ const I18N = {
     "voice.asr.stripPeriod": "\u53BB\u6389\u53E5\u5C3E\u53E5\u53F7",
     "voice.asr.idleUnload": "\u7A7A\u95F2\u65F6\u91CA\u653E\u8BED\u97F3\u6A21\u578B",
     "voice.asr.idleUnloadHint": "\u9ED8\u8BA4\u5173\u95ED\uFF1B\u5F00\u542F\u540E\u7A7A\u95F2 5 \u5206\u949F\u91CA\u653E\uFF0C\u4E0B\u6B21\u8BED\u97F3\u9700\u8981\u91CD\u65B0\u52A0\u8F7D",
+    "voice.asr.powerSaving": "\u7701\u7535\u6A21\u5F0F",
+    "voice.asr.powerSavingHint": "\u9ED8\u8BA4\u5173\u95ED\uFF1B\u5F00\u542F\u540E\u78E8\u7802\u548C\u6309\u952E\u52A8\u753B\u5173\u95ED\uFF0C\u8BED\u97F3\u53EA\u7528\u6D41\u5F0F\u8BC6\u522B\uFF0C\u6A21\u578B\u7A7A\u95F2 1 \u5206\u949F\u91CA\u653E",
     "voice.asr.stripHint": "\u95EE\u53F7\u3001\u53F9\u53F7\u4FDD\u7559\uFF1B\u5173\u95ED\u540E\u4FDD\u7559\u6A21\u578B\u8F93\u51FA",
     "voice.asr.numItn": "\u6570\u5B57\u5199\u6210\u963F\u62C9\u4F2F\u6570\u5B57",
     "voice.asr.numItnHint": "\u6570\u91CF\u3001\u65E5\u671F\u3001\u91D1\u989D\u3001\u5C0F\u6570\u81EA\u52A8\u8F6C\u6362\uFF08\u4E09\u4E2A \u2192 3\u4E2A\uFF09\uFF1B\u9ED8\u8BA4\u5173\u95ED",
@@ -1563,6 +1565,8 @@ const I18N = {
     "voice.asr.stripPeriod": "Remove final periods",
     "voice.asr.idleUnload": "Release speech models when idle",
     "voice.asr.idleUnloadHint": "Off by default. Release after 5 idle minutes; the next recording reloads the models.",
+    "voice.asr.powerSaving": "Power saving mode",
+    "voice.asr.powerSavingHint": "Off by default. Turns off glass blur and key animations, uses streaming-only speech recognition, and releases models after 1 idle minute.",
     "voice.asr.stripHint": "Question and exclamation marks stay; turn off to keep model output unchanged",
     "voice.asr.numItn": "Write numbers as digits",
     "voice.asr.numItnHint": "Quantities, dates, amounts and decimals convert automatically (\u4E09\u4E2A \u2192 3\u4E2A); off by default",
@@ -3271,6 +3275,7 @@ let asrHotwordsDirty = false;
 function renderAsr(state) {
   const asr = state.asr || {};
   $("asrIdleUnload").checked = asr.idleUnload === true;
+  $("powerSaving").checked = state.powerSaving === true;
   const field = $("hotwords");
   if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
   if (document.activeElement !== field && !asrHotwordsDirty) field.value = asr.hotwords || "";
@@ -4438,6 +4443,7 @@ $("modelConsentConfirm").addEventListener("click", () => {
 });
 let asrHotwordsSubmitted = null;
 $("asrIdleUnload").addEventListener("change", (event) => call("setAsrIdleUnload", event.target.checked));
+$("powerSaving").addEventListener("change", (event) => call("setPowerSaving", event.target.checked));
 $("hotwords").addEventListener("input", () => {
   asrHotwordsDirty = true;
 });

@@ -404,6 +404,15 @@ fun readKeyBubble(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_KEY_BUBBLE, true)
 
+/** 省电模式（3.74.9，默认关 = 常规模式）：磨砂归零、圆角收小、按键/
+ *  候选动画关闭（键盘侧经 hello 下发）；语音只走流式、空闲 1 分钟卸
+ *  载模型（AsrEngine 经同一 pref 读值）。真相源只有一个：本文件。 */
+const val PREF_POWER_SAVING = "power_saving"
+
+fun readPowerSaving(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_POWER_SAVING, false)
+
 /** #89：默认 false——组词中切换保持 1.4.5 及之前行为，开启才拦误触。 */
 fun readCnEnComposingGuard(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
@@ -1031,6 +1040,7 @@ class SettingsBridge(
             .put("glassRadius", readGlassRadius(context))
             .put("panelOpacity", readPanelOpacity(context))
             .put("glassSkin", readGlassSkin(context))
+            .put("powerSaving", readPowerSaving(context))
             .put("landscapeSafeArea", if (readLandscapeSafeArea(context)) 1 else 0)
             .put("landscapeCeil", readLandscapeCeilPct(context))
             .put("hwkbForm", readHwkbForm(context))
@@ -1583,10 +1593,12 @@ class SettingsBridge(
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putString(PREF_QUICK_SWITCH_POLICY, policy).commit()
         context.sendBroadcast(
-            android.content.Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
         pushState()
     }
+
+    /** Sub-page presence for the shell's BACK callback. */
 
     /** #H 返回键盘记忆写入（JS 首载迁移的一次性初始化；此后由 service
      *  的引擎成功落地点维护，JS 不再写）。 */
@@ -3446,6 +3458,18 @@ class SettingsBridge(
     @JavascriptInterface
     fun setAsrIdleUnload(enabled: Boolean, token: String) = guarded(token) {
         asrPrefs().edit().putBoolean(AsrSettings.KEY_IDLE_UNLOAD, enabled).commit()
+        pushState()
+    }
+
+    /** 省电模式开关（3.74.9）：拨动即存；键盘经 hello 重推生效（玻璃/
+     *  动画），AsrEngine 监听同一 pref（流式-only + 1 分钟空闲卸载）。 */
+    @JavascriptInterface
+    fun setPowerSaving(enabled: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_POWER_SAVING, enabled).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
         pushState()
     }
 

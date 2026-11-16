@@ -382,7 +382,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.74.8";
+  const KEYBOARD_VERSION = "3.74.9";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -995,6 +995,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     // （把手在右上、向外拉=放大）；停靠=上沿开口的窗口+向下箭头
     // +底条（「下放回底部」，替换歧义的 ⌂）。
     floating: "M2 3h5v2H4v3H2zM17 3h5v5h-2V5h-3zM2 16h2v3h3v2H2zM20 16h2v5h-5v-2h3zM6 7h12v10H6zM8 9v6h8V9zM9 10h2v2H9zM13 10h2v2h-2zM9 13h6v1H9z",
+    // 底行地球仪（3.74.9，用户 2026-11-16 要求恢复）：实心地球，
+    // 与 lang 同形（点按开系统输入法选择器，见底行首键）。
+    globe: "M12 2a10 10 0 100 20 10 10 0 000-20zm7.9 9h-3.4a15 15 0 00-1.2-5.7A8 8 0 0119.9 11zM12 4c.9 1.2 1.9 3.4 2.2 7H9.8c.3-3.6 1.3-5.8 2.2-7zM8.7 5.3A15 15 0 007.5 11H4.1a8 8 0 014.6-5.7zM4.1 13h3.4a15 15 0 001.2 5.7A8 8 0 014.1 13zM12 20c-.9-1.2-1.9-3.4-2.2-7h4.4c-.3 3.6-1.3 5.8-2.2 7zm3.3-1.3a15 15 0 001.2-5.7h3.4a8 8 0 01-4.6 5.7z",
     // #93 分享（Material share：三节点两连线，系统的分享心智）。
     share: "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z",
     resize: "M14 3h7v7h-2V6.4l-4.8 4.8-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.8-4.8 1.4 1.4L6.4 19H10v2H3z",
@@ -1809,6 +1812,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.scrubSpeedFromNative = false;
       this.holdMs = 350;
       this.flickSwap = false;
+      this.powerSaving = false;
       this.doubleShiftLock = true;
       this.popupSnap = 1;
       this.bottomPad = 0;
@@ -2088,8 +2092,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           this.bindTouch(hwTag);
         }
       }
-      {
-        const bar = document.getElementById("candidateBar");
+      ["candidateBar", "toolboxRow"].forEach((rowId) => {
+        const bar = document.getElementById(rowId);
+        if (!bar) return;
         let barTouchStart = null;
         bar.addEventListener("touchstart", (event) => {
           const t2 = event.changedTouches[0];
@@ -2111,7 +2116,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             event.preventDefault();
           }
         }, { capture: true });
-      }
+      });
       const fullSetup = document.getElementById("fullSetupButton");
       if (fullSetup) {
         fullSetup.addEventListener("click", () => {
@@ -2542,6 +2547,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         layer.append(row);
       });
       const bottom = this.row();
+      bottom.append(this.specialKey(
+        "globe",
+        ICONS.globe,
+        () => this.call(() => Native.switchInputMethod(this.token)),
+        "kb-wide-1_4 kb-special"
+      ));
       if (this.bottomSymSplit) {
         bottom.append(this.specialKey(
           "symbols",
@@ -3279,10 +3290,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (tag) tag.hidden = !active;
       if (this.voiceState === "idle") {
         this.setToolbarYield(active || assocOnly);
-        if (active) {
-          const mic = document.getElementById("mic");
-          if (mic) mic.hidden = true;
-        }
         const hideBtn = document.getElementById("hide");
         if (hideBtn) hideBtn.hidden = active;
       }
@@ -3494,15 +3501,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.setToolbarYield(true);
       this.renderT9SymbolBar();
     }
-    /** 工具栏让位开关（T9 符号行与中文联想共用）：整条语义——上栏
-     * 的所有工具（含动态开关工具与 mic）全部收起，仅留 ×。不得逐 id
-     * 枚举：动态工具曾被漏掉，联想让位时还挂着半条工具栏（真机翻
-     * 车）。固定 chrome（setup）不在 TOOL_CATALOG，单列。 */
+    /** 工具栏让位开关（T9 符号行与中文联想共用）：整条语义——候选栏
+     * 内的工具全部收起，仅留 ×。3.74.9：工具箱行的按钮不再随让位
+     * 隐藏（独立行常驻）；固定 chrome（setup）与 TOOL_CATALOG 都按
+     * 所在行判定，候选栏内的才藏。composeClear（×）仍按让位语义走。
+     * 不得逐 id 枚举：动态工具曾被漏掉，联想让位时还挂着半条工具栏
+     * （真机翻车）。 */
     setToolbarYield(active) {
       this.toolbarYield = active;
       ["setupButton", ...Object.values(TOOL_CATALOG)].forEach((id) => {
         const el = document.getElementById(id);
-        if (el) el.hidden = active;
+        if (!el || !el.closest("#candidateBar")) return;
+        el.hidden = active;
       });
       const clear = document.getElementById("composeClear");
       if (clear) clear.hidden = !active;
@@ -4222,15 +4232,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.touchOrigin = null;
       this.pressById.clear();
       this.popupRetiredIds.clear();
-      const tbar = document.getElementById("candidateBar");
-      if (tbar) {
+      ["candidateBar", "toolboxRow"].forEach((rowId) => {
+        const tbar = document.getElementById(rowId);
+        if (!tbar) return;
         clearTimeout(tbar._barHold);
         tbar._barHoldPos = null;
         tbar.querySelectorAll(".tool").forEach((el) => {
           clearTimeout(el._editHold);
           el._editHoldPos = null;
         });
-      }
+      });
       this.scrubBase = null;
       this.scrubSteps = 0;
       if (this.delBase !== null) {
@@ -6235,11 +6246,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       );
     }
     /* ===== control-key layer  ===== */
-    /** Swap the TOOLBAR for the two control-key rows (the bar's 40px
-     * slot, The rows never exceed the slot so the keyboard
+    /** Swap the TOOLBOX ROW for the two control-key rows (the row's
+     * 40px slot, The rows never exceed the slot so the keyboard
      * body keeps its height). The ctrl view is a SWITCH: composing or
      * a panel only SUSPENDS it (see suspendCtrlView), the user turns
-     * it off with the X. Any layer that owns the bar blocks entering. */
+     * it off with the X. Any layer that owns the row blocks entering.
+     * 3.74.9: the swapped row is #toolboxRow, not #candidateBar —
+     * the candidate bar stays visible while the ctrl rows show. */
     setControlView(on) {
       if (on && this.composing) return;
       if (on && this.panelOpen) return;
@@ -6251,7 +6264,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.hwNotifyPanelHeight();
       document.body.classList.toggle("ctrl-view", on);
       document.getElementById("ctrlLayer").hidden = !on;
-      document.getElementById("candidateBar").hidden = on;
+      document.getElementById("toolboxRow").hidden = on;
       if (!on) {
         this.closeComboGrid();
         this.sticky = { Ctrl: false, Alt: false, Meta: false, Fn: false };
@@ -6271,7 +6284,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.renderCtrlSticky();
       document.body.classList.remove("ctrl-view");
       document.getElementById("ctrlLayer").hidden = true;
-      document.getElementById("candidateBar").hidden = false;
+      document.getElementById("toolboxRow").hidden = false;
       this.applyHeight();
     }
     maybeResumeCtrlView() {
@@ -6282,7 +6295,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.ctrlSuspended = false;
       document.body.classList.add("ctrl-view");
       document.getElementById("ctrlLayer").hidden = false;
-      document.getElementById("candidateBar").hidden = true;
+      document.getElementById("toolboxRow").hidden = true;
       this.applyHeight();
     }
     /** Pressed feedback for buttons that keep their native
@@ -6584,7 +6597,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * #8): the rows shrink by 4/8/11 against the old 14px base. */
     layoutChrome() {
       const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
-      return (this.landscape ? 82 : 92) + bandExtra;
+      return (this.landscape ? 130 : 144) + bandExtra;
     }
     /** Read the native view's total height back as content height. The
      * fallback keeps the preview usable before its layout has measured. */
@@ -7077,14 +7090,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       } catch (_) {
       }
     }
-    /** 液态玻璃：模糊、圆角、面板通透度。缺省字段保持 CSS 默认。 */
+    /** 液态玻璃：模糊、圆角、面板通透度。缺省字段保持 CSS 默认。
+     *  省电模式（3.74.9）：磨砂强制为 0、圆角收小到下限 8px——
+     *  backdrop-filter 模糊是 WebView 键盘最大 GPU/电耗项；动画
+     *  由 body.power-saving 在 CSS 侧关掉。 */
     applyGlass(payload) {
       const root = document.documentElement.style;
-      const blur = Number(payload && payload.glassBlur);
+      const saving = this.powerSaving === true;
+      const blur = saving ? 0 : Number(payload && payload.glassBlur);
       if (Number.isFinite(blur) && blur >= 0 && blur <= 32) {
         root.setProperty("--glass-blur", Math.round(blur) + "px");
       }
-      const radius = Number(payload && payload.glassRadius);
+      const radius = saving ? 8 : Number(payload && payload.glassRadius);
       if (Number.isFinite(radius) && radius >= 8 && radius <= 28) {
         const rounded = Math.round(radius);
         root.setProperty("--radius-key", rounded + "px");
@@ -7119,9 +7136,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       root.setProperty("--kb-landscape-opacity", String(pct / 100));
     }
     // ---- 工具栏编辑模式（issue #15）----
-    // 布局是两个有序数组（左组 / 右组，中间候选区留空）。按钮 DOM 永远
-    // 存在于 candidateBar（编辑态把未上栏的按钮移进下方仓库 grid），
-    // applyToolbarLayout 只负责按数组重排；事件绑定在元素上，移动安全。
+    // 布局是两个有序数组（左组 / 右组，中间间隔留空）。按钮 DOM 永远
+    // 存在于工具箱行（3.74.9：从候选栏移入独立的 #toolboxRow；编辑态
+    // 把未上栏的按钮移进下方仓库 grid），applyToolbarLayout 只负责
+    // 按数组重排；事件绑定在元素上，移动安全。
     applyToolbarLayoutValue(raw) {
       let parsed = null;
       try {
@@ -7136,40 +7154,42 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     applyToolbarLayout() {
       if (this.panelOpen) return;
-      const pre = document.getElementById("candidates");
-      const hideBtn = document.getElementById("hide");
-      if (!pre || !hideBtn) return;
+      const row = document.getElementById("toolboxRow");
+      const spacer = document.getElementById("toolboxSpacer");
+      if (!row || !spacer) return;
       const resolve = /* @__PURE__ */ __name((id) => document.getElementById(TOOL_CATALOG[id]), "resolve");
       this.toolbarLeft.forEach((id) => {
         const el = resolve(id);
-        if (el) pre.parentNode.insertBefore(el, pre);
+        if (el) row.insertBefore(el, spacer);
       });
       this.toolbarRight.forEach((id) => {
         const el = resolve(id);
-        if (el) hideBtn.parentNode.insertBefore(el, hideBtn);
+        if (el) row.append(el);
       });
       this.pruneOverflowTools();
       this.renderToolbarEditor();
     }
     /** 工具栏对账（兜底，每次编辑操作 / 键盘弹起后跑）：不变式是
-     *  「每颗工具要么在候选条、要么在下方仓库完整展示」。实现拆两层：
+     *  「每颗工具要么在工具箱行、要么在下方仓库完整展示」。实现拆两层：
      *  1) applyToolbarLayout 把数组内的按钮重新插桩（防 DOM 脱队），
      *     末尾的 renderToolbarEditor 把栏上没有的全部收进仓库；
-     *  2) hidden 只对栏上按钮按 composing/溢出重算，仓库内的按钮
-     *     一律可见（历史上把 hidden 写到仓库按钮上，编辑态里看着
-     *     像凭空消失）。 */
+     *  2) hidden 只对栏上按钮按溢出重算——工具箱行打字时常驻（3.74.9，
+     *     组合/让位/手写/T9 符号行都不藏工具）；仓库内的按钮一律可见
+     *     （历史上把 hidden 写到仓库按钮上，编辑态里看着像凭空消失）。
+     *     候选栏内若还有工具（旧布局残留），让位/组合仍按旧口径藏。 */
     auditToolbarTools() {
       this.applyToolbarLayout();
-      const composeHidden = document.body.classList.contains("composing");
       const overflow = this._overflowTools || /* @__PURE__ */ new Set();
       Object.entries(TOOL_CATALOG).forEach(([id, dom]) => {
         if (dom === "mic") return;
         const el = document.getElementById(dom);
         if (!el) return;
-        el.hidden = el.closest("#toolbarEditorGrid") ? false : this.toolbarYield || composeHidden || overflow.has(id);
+        el.hidden = el.closest("#toolbarEditorGrid") ? false : el.closest("#toolboxRow") ? overflow.has(id) : this.toolbarYield || document.body.classList.contains("composing") || overflow.has(id);
       });
       const mic = document.getElementById("mic");
-      if (mic) mic.hidden = this.toolbarYield || composeHidden && this.voiceState === "idle";
+      if (mic) {
+        mic.hidden = mic.closest("#toolbarEditorGrid") ? false : mic.closest("#toolboxRow") ? overflow.has("mic") : this.toolbarYield || document.body.classList.contains("composing") && this.voiceState === "idle";
+      }
     }
     /** 溢出兜底：已保存的布局可能比当前候选条容量大（典型：单手模式
      *  让位 64px 后放不下 6 颗）——放不下的按钮隐藏，收起键永远留在
@@ -7190,7 +7210,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (!el) return;
         const recording = ["listening", "loading", "stopping"].includes(this.voiceState);
         if (recording && id === "mic") return;
-        if (this.toolbarCandidatesSceneActive()) {
+        if (this.toolbarCandidatesSceneActive() && el.closest("#candidateBar")) {
           el.hidden = true;
           return;
         }
@@ -7432,10 +7452,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       svg.setAttribute("height", "16");
       el.append(svg);
     }
-    /** 候选条当前宽度还放得下几颗工具（单手模式键区让位后 bar 变窄，
-     *  容量自动变小）。候选词与工具栏**互斥**（让位机制）：候选显示
-     *  时整行归候选、工具全组隐藏；空闲时整行归工具——不存在「给
-     *  候选留底」的预算，只扣 F 与收起键（issue #47 复盘修正）。
+    /** 工具箱行当前宽度还放得下几颗工具（单手模式键区让位后行变窄，
+     *  容量自动变小）。3.74.9：工具箱行整行归工具，候选词住在独立
+     *  的候选栏——不存在「给候选留底」的预算，只扣固定的 F 键
+     *  （issue #47 复盘修正）；收起键（hide）留在候选栏，不再扣。
      *  布局塌陷时（宽度 0）放宽到 8，不挡编辑。
      *  尺寸实测化（#55 窄卡溢出返工）：按钮宽读 DOM 实值（悬浮态
      *  fitFloatingToolbar 会连续缩到 18-26px，32 常量预算偏大导致
@@ -7443,22 +7463,22 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  读出 0，预算反而更宽裕，自洽）。 */
     toolbarCapacity() {
       if (this.floating && this._ftoolPruneCap != null) return this._ftoolPruneCap;
-      const bar = document.getElementById("candidateBar");
+      const bar = document.getElementById("toolboxRow");
       const setup = document.getElementById("setupButton");
-      const hide = document.getElementById("hide");
-      if (!bar || !setup || !hide || !bar.clientWidth) return 8;
+      if (!bar || !setup || !bar.clientWidth) return 8;
       const gapRaw = typeof getComputedStyle === "function" ? getComputedStyle(bar).gap : "";
       const GAP = parseFloat(gapRaw) || 0;
       const BTN = setup.offsetWidth || 32;
-      const avail = bar.clientWidth - setup.offsetWidth - hide.offsetWidth - GAP * 2;
+      const avail = bar.clientWidth - setup.offsetWidth - GAP * 2;
       return Math.max(1, Math.floor(avail / (BTN + GAP)));
     }
     /** 悬浮窄卡工具尺寸连续缩放（#55 用户二报溢出，codex 方案修正版：
-     *  候选/工具互斥让位下不存在「候选保底」，空闲态整行归工具）。
+     *  3.74.9：工具箱行整行归工具，候选词住在独立候选栏——不存在
+     *  「候选保底」，空闲态整行归工具）。
      *  随卡片宽按比例缩（32×r 起步、上限 26 与首版档位一致、下限
      *  18 保触摸），N 个按钮装不下时由 pruneOverflowTools 按（实测
-     *  化后的）容量截尾隐藏——固定键 setup/hide 不进截断，收起键
-     *  永远可点。停靠态不跑（32px 档原生）。 */
+     *  化后的）容量截尾隐藏——固定键 setup 不进截断。停靠态不跑
+     *  （32px 档原生）。 */
     fitFloatingToolbar() {
       const root = document.documentElement.style;
       if (!this.floating) {
@@ -7468,7 +7488,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.pruneOverflowTools();
         return;
       }
-      const bar = document.getElementById("candidateBar");
+      const bar = document.getElementById("toolboxRow");
       if (!bar || !bar.clientWidth) return;
       const domIds = Object.values(TOOL_CATALOG);
       const fixedCount = [...bar.querySelectorAll(".tool")].filter((el) => !el.hidden && el.id && domIds.indexOf(el.id) < 0).length;
@@ -7518,11 +7538,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       else this.toolbarRight = old;
       this.applyToolbarLayout();
     }
-    /** 编辑模式事件接线（issue #15）：长按候选条工具进入编辑；× 移除
+    /** 编辑模式事件接线（issue #15）：长按工具箱行工具进入编辑；× 移除
      *  到仓库；仓库点按添加；编辑态长按工具=拖动排序（跨左右组，中间
-     *  候选区不放按钮）；「完成」退出并保存。 */
+     *  间隔不放按钮）；「完成」退出并保存。3.74.9：接线目标从候选栏
+     *  改到工具箱行。 */
     setupToolbarEditor() {
-      const bar = document.getElementById("candidateBar");
+      const bar = document.getElementById("toolboxRow");
       const doneBtn = document.getElementById("toolbarEditDone");
       if (!bar || !doneBtn) return;
       const EDIT_HOLD_MS = 280;
@@ -7631,8 +7652,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }, { passive: true }));
     }
     /** 编辑态拖拽：ghost（44px 圆钮，见 .toolbar-drag-ghost）跟手，
-     *  松手按落点 x 定组（candidateBar 中点分左右）与组内索引（各
-     *  按钮中点比较），中间候选区不放按钮。 */
+     *  松手按落点 x 定组（toolboxRow 中点分左右）与组内索引（各
+     *  按钮中点比较），中间间隔不放按钮。 */
     beginToolbarDrag(id, el, event) {
       const SIZE = 44;
       const ghost = el.cloneNode(true);
@@ -7657,7 +7678,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         el.classList.remove("toolbar-dragging");
         if (!ev.changedTouches.length) return;
         const t2 = ev.changedTouches[0];
-        const barEl = document.getElementById("candidateBar");
+        const barEl = document.getElementById("toolboxRow");
         const barRect = barEl.getBoundingClientRect();
         if (t2.clientY < barRect.top || t2.clientY > barRect.bottom) return;
         const group = t2.clientX < barRect.left + barRect.width / 2 ? "left" : "right";
@@ -9727,19 +9748,19 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         }
       }
       const recording = ["listening", "loading", "stopping"].includes(this.voiceState);
-      document.getElementById("setupButton").hidden = this.composing;
-      const clipboardButtonEl = document.getElementById("clipboardButton");
-      if (clipboardButtonEl) clipboardButtonEl.hidden = this.composing;
-      const favoritesButtonEl = document.getElementById("favoritesButton");
-      if (favoritesButtonEl) favoritesButtonEl.hidden = this.composing;
-      const ctrlToolEl = document.getElementById("ctrlTool");
-      if (ctrlToolEl) ctrlToolEl.hidden = this.composing;
-      const imeSwitchButtonEl = document.getElementById("imeSwitchButton");
-      if (imeSwitchButtonEl) imeSwitchButtonEl.hidden = this.composing;
+      const hideIfInCandidateBar = /* @__PURE__ */ __name((el) => {
+        if (el && el.closest("#candidateBar")) el.hidden = this.composing;
+      }, "hideIfInCandidateBar");
+      hideIfInCandidateBar(document.getElementById("setupButton"));
+      hideIfInCandidateBar(document.getElementById("clipboardButton"));
+      hideIfInCandidateBar(document.getElementById("favoritesButton"));
+      hideIfInCandidateBar(document.getElementById("ctrlTool"));
+      hideIfInCandidateBar(document.getElementById("imeSwitchButton"));
       Object.values(TOOL_CATALOG).forEach((dom) => {
         if (dom === "mic") return;
         const el = document.getElementById(dom);
-        if (el) el.hidden = this.composing || this._overflowTools && this._overflowTools.has(dom);
+        if (!el) return;
+        el.hidden = el.closest("#toolboxRow") ? !!(this._overflowTools && this._overflowTools.has(dom)) : this.composing || !!(this._overflowTools && this._overflowTools.has(dom));
       });
       if (this.composing && this.ctrlView) this.suspendCtrlView();
       else if (!this.composing) this.maybeResumeCtrlView();
@@ -9754,7 +9775,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.getElementById("composeExpand").hidden = !this.composing || voiceBusy;
       if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
       const mic = document.getElementById("mic");
-      if (mic) mic.hidden = this.composing && !recording;
+      if (mic) mic.hidden = mic.closest("#toolboxRow") || mic.closest("#toolbarEditorGrid") ? false : this.composing && !recording;
       if ((this.assocWords || []).length && !this.composing && !recording) {
         this.setToolbarYield(true);
       }
@@ -9808,6 +9829,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.closeItemMenu();
       this.closeOtherViews("panel");
       document.getElementById("candidateBar").hidden = true;
+      document.getElementById("toolboxRow").hidden = true;
       this.hideKeyLayers();
       document.getElementById("panelLayer").hidden = false;
       const kaomojiForm = this.panelTab === "kaomoji";
@@ -9872,6 +9894,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.hwNotifyPanelHeight();
       document.getElementById("panelLayer").hidden = true;
       document.getElementById("candidateBar").hidden = false;
+      document.getElementById("toolboxRow").hidden = false;
       this.auditToolbarTools();
       this.showKeyLayer(this.panelReturnLayer || "letters");
       this.maybeResumeCtrlView();
@@ -10314,6 +10337,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.getElementById("phraseCardRankValue").textContent = String(item ? item.rank || 1 : 1);
       document.getElementById("panelLayer").hidden = true;
       document.getElementById("candidateBar").hidden = false;
+      document.getElementById("toolboxRow").hidden = false;
       this.panelOpen = false;
       this.panelEditorKeyLayer = this.keyLayer;
       this.showKeyLayer("letters");
@@ -10776,6 +10800,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.applyOneHand();
       this.applyBackground();
       this.applyKeyOpacity();
+      if (typeof payload.powerSaving === "boolean") {
+        this.powerSaving = payload.powerSaving;
+        document.body.classList.toggle("power-saving", this.powerSaving);
+      }
       this.applyGlass(payload);
       this.applyLandscapeChrome();
       {

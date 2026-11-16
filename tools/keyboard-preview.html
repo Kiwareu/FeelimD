@@ -160,7 +160,7 @@ let keyboardMode = 'pinyin'; // 假引擎当前键盘（桥 hello 下发）
 // 模拟落盘并重推 hello，方块状态即可回读）。
 let previewPrefs = { associationOn: true, keySound: false, keyHaptic: false,
     candidateFont: 0, holdMs: 350, popupSnap: 1, dpScheme: 'ziranma',
-    oneHand: 0, sideContent: 0, uiLanguage: 'zh' };
+    oneHand: 0, sideContent: 0, uiLanguage: 'zh', powerSaving: false };
 
 function log(method, detail) {
     const div = document.createElement('div');
@@ -624,6 +624,7 @@ function pushHello() {
         holdMs: previewPrefs.holdMs,
         popupSnap: previewPrefs.popupSnap,
         dpScheme: previewPrefs.dpScheme,
+        powerSaving: previewPrefs.powerSaving,
     });
 }
 
@@ -928,10 +929,12 @@ build();
  * ?act=t9cancel          虚拟光标滑出卡片：缩小变淡 + 「松手撤销」
  * ?act=handwriting       手写键面（canvas 书写 + 模拟识别候选）
  * ?act=clip              打开剪贴板面板（标题显示条数，工具栏无徽章）
- * 可叠加 &theme=light / &locale=en。 */
+ * 可叠加 &theme=light / &locale=en / &powerSaving=1（省电态直达）。 */
 (() => {
     const params = new URLSearchParams(location.search);
     const act = params.get('act');
+    // 省电态直达（3.74.9）：不依赖 act，首轮 hello 即带 powerSaving。
+    if (params.get('powerSaving') === '1') previewPrefs.powerSaving = true;
     if (!act) return;
     const theme = params.get('theme');
     const locale = params.get('locale');

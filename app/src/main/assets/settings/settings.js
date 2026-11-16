@@ -573,6 +573,8 @@ const I18N = {
         "voice.asr.stripPeriod": "去掉句尾句号",
         "voice.asr.idleUnload": "空闲时释放语音模型",
         "voice.asr.idleUnloadHint": "默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载",
+        "voice.asr.powerSaving": "省电模式",
+        "voice.asr.powerSavingHint": "默认关闭；开启后磨砂和按键动画关闭，语音只用流式识别，模型空闲 1 分钟释放",
         "voice.asr.stripHint": "问号、叹号保留；关闭后保留模型输出",
         "voice.asr.numItn": "数字写成阿拉伯数字",
         "voice.asr.numItnHint": "数量、日期、金额、小数自动转换（三个 → 3个）；默认关闭",
@@ -1475,6 +1477,8 @@ const I18N = {
         "voice.asr.stripPeriod": "Remove final periods",
         "voice.asr.idleUnload": "Release speech models when idle",
         "voice.asr.idleUnloadHint": "Off by default. Release after 5 idle minutes; the next recording reloads the models.",
+        "voice.asr.powerSaving": "Power saving mode",
+        "voice.asr.powerSavingHint": "Off by default. Turns off glass blur and key animations, uses streaming-only speech recognition, and releases models after 1 idle minute.",
         "voice.asr.stripHint": "Question and exclamation marks stay; turn off to keep model output unchanged",
         "voice.asr.numItn": "Write numbers as digits",
         "voice.asr.numItnHint": "Quantities, dates, amounts and decimals convert automatically (三个 → 3个); off by default",
@@ -3350,6 +3354,7 @@ let asrHotwordsDirty = false;
 function renderAsr(state) {
     const asr = state.asr || {};
     $("asrIdleUnload").checked = asr.idleUnload === true;
+    $("powerSaving").checked = state.powerSaving === true;
     const field = $("hotwords");
     if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
     if (document.activeElement !== field && !asrHotwordsDirty) field.value = asr.hotwords || "";
@@ -4659,6 +4664,7 @@ $("modelConsentConfirm").addEventListener("click", () => {
 
 let asrHotwordsSubmitted = null;
 $("asrIdleUnload").addEventListener("change", event => call("setAsrIdleUnload", event.target.checked));
+$("powerSaving").addEventListener("change", event => call("setPowerSaving", event.target.checked));
 $("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
 // toggle 拨动即生效（与 #39-2 同案：此前只随「保存识别设置」提交，拨了
 // 不点保存=从未落盘，重进被回读洗回旧值——1.4.3 验收实录）。走窄接口

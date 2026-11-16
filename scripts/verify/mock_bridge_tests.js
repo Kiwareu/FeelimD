@@ -500,6 +500,11 @@ test('enter/hide/globe taps', () => {
     equal(world.native.of('hideKeyboard').length, 1, 'hide');
     world.tap(world.$('mic'));
     equal(world.native.of('startVoice').length, 1, 'mic toggles voice on');
+    // 3.74.9: the restored bottom-row globe opens the system picker.
+    const globe = world.document.querySelector('[data-role="globe"]');
+    assert(globe, 'globe key present');
+    world.tap(globe);
+    equal(world.native.of('switchInputMethod').length, 1, 'globe opens the picker');
 });
 
 // ---------------------------------------------------------------- J voice
@@ -1292,7 +1297,8 @@ test('floating toolbar fit: continuous shrink + prune survives audit (narrow-car
         left: ['ctrl', 'ime', 'clipboard', 'favorites'],
         right: ['mic', 'kaomoji', 'floating', 'onehand'],
     }) });
-    const bar = world.document.getElementById('candidateBar');
+    // 3.74.9：量的是工具箱行（固定键只剩 setup，hide 留在候选栏）。
+    const bar = world.document.getElementById('toolboxRow');
     const st = world.document.documentElement.style;
     world.context.window.innerHeight = 830; // 悬浮空间门按全屏高度放行
 
@@ -1302,7 +1308,7 @@ test('floating toolbar fit: continuous shrink + prune survives audit (narrow-car
           favorites: 'favoritesButton', mic: 'mic', kaomoji: 'toolKaomoji',
           floating: 'toolFloating', onehand: 'toolOneHand' }[id]);
 
-    // 宽卡（360 桩）：N=8 配置+2 固定=10 全显示、26px 上限档
+    // 宽卡（360 桩）：N=8 配置+1 固定=9 全显示、26px 上限档
     bar._clientWidthOverride = 360;
     world.context.window.Feelime.setFloatingMode(true);
     world.context.window.Feelime.fitToolbar();
@@ -1310,25 +1316,25 @@ test('floating toolbar fit: continuous shrink + prune survives audit (narrow-car
     equal(cfg.filter(id => domId(id).hidden).length, 0, 'wide bar shows all 8 config tools');
 
     // 窄卡（216 桩，用户 ace 实测宽；B=216-G2-壳预留8=206）：
-    // K=floor(208/20)=10 ≥ N → 不裁；size=(206-18)/10=18.8 连续缩放档
+    // K=floor(208/20)=10 ≥ N=9 → 不裁；size=(206-16)/9=21.1 连续缩放档
     bar._clientWidthOverride = 216;
     world.context.window.Feelime.fitToolbar();
-    equal(st.getPropertyValue('--ftool-s'), '18.8px', 'narrow bar shrinks continuously');
+    equal(st.getPropertyValue('--ftool-s'), '21.1px', 'narrow bar shrinks continuously');
     equal(cfg.filter(id => domId(id).hidden).length, 0,
-        '9-10 tools all fit at 18.8px — nothing swallowed');
+        '9 tools all fit at 21.1px — nothing swallowed');
     equal(world.document.getElementById('hide').hidden, false, 'hide key never pruned');
 
-    // 极窄（150 桩）：K=floor(152/20)=7 < N=10 → M=7、裁 3 个配置
+    // 极窄（150 桩）：K=floor(152/20)=7 < N=9 → M=7、名额 6、裁 2 个配置
     bar._clientWidthOverride = 150;
     world.context.window.Feelime.fitToolbar();
     equal(st.getPropertyValue('--ftool-s'), '18.2px', 'extreme narrow shrinks within the 18px floor');
     const hiddenAfterPrune = cfg.filter(id => domId(id).hidden);
-    equal(hiddenAfterPrune.length, 3, 'extreme narrow prunes the tail 3');
+    equal(hiddenAfterPrune.length, 2, 'extreme narrow prunes the tail 2');
     equal(world.document.getElementById('hide').hidden, false, 'hide survives extreme narrow');
 
     // 口径回归核心：applyHeight 尾的 audit 不得翻回 prune 的隐藏
     world.context.window.Feelime.applyHeightNow();
-    equal(cfg.filter(id => domId(id).hidden).length, 3,
+    equal(cfg.filter(id => domId(id).hidden).length, 2,
         'audit keeps the pruned tools hidden (has(id) fix, regression)');
 
     // 退出悬浮：清 var、恢复停靠容量口径
@@ -1689,9 +1695,14 @@ test('switching key layers closes the open mode menu (#39-5)', {since: '3.69.19'
         'layer switch dismisses the floating mode menu');
 });
 
-test('bottom row roles: no globe, no toolbar mode button, shorthand labels', () => {
+test('bottom row roles: globe key, no toolbar mode button, shorthand labels', {since: '3.74.9'}, () => {
     const world = fresh();
-    assert(!world.document.querySelector('[data-role="globe"]'), 'globe removed');
+    // 3.74.9（用户 2026-11-16 要求恢复）：底行首键是地球仪，点按开
+    // 系统输入法选择器；中/英长按仍能开选择器。
+    const globe = world.document.querySelector('[data-role="globe"]');
+    assert(globe, 'globe key restored at the bottom row start');
+    world.tap(globe);
+    equal(world.native.of('switchInputMethod').length, 1, 'globe opens the system picker');
     assert(world.$('modeButton') === null, 'toolbar mode button removed ');
     equal(world.$('enterKey').dataset.role, 'enter', 'enter role kept');
     equal(world.$('enterKey').textContent, '换行', 'enter text idle');
@@ -2406,7 +2417,7 @@ test('hide chain collapses every exclusive layer and pending toolbar hold', {sin
     // 工具栏长按计时：按下 100ms 后收起，再走 600ms 也不得进编辑态。
     // 选择器带 [data-tool]——首个 .tool 是 setupButton，不在 TOOL_CATALOG、
     // 从不挂 _editHold（评审 P2：选错元素会让这条断言静默选空）。
-    const tool = world.document.querySelector('#candidateBar .tool[data-tool]');
+    const tool = world.document.querySelector('#toolboxRow .tool[data-tool]');
     assert(tool, 'a catalog toolbar tool rendered');
     world.dispatch(tool, 'touchstart', 20, 20,
         { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
@@ -2453,9 +2464,10 @@ test('long-press popup drags to a different cell with real displacement', {since
     const q = world.key('q');
     const e = world.key('e');
     // 非零位移换格：fake 几何下 'e' 弹层格子心在 x=28/62/96,y=24、卡片
-    // 矩形 [108,94,152,138]；锚(E)=62,24，B 从 (100,20) 拖到 (150,90) →
-    // 虚拟光标 (112,94) 入卡、最近格=末格 'e'。origin 若钉在首指 (20,20)
-    // 上，虚拟光标 (192,94) 出卡 → 取消零提交——正好钉死 origin 归属。
+    // 矩形 [142,94,186,138]（3.74.9：工具箱行插入使 #keyPopup 兄弟索引
+    // +1，卡片右移 34px）；锚(E)=62,24，B 从 (100,20) 拖到 (185,90) →
+    // 虚拟光标 (147,94) 入卡、最近格=末格 'e'。origin 若钉在首指 (20,20)
+    // 上，虚拟光标 (227,94) 出卡 → 取消零提交——正好钉死 origin 归属。
     world.dispatch(q, 'touchstart', 20, 20,
         { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
     world.dispatch(e, 'touchstart', 100, 20,
@@ -2463,11 +2475,11 @@ test('long-press popup drags to a different cell with real displacement', {since
           touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
     world.clock.advance(360);
     assert(world.$('keyPopup').classList.contains('open'), 'popup open');
-    world.dispatch(e, 'touchmove', 150, 90,
-        { changedTouches: [touchPoint(2, 150, 90)],
-          touches: [touchPoint(1, 20, 20), touchPoint(2, 150, 90)] });
-    world.dispatch(e, 'touchend', 150, 90,
-        { changedTouches: [touchPoint(2, 150, 90)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(e, 'touchmove', 185, 90,
+        { changedTouches: [touchPoint(2, 185, 90)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 185, 90)] });
+    world.dispatch(e, 'touchend', 185, 90,
+        { changedTouches: [touchPoint(2, 185, 90)], touches: [touchPoint(1, 20, 20)] });
     const keys = world.native.of('key');
     equal(keys.length, 1, 'one commit from popup (A still holds)');
     equal(keys[0].args[0], 'e', 'nonzero drag lands the last cell, origin at the pressing finger');
@@ -2541,6 +2553,26 @@ test('flick swap leaves T9/stroke gestures alone; default stays classic', {since
     world.touchUp(q);
     world.clock.advance(2);
     equal(world.native.of('key').slice(-1)[0].args[0], '1', 'default: up still the alt char');
+});
+
+// ---- 省电模式（3.74.9，默认常规模式） ----
+test('power saving mode forces blur 0, radius 8 and the power-saving class (3.74.9)', {since: '3.74.9'}, () => {
+    const world = fresh({powerSaving: true, glassBlur: 18, glassRadius: 20});
+    equal(world.document.documentElement.style.getPropertyValue('--glass-blur'), '0px', 'blur forced to 0');
+    equal(world.document.documentElement.style.getPropertyValue('--radius-key'), '8px', 'radius forced to 8');
+    assert(world.document.body.classList.contains('power-saving'), 'power-saving class on');
+    // 再推一次常规模式：恢复 hello 里的玻璃值，class 撤掉。
+    world.hello({powerSaving: false, glassBlur: 18, glassRadius: 20});
+    equal(world.document.documentElement.style.getPropertyValue('--glass-blur'), '18px', 'blur follows payload again');
+    equal(world.document.documentElement.style.getPropertyValue('--radius-key'), '20px', 'radius follows payload again');
+    assert(!world.document.body.classList.contains('power-saving'), 'class off');
+});
+
+test('power saving off by default: hello without the flag keeps glass values (3.74.9)', {since: '3.74.9'}, () => {
+    const world = fresh({glassBlur: 18, glassRadius: 20});
+    equal(world.document.documentElement.style.getPropertyValue('--glass-blur'), '18px', 'default blur');
+    equal(world.document.documentElement.style.getPropertyValue('--radius-key'), '20px', 'default radius');
+    assert(!world.document.body.classList.contains('power-saving'), 'no class by default');
 });
 
 // ---- 形码键面与手势（#39-7/8：与拼音交互统一） ----
@@ -5944,6 +5976,9 @@ test('warming strip waits out the sub-second flicker, then shows until ready (#8
 
 test('bottom pad rides hello into the CSS budget and is excluded from content', {since: '3.30.0'}, () => {
     const world = fresh();
+    // 3.74.9：chrome 长高到 148，272 fallback 高会被 KB_ROW_MIN 钳住
+    // （pad 前后行高同为下限，差值归零）——把视图抬到 320 再量。
+    world.$('softKeyboard').clientHeight = 320;
     world.hello({});
     const rowsBefore = world.document.documentElement.style['--kb-row-h'];
     world.hello({bottomPad: 24});
@@ -6273,7 +6308,7 @@ test('share action: dsl token, key path and toolbar tool all reach shareSelected
     assert(world.$('toolShare').classList.contains('editor-pool'), 'starts in the editor pool');
     world.hello({ toolbarLayout: JSON.stringify(
         { left: ['ctrl', 'ime'], right: ['share'] }) });
-    assert(world.$('toolShare').closest('#candidateBar'), 'share tool is on the bar');
+    assert(world.$('toolShare').closest('#toolboxRow'), 'share tool is on the toolbox row');
     world.tap(world.$('toolShare'));
     equal(world.native.of('shareSelectedText').length, 2, 'toolbar tool reaches the same bridge');
     // 参数准确性（codex 评审 P2-2：只数次数的假通过面）：调用携带
@@ -6324,14 +6359,15 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.hello({});
     const kb = () => w.context.window.Feelime.debugState();
 
-    // 左组必须落在候选条行内（candidates 之前）——锚到 preeditLine 会把
-    // 按钮插成键盘顶部的全宽行，把键盘顶出一屏（真机回归）。
-    const inBar = [...w.$('candidateBar').children];
-    const candIdx = inBar.indexOf(w.$('candidates'));
-    assert(candIdx > 0, 'candidates lives in the bar');
+    // 左组必须落在工具箱行内（spacer 之前）——3.74.9 起工具住独立行；
+    // 锚到 preeditLine 会把按钮插成键盘顶部的全宽行，把键盘顶出一屏
+    // （真机回归），锚到候选栏的 candidates 同理已是旧址。
+    const inBar = [...w.$('toolboxRow').children];
+    const spacerIdx = inBar.indexOf(w.$('toolboxSpacer'));
+    assert(spacerIdx > 0, 'spacer lives in the toolbox row');
     ['ctrlTool', 'imeSwitchButton'].forEach(id => {
         const idx = inBar.indexOf(w.$(id));
-        assert(idx > 0 && idx < candIdx, id + ' sits in the bar before candidates');
+        assert(idx > 0 && idx < spacerIdx, id + ' sits in the toolbox row before the spacer');
     });
 
     // 即点即抬不进编辑态；长按 ≥280ms 才进。
@@ -6426,8 +6462,8 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length, 1,
         'cancel never saves');
 
-    // 死锁保护靠两个入口：快捷设置 tile + 长按候选条空白。全移除并保存
-    // 后，长按 bar 本身（空白）仍能进编辑；tile 同样直达。
+    // 死锁保护靠两个入口：快捷设置 tile + 长按工具箱行空白。全移除并
+    // 保存后，长按 bar 本身（空白）仍能进编辑；tile 同样直达。
     w.touchDown(w.$('mic'));
     w.clock.advance(400);
     w.touchUp(w.$('mic'));
@@ -6442,9 +6478,9 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(w.$('toolbarEditorGrid').children.length, 18, 'all eighteen tools in the pool (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating + #93 share)');
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'empty layout saves fine');
-    w.touchDown(w.$('candidateBar'));
+    w.touchDown(w.$('toolboxRow'));
     w.clock.advance(400);
-    w.touchUp(w.$('candidateBar'));
+    w.touchUp(w.$('toolboxRow'));
     equal(kb().toolbarEdit, true, 'long-press on bare bar re-enters edit mode');
     w.tap(w.$('toolbarEditCancel'));
     w.tap(w.$('setupButton')); // 面板懒渲染,先打开才有 tile
@@ -6477,9 +6513,9 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     // 满组交换：右组 4 颗时把左组工具挪过去，落点按钮换回来，不丢。
     // 当前布局：right=[sound]，其余都在仓库——重新进编辑态凑出左 1 右 4。
     const poolNow = w.$('toolbarEditorGrid');
-    w.touchDown(w.$('candidateBar'));
+    w.touchDown(w.$('toolboxRow'));
     w.clock.advance(400);
-    w.touchUp(w.$('candidateBar'));
+    w.touchUp(w.$('toolboxRow'));
     equal(kb().toolbarEdit, true, 're-enter edit mode');
     ['clipboardButton', 'favoritesButton', 'mic', 'imeSwitchButton']
         .forEach(id => w.tap(w.$(id)));
@@ -6530,8 +6566,8 @@ test('toolbar audit: a lost tool is forced back into the pool (issue #15)', {sin
     const fav = w.$('favoritesButton');
     fav.remove();
     kb.toolbarAudit();
-    equal(!!w.$('favoritesButton').closest('#candidateBar'), true,
-        'listed tool is re-anchored into the bar');
+    equal(!!w.$('favoritesButton').closest('#toolboxRow'), true,
+        'listed tool is re-anchored into the toolbox row');
 
     // 场景 B:DOM 在条上、数组没有(孤儿)→ 回仓库。
     const st1 = kb.debugState();
@@ -6554,7 +6590,7 @@ test('toolbar audit: a lost tool is forced back into the pool (issue #15)', {sin
         'toolNumpad','toolEmoji','editTool'];
     const lost = all.filter(id => {
         const el = w.$(id);
-        return !el || (!el.closest('#candidateBar') && !el.closest('#toolbarEditorGrid'));
+        return !el || (!el.closest('#toolboxRow') && !el.closest('#toolbarEditorGrid'));
     });
     equal(lost.length, 0, 'no tool is unreachable after audit: ' + lost.join(','));
 });
@@ -6564,7 +6600,7 @@ test('numpad/emoji toolbar tools jump straight to the key view (issue #38)', {si
     w.hello({ toolbarLayout: JSON.stringify(
         { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'numpad'] }) });
     assert(w.$('toolNumpad'), 'numpad tool created');
-    assert(w.$('toolNumpad').closest('#candidateBar'), 'numpad tool is on the bar');
+    assert(w.$('toolNumpad').closest('#toolboxRow'), 'numpad tool is on the toolbox row');
     // 数字键盘直达：九宫格层起、字母层收、emoji 子视图不劫持。
     w.tap(w.$('toolNumpad'));
     equal(w.$('numPadLayer').hidden, false, 'nine-pad layer shown');
@@ -6592,7 +6628,7 @@ test('edit toolbar tool: panel swaps the key area, every action rides existing b
     const w = fresh({ toolbarLayout: JSON.stringify(
         { left: ['ctrl', 'ime'], right: ['edit', 'favorites', 'mic'] }) });
     assert(w.$('editTool'), 'edit tool created');
-    assert(w.$('editTool').closest('#candidateBar'), 'edit tool rides the bar');
+    assert(w.$('editTool').closest('#toolboxRow'), 'edit tool rides the toolbox row');
     equal(w.$('editLayer').hidden, true, 'edit layer starts hidden');
 
     const editKey = name => w.$('editLayer').querySelector(`[data-edit="${name}"]`);
@@ -6687,8 +6723,9 @@ test('added toolbar tools hide while composing in every mode (issue #15)', {sinc
             equal(w.$(id).hidden, true, mode + ' composing hides ' + id);
         });
         // 组合中（无语音会话）mic 同样让位：右侧只留 ×（现有规则
-        // mic.hidden = composing && !recording）。
-        equal(w.$('mic').hidden, true, mode + ' composing hides the mic too');
+        // mic.hidden = composing && !recording）。3.74.9：mic 随工具搬
+        // 进工具箱行，组合中常驻，不再让位。
+        equal(w.$('mic').hidden, false, mode + ' composing keeps the mic (toolbox row)');
         equal(w.$('hide').hidden, true, mode + ' composing hides the chevron');
         // 退出 composing：按钮回来。
         w.engineState({ mode, revision: ++rev, candidates: [], composing: '' });
@@ -6912,8 +6949,9 @@ test('C2/C3/C7 candidates render, choose and page with revision', () => {
     equal(bar.children[0].textContent, '你好', 'candidate 1');
     assert(bar.children[0].className.includes('first'), 'first candidate pill');
     assert(world.document.body.classList.contains('composing'), 'body composing');
-    assert(world.$('setupButton').hidden, 'setup hidden while composing');
-    assert(world.$('mic').hidden, 'mic hidden while composing and idle');
+    // 3.74.9：工具箱行的按钮组合中常驻（setup/mic 不再让位）。
+    assert(!world.$('setupButton').hidden, 'setup stays while composing (toolbox row)');
+    assert(!world.$('mic').hidden, 'mic stays while composing and idle (toolbox row)');
     equal(world.$('enterKey').textContent, '确定', 'enter reads 确定 while composing');
     // The ‹ › pager buttons are gone from the DOM.
     assert(!world.$('pagePrev') && !world.$('pageNext'), 'no pager buttons');
@@ -7013,7 +7051,9 @@ test('empty candidates leave the bar clean', () => {
 test('voice session keeps the mic visible during composing', () => {
     const world = fresh();
     world.engineState({ phase: 'READY', revision: 1, composing: 'ni', candidates: [] });
-    assert(world.$('mic').hidden, 'mic hidden while idle-composing');
+    // 3.74.9：mic 在工具箱行，组合中常驻（空闲组合也不藏）；录音中
+    // 同样是 stop 入口。
+    assert(!world.$('mic').hidden, 'mic stays while idle-composing (toolbox row)');
     world.nativeState({ state: 'listening' });
     assert(!world.$('mic').hidden, 'mic must stay tappable while listening');
     // Review M1: native events during composing must not clobber the preedit
@@ -7970,14 +8010,15 @@ test('favorites tab renders, pastes; menu deletes', () => {
     }
 });
 
-test('composing closes the panel and hides clipboard tool', () => {
+test('composing closes the panel and keeps toolbox tools visible', () => {
     const world = fresh();
     world.tap(world.$('clipboardButton'));
     assert(!world.$('panelLayer').hidden, 'panel open');
     world.engineState({ phase: 'READY', revision: 1, composing: 'ni', candidates: [] });
     assert(world.$('panelLayer').hidden, 'panel auto-closed by composing');
-    assert(world.$('clipboardButton').hidden, 'clipboard tool hidden while composing');
-    assert(world.$('setupButton').hidden, 'setup tool hidden');
+    // 3.74.9：工具箱行组合中常驻，剪贴板/设置键不再随组合隐藏。
+    assert(!world.$('clipboardButton').hidden, 'clipboard tool stays while composing');
+    assert(!world.$('setupButton').hidden, 'setup tool stays while composing');
 });
 
 // ------------------------------------------------- Toolbar / panel
@@ -7993,23 +8034,25 @@ test('clipboard and favorites are two independent toolbar icons', () => {
     equal(world.native.of('getFavorites').length,
         verAtLeast(KEYBOARD_VERSION, '3.21.0') ? 2 : 1,
         'favorites requested (3.21.0: hello seed + panel; 3.20.0: panel only)');
-    // The panel replaces the toolbar row instead of stacking.
-    assert(world.$('candidateBar').hidden, 'toolbar row hidden while panel open');
+    // The panel replaces the toolbar rows instead of stacking.
+    assert(world.$('candidateBar').hidden, 'candidate row hidden while panel open');
+    assert(world.$('toolboxRow').hidden, 'toolbox row hidden while panel open');
     world.tap(world.$('panelClose'));
     assert(world.$('panelLayer').hidden, 'panel closed');
-    assert(!world.$('candidateBar').hidden, 'toolbar row restored');
+    assert(!world.$('candidateBar').hidden, 'candidate row restored');
+    assert(!world.$('toolboxRow').hidden, 'toolbox row restored');
     world.tap(world.$('clipboardButton'));
     assert(!world.$('panelLayer').hidden, 'panel opens from clipboard icon');
     equal(world.document.querySelector('[data-panel-tab="clipboard"]').classList.contains('active'),
         true, 'clipboard tab active');
 });
 
-test('composing hides the favorites tool too', () => {
+test('composing keeps the favorites tool visible (toolbox row)', {since: '3.74.9'}, () => {
     const world = fresh();
     world.engineState({ phase: 'READY', revision: 1, composing: 'ni', candidates: [] });
-    assert(world.$('favoritesButton').hidden, 'favorites hidden while composing');
+    assert(!world.$('favoritesButton').hidden, 'favorites stays while composing');
     world.engineState({ phase: 'READY', revision: 2, composing: false, rawInput: '', candidates: [] });
-    assert(!world.$('favoritesButton').hidden, 'favorites back when idle');
+    assert(!world.$('favoritesButton').hidden, 'favorites stays when idle');
 });
 
 test('no native traffic from unknown buttons before hello', () => {
@@ -8039,6 +8082,59 @@ test('toolbar gains the control + IME-switch tools; globe opens the picker', () 
     equal(world.native.of('keyEvent').length, 0, 'no keyEvent for the picker');
 });
 
+test('toolbox row: tools live in their own row between the candidates and the keys (3.74.9)', {since: '3.74.9'}, () => {
+    const world = fresh();
+    const row = world.$('toolboxRow');
+    assert(row, 'toolbox row exists');
+    // DOM order: candidate bar, toolbox row, then the key layers.
+    const kids = [...world.$('softKeyboard').children].map(el => el.id);
+    assert(kids.indexOf('candidateBar') < kids.indexOf('toolboxRow'), 'row sits below the candidate bar');
+    assert(kids.indexOf('toolboxRow') < kids.indexOf('qwertyLayer'), 'row sits above the key area');
+    // setupButton is the fixed first tool; the spacer splits left/right.
+    const order = [...row.children].map(el => el.id).filter(Boolean);
+    equal(order[0], 'setupButton', 'F logo is the fixed first tool');
+    const spacerIdx = order.indexOf('toolboxSpacer');
+    assert(spacerIdx > 0, 'spacer lives in the row');
+    ['ctrlTool', 'imeSwitchButton'].forEach(id =>
+        assert(order.indexOf(id) > 0 && order.indexOf(id) < spacerIdx, id + ' in the left group'));
+    ['clipboardButton', 'favoritesButton', 'mic'].forEach(id =>
+        assert(order.indexOf(id) > spacerIdx, id + ' in the right group'));
+    // The candidate bar keeps only candidates + compose chrome + hide.
+    const barKids = [...world.$('candidateBar').children].map(el => el.id);
+    assert(!barKids.includes('setupButton') && !barKids.includes('mic'),
+        'no tools left in the candidate bar');
+    assert(barKids.includes('candidates') && barKids.includes('hide'),
+        'candidates and hide stay in the bar');
+});
+
+test('toolbox tools stay visible while composing; the switch opens the picker (3.74.9)', {since: '3.74.9'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    ['setupButton', 'ctrlTool', 'imeSwitchButton', 'clipboardButton', 'favoritesButton', 'mic']
+        .forEach(id => assert(!world.$(id).hidden, id + ' stays while composing'));
+    assert(!world.$('toolboxRow').hidden, 'the row itself stays while composing');
+    world.tap(world.$('imeSwitchButton'));
+    equal(world.native.of('switchInputMethod').length, 1, 'switch opens the system picker mid-composition');
+});
+
+test('toolbar editor reorders the toolbox row (left/right groups + spacer)', {since: '3.74.9'}, () => {
+    const world = fresh();
+    world.hello({});
+    const kb = world.context.window.Feelime;
+    // Move clipboard from the right group to the front of the left group.
+    kb.toolbarMove('clipboard', 'left', 0);
+    const order = [...world.$('toolboxRow').children].map(el => el.id).filter(Boolean);
+    assert(order.indexOf('clipboardButton') < order.indexOf('toolboxSpacer'),
+        'clipboard moved left of the spacer');
+    equal(kb.debugState().toolbarLeft[0], 'clipboard', 'left group leads with clipboard');
+    // Move it back to the right group tail via the same path.
+    kb.toolbarMove('clipboard', 'right', 2);
+    const order2 = [...world.$('toolboxRow').children].map(el => el.id).filter(Boolean);
+    assert(order2.indexOf('clipboardButton') > order2.indexOf('toolboxSpacer'),
+        'clipboard back right of the spacer');
+});
+
 // #39-6（手写容易退出，诊断定罪）：书写划到工具栏的笔迹（落笔抬笔都
 // 在按钮上但发生了移动）不得合成 click——齿轮的 openSetup 会拉起设置
 // 页顶掉键盘。静止点按不受影响。齿轮（setup 工具）默认收在编辑仓库，
@@ -8046,7 +8142,7 @@ test('toolbar gains the control + IME-switch tools; globe opens the picker', () 
 test('toolbar buttons ignore writing swipes but honor still taps', {since: '3.71.1'}, () => {
     const world = fresh({ toolbarLayout: '{"left":["ctrl","ime"],"right":["setup","clipboard","favorites","mic"]}' });
     const gear = world.$('fullSetupButton');
-    assert(gear.closest('#candidateBar'), 'gear rides the toolbar via layout');
+    assert(gear.closest('#toolboxRow'), 'gear rides the toolbox row via layout');
     gear.hidden = false;
     // 书写划过：touchstart 落在齿轮、移动 40px 后在远处抬起——click 被吞。
     world.touchDown(gear, 20, 20);
@@ -8066,9 +8162,12 @@ test('ctrl view swaps the toolbar; the keyboard stays untouched', () => {
     world.tap(world.$('ctrlTool'));
     assert(world.document.body.classList.contains('ctrl-view'), 'ctrl-view on');
     assert(!world.$('ctrlLayer').hidden, 'ctrl layer shown');
-    // User feedback: the control strip replaces ONLY the candidate
-    // bar - the keyboard rows below stay visible and usable.
-    assert(world.$('candidateBar').hidden, 'candidate bar replaced');
+    // User feedback: the control strip replaces ONLY the toolbox
+    // row - the candidate bar and the keyboard rows below stay visible
+    // and usable. (3.74.9: the swapped row moved from #candidateBar
+    // to #toolboxRow.)
+    assert(world.$('toolboxRow').hidden, 'toolbox row replaced');
+    assert(!world.$('candidateBar').hidden, 'candidate bar stays');
     assert(!world.$('qwertyLayer').hidden, 'keyboard stays');
     // Escape fires a plain keyevent (KEYCODE_ESCAPE = 111, no meta).
     world.tap(world.document.querySelector('[data-ctrl="Escape"]'));
@@ -8284,12 +8383,13 @@ test('the close affordance is a frameless X that collapses the layer', () => {
     world.document.body.classList.remove('editing');
 });
 
-test('composing hides the new tools and refuses the ctrl view', () => {
+test('composing keeps the new tools and refuses the ctrl view', {since: '3.74.9'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
         candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
-    assert(world.$('ctrlTool').hidden, 'ctrl tool hidden while composing');
-    assert(world.$('imeSwitchButton').hidden, 'ime tool hidden while composing');
+    // 3.74.9：工具箱行的控制/切换键组合中常驻，不再隐藏。
+    assert(!world.$('ctrlTool').hidden, 'ctrl tool stays while composing');
+    assert(!world.$('imeSwitchButton').hidden, 'ime tool stays while composing');
     // Entering the ctrl view while composing is refused.
     world.tap(world.$('ctrlTool'));
     assert(!world.document.body.classList.contains('ctrl-view'), 'ctrl view refused');
@@ -8430,13 +8530,16 @@ test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.
     // the thumb opened pinned at an end (landscape: below min, hard left).
     // The range must come from the native hello, mirroring setKeyboardHeight.
     const world = fresh();
-    world.hello({ heightCeil: 300, heightFloor: 210, floatBand: 200 });
+    // 3.74.9：内容下限随 chrome 涨到 276（144+4+128），272 fallback 会被
+    // 钳到下限、滑块钉在左端——把视图抬到 310，落在 [276, 340] 中段。
+    world.$('softKeyboard').clientHeight = 310;
+    world.hello({ heightCeil: 340, heightFloor: 210, floatBand: 200 });
     world.tap(world.$('setupButton'));
     world.tap(world.tile('键盘高度'));
-    equal(world.document.getElementById('heightValue').textContent, '272px',
+    equal(world.document.getElementById('heightValue').textContent, '310px',
         'preview opens at the current height');
     const left = parseInt(world.document.getElementById('heightThumb').style.left, 10);
-    // 272 inside [224, 300]: frac 0.63 of the (200-14) track - mid-track,
+    // 310 inside [276, 340]: frac 0.53 of the (200-14) track - mid-track,
     // neither end pinned
     assert(left > 60 && left < 130, `thumb starts mid-track, not pinned (left=${left})`);
     // A ceiling AT the content floor (landscape half-screen budgets) must say
@@ -8455,7 +8558,9 @@ test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.
 
 test('unchanged height saves send stable content height', {since: '3.22.1'}, () => {
     const world = new KeyboardWorld().build();
-    world.$('softKeyboard').clientHeight = 304;
+    // 3.74.9：内容下限 276，旧 304-32=272 会被钳到下限——抬到 320，
+    // 内容 288 仍在下限之上，卡片读的就是内容高。
+    world.$('softKeyboard').clientHeight = 320;
     world.hello({ orientation: 'portrait', safeBottom: 32, heightFloor: 210, heightCeil: 320 });
     const openCard = () => {
         world.tap(world.$('setupButton'));
@@ -8463,10 +8568,10 @@ test('unchanged height saves send stable content height', {since: '3.22.1'}, () 
     };
     for (let i = 0; i < 3; i++) {
         openCard();
-        equal(world.$('heightValue').textContent, '272px', 'card reads content height');
+        equal(world.$('heightValue').textContent, '288px', 'card reads content height');
         world.tap(world.$('heightCardSave'));
     }
-    equal(world.native.of('setKeyboardHeight').map(call => call.args[0]).join(','), '272,272,272',
+    equal(world.native.of('setKeyboardHeight').map(call => call.args[0]).join(','), '288,288,288',
         'repeated unchanged saves keep the content value stable');
     // round-6：持久化只走 native pref（hello storedKbHeight 回读），
     // localStorage 镜像已废除（AGENTS.md：配置不走 localStorage）。
@@ -8476,14 +8581,16 @@ test('unchanged height saves send stable content height', {since: '3.22.1'}, () 
 
 test('landscape +/- and cancel keep safe area out of bridge height', {since: '3.22.1'}, () => {
     const world = new KeyboardWorld().build();
-    world.$('softKeyboard').clientHeight = 248;
-    world.hello({ orientation: 'landscape', safeBottom: 32, heightFloor: 170, heightCeil: 240 });
+    // 3.74.9：横屏内容下限 262（134+128），旧 248-32=216 会把整段
+    // 顶到 capped——抬到 320（内容 288），上限同步抬到 320。
+    world.$('softKeyboard').clientHeight = 320;
+    world.hello({ orientation: 'landscape', safeBottom: 32, heightFloor: 170, heightCeil: 320 });
     world.tap(world.$('setupButton'));
     world.tap(world.tile('键盘高度'));
-    equal(world.$('heightValue').textContent, '216px', 'landscape card reads content height');
+    equal(world.$('heightValue').textContent, '288px', 'landscape card reads content height');
     world.tap(world.$('heightPlus'));
     world.tap(world.$('heightCardCancel'));
-    equal(world.native.of('setKeyboardHeight').map(call => call.args[0]).join(','), '220,216',
+    equal(world.native.of('setKeyboardHeight').map(call => call.args[0]).join(','), '292,288',
         'plus and cancel send content values without adding safe twice');
 
     // Old preview bridges have no height method; their direct style still
@@ -8584,27 +8691,31 @@ test('the ctrl view is a switch: composing suspends, picking resumes', () => {
     const world = fresh({ mode: 'pinyin' });
     world.tap(world.$('ctrlTool'));
     assert(world.document.body.classList.contains('ctrl-view'), 'ctrl view on');
-    // A composition starts mid-ctrl-view: the bar returns for the preedit/
-    // candidate strip, but the SWITCH stays on.
+    // A composition starts mid-ctrl-view: the toolbox row returns for
+    // the preedit/candidate strip, but the SWITCH stays on. The
+    // candidate bar stays visible throughout (3.74.9: the ctrl rows
+    // swap the toolbox row, not the candidate bar).
     world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
         candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
     assert(world.$('ctrlLayer').hidden, 'rows hidden while composing');
-    assert(!world.$('candidateBar').hidden, 'bar back while composing');
+    assert(!world.$('toolboxRow').hidden, 'toolbox row back while composing');
+    assert(!world.$('candidateBar').hidden, 'candidate bar stays while composing');
     // ...because picking the candidate ends the composition and the rows
     // come back BY THEMSELVES (a one-shot view would stay collapsed).
     world.engineState({ mode: 'pinyin', revision: 2, composing: false, rawInput: '',
         candidates: [], hasNextPage: false });
     assert(!world.$('ctrlLayer').hidden, 'rows restored after the pick');
-    assert(world.$('candidateBar').hidden, 'bar handed back');
+    assert(world.$('toolboxRow').hidden, 'toolbox row handed back');
+    assert(!world.$('candidateBar').hidden, 'candidate bar stays');
     // The X turns the switch off for good: another compose/commit cycle
     // must NOT bring the rows back.
     world.tap(world.document.querySelector('[data-ctrl="collapse"]'));
     world.engineState({ mode: 'pinyin', revision: 3, composing: 'ni', rawInput: 'ni',
         candidates: [{ id: 'c2', text: '妮' }], hasNextPage: false });
-    world.engineState({ mode: 'pinyin', revision: 4, composing: false, rawInput: '',
-        candidates: [], hasNextPage: false });
+    world.engineState({ mode: 'pinyin', revision: 4, composing: false, rawInput: '', candidates: [], hasNextPage: false });
     assert(world.$('ctrlLayer').hidden, 'no ghost rows after switching off');
-    assert(!world.$('candidateBar').hidden, 'bar stays the ordinary toolbar');
+    assert(!world.$('toolboxRow').hidden, 'toolbox row stays the ordinary toolbar');
+    assert(!world.$('candidateBar').hidden, 'candidate bar stays');
 });
 
 test('panels borrow the bar from the ctrl view and hand it back', () => {
@@ -8616,7 +8727,8 @@ test('panels borrow the bar from the ctrl view and hand it back', () => {
     assert(world.$('ctrlLayer').hidden, 'rows suspended under the panel');
     world.tap(world.$('panelClose'));
     assert(!world.$('ctrlLayer').hidden, 'rows restored after the panel closes');
-    assert(world.$('candidateBar').hidden, 'bar hidden again');
+    assert(world.$('toolboxRow').hidden, 'toolbox row hidden again');
+    assert(!world.$('candidateBar').hidden, 'candidate bar stays');
     // Same for the quick settings panel.
     world.tap(world.$('setupButton'));
     assert(world.$('ctrlLayer').hidden, 'rows suspended under quick settings');
@@ -8652,7 +8764,8 @@ test('height card owns the top edge: no overlay on keys, ctrl view waits', {sinc
     world.tap(world.$('setupButton'));
     world.tap(world.$('setupButton'));
     assert(!world.$('ctrlLayer').hidden, 'ctrl rows still there after save');
-    assert(world.$('candidateBar').hidden, 'bar stays with the ctrl view');
+    assert(world.$('toolboxRow').hidden, 'toolbox row stays with the ctrl view');
+    assert(!world.$('candidateBar').hidden, 'candidate bar stays');
 });
 
 test('height edit borrows the bar from the ctrl view (3.20.0 form)', {until: '3.20.0'}, () => {
@@ -9286,9 +9399,10 @@ test('assoc click routes through the real bridge (FeelimeNative)', {since: '3.33
     const assocButtons = () => [...world.$('candidates').children]
         .filter(b => (b.className || '').split(/\s+/).includes('assoc'));
     equal(assocButtons().length, 3, 'assoc words render while the pool is empty');
-    // 联想 chrome（用户定稿）：工具栏快捷按钮全部让位（含 mic）仅留 ×。
-    assert(world.$('setupButton').hidden, 'assoc hides the toolbar');
-    assert(world.$('mic').hidden, 'assoc hides mic');
+    // 联想 chrome（用户定稿，3.74.9 重定域）：候选栏内工具让位仅留 ×，
+    // 工具箱行的按钮常驻（含 mic）。
+    assert(!world.$('setupButton').hidden, 'assoc keeps the toolbox row');
+    assert(!world.$('mic').hidden, 'assoc keeps mic');
     assert(!world.$('composeClear').hidden, 'assoc shows ×');
     assocButtons()[0].click();
     const call = world.native.of('commitAssoc')[0];
@@ -9841,8 +9955,9 @@ test('t9 1-key chrome: tap yields toolbar, pick/× restores, up-flick commits 1'
     // 单击 1（用户定稿，不再需要长按）：符号行 + chrome——工具栏快捷
     // 按钮全部让位（含 mic），仅保留最右 ×。
     world.tap(one);
-    assert(world.$('setupButton').hidden, 'setup tool hidden');
-    assert(world.$('mic').hidden, 'mic hidden too');
+    // 3.74.9：符号行只让候选栏，工具箱行的 setup/mic 常驻。
+    assert(!world.$('setupButton').hidden, 'setup tool stays (toolbox row)');
+    assert(!world.$('mic').hidden, 'mic stays too (toolbox row)');
     assert(!world.$('composeClear').hidden, '× visible to cancel the bar');
     // 点选符号 = 上屏 + 关符号行 + 工具栏复原（用户定稿）。
     const sym = [...world.document.querySelectorAll('#candidates .candidate')][0];
@@ -9859,7 +9974,7 @@ test('t9 1-key chrome: tap yields toolbar, pick/× restores, up-flick commits 1'
     world.tap(one);
     world.engineState({ phase: 'READY', mode: 't9', revision: 2, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
-    assert(world.$('setupButton').hidden, 'idle refresh holds the chrome');
+    assert(!world.$('setupButton').hidden, 'idle refresh holds the chrome (toolbox row stays)');
     assert(!world.$('composeClear').hidden, '× survives idle refresh');
     // × 单击 = 只关符号行并恢复工具栏，绝不清组合。
     world.tap(world.$('composeClear'));
@@ -9870,8 +9985,8 @@ test('t9 1-key chrome: tap yields toolbar, pick/× restores, up-flick commits 1'
     // 仅留 ×；× 关联想并复原（用户定稿）。
     world.tap(one);
     world.assoc(['的', '是']);
-    assert(world.$('setupButton').hidden, 'assoc keeps the toolbar yielded');
-    assert(world.$('mic').hidden, 'assoc hides mic too');
+    assert(!world.$('setupButton').hidden, 'assoc keeps the toolbox row');
+    assert(!world.$('mic').hidden, 'assoc keeps mic too');
     assert(!world.$('composeClear').hidden, 'assoc shows ×');
     world.tap(world.$('composeClear'));
     assert(!world.$('setupButton').hidden, 'assoc × restores the toolbar');
@@ -9892,18 +10007,22 @@ test('t9 1-key chrome: tap yields toolbar, pick/× restores, up-flick commits 1'
 test('assoc yield survives a voice session ending (mic stays out of the bar)', {since: '3.73.114'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.assoc(['天气', '气候']);
-    assert(world.$('setupButton').hidden, 'assoc yields the toolbar');
-    assert(world.$('mic').hidden, 'assoc yields mic');
-    // 语音会话：开始时 overlay 接管（stop 入口在 overlay 上，工具栏让位
-    // 维持）；结束后让位必须恢复——mic 不得插回候选行。
+    // 3.74.9：联想让位只管候选栏，工具箱行的 setup/mic 常驻；本用例的
+    // 定罪点改成「mic 不得被插进候选栏」（旧语义的「mic 不在候选行」
+    // 在新布局下恒真于位置，而非 hidden）。
+    assert(!world.$('setupButton').hidden, 'assoc keeps the toolbox row');
+    assert(!world.$('mic').hidden, 'assoc keeps mic');
+    assert(world.$('mic').closest('#toolboxRow'), 'mic rides the toolbox row');
+    // 语音会话：开始时 overlay 接管（stop 入口在 overlay 上）；结束后
+    // mic 不得被插进候选栏。
     world.nativeState({ state: 'listening' });
     world.nativeState({ state: 'idle' });
-    assert(world.$('setupButton').hidden, 'yield holds after voice ends');
-    assert(world.$('mic').hidden, 'mic stays out of the assoc bar after voice ends');
+    assert(!world.$('mic').hidden, 'mic stays visible after voice ends');
+    assert(world.$('mic').closest('#toolboxRow'), 'mic still on the toolbox row after voice ends');
     assert(!world.$('composeClear').hidden, '× stays available');
-    // 空闲引擎刷新同样不得把工具栏插回（setToolbarYield 幂等复核）。
+    // 空闲引擎刷新同样不得把工具栏插进候选栏。
     world.engineState({ composing: false, candidates: [], hasNextPage: false });
-    assert(world.$('mic').hidden, 'idle engine refresh keeps the yield');
+    assert(world.$('mic').closest('#toolboxRow'), 'idle engine refresh keeps mic on the toolbox row');
     // 联想消失后工具栏按通用规则恢复。
     world.assoc([]);
     world.engineState({ composing: false, candidates: [], hasNextPage: false });
@@ -9917,12 +10036,18 @@ test('assoc yield survives a voice session ending (mic stays out of the bar)', {
 // 纠正（绕过一切对账路径直改 DOM 模拟手滑），纠正计数可观测。
 test('toolbar exclusion guard auto-reverts stray tool buttons (runtime invariant)', {since: '3.73.115'}, () => {
     const world = fresh({ mode: 'pinyin' });
+    // 3.74.9：工具住在独立的工具箱行，联想让位只藏候选栏内的按钮——
+    // 工具箱行的 mic/剪贴板在联想时常驻，守卫不碰它们。
     world.assoc(['天气']);
-    assert(world.$('mic').hidden, 'assoc yields mic');
-    // 模拟未来某条新路径手滑：直改 DOM，绕过所有对账函数。
+    assert(!world.$('mic').hidden, 'assoc yield keeps toolbox mic visible');
+    assert(!world.$('clipboardButton').hidden, 'assoc yield keeps toolbox clipboard visible');
+    // 模拟未来某条新路径手滑：把一颗工具直插进候选栏（绕过所有对账
+    // 函数）——守卫在渲染前（0ms 微任务）自动把它纠正回隐藏。
+    const bar = world.$('candidateBar');
+    bar.append(world.$('mic'));
+    bar.append(world.$('clipboardButton'));
     world.$('mic').hidden = false;
     world.$('clipboardButton').hidden = false;
-    // 守卫在渲染前（0ms 微任务）自动纠正：
     world.clock.advance(0);
     assert(world.$('mic').hidden, 'guard reverts stray mic before render');
     assert(world.$('clipboardButton').hidden, 'guard reverts stray clipboard');
@@ -9939,6 +10064,8 @@ test('toolbar exclusion guard auto-reverts stray tool buttons (runtime invariant
     assert(world.context.window.Feelime.toolbarExclusionFixes() === before,
         'no fix recorded outside candidate scenes');
     // 语音 recording 是唯一例外（mic 是 overlay 外的兜底 stop 入口）：
+    // 把 mic 放回候选栏模拟手滑，recording 时守卫仍放行。
+    world.$('candidateBar').append(world.$('mic'));
     world.assoc(['气候']);
     world.nativeState({ state: 'listening' });
     world.clock.advance(0);
@@ -9950,27 +10077,33 @@ test('toolbar exclusion guard auto-reverts stray tool buttons (runtime invariant
         'recording exception records no fix');
 });
 
-test('height refresh keeps composing tools hidden at the source (#109 root cause)', {since: '3.73.116'}, () => {
+test('height refresh keeps composing tools in the toolbox row (#109 root cause)', {since: '3.73.116'}, () => {
     const world = fresh({ mode: 'double-pinyin' });
-    // #109 实况：组合打字中一次高度刷新（resize/应用切回/键盘收起再
-    // 弹），applyHeight→audit 按 composing 藏→fit→prune 的尾步曾把
-    // 工具又写回可见——3.73.115 前的版本随机出现「工具插进候选行」。
+    // #109 实况（3.74.9 重定域）：组合打字中一次高度刷新（resize/应用
+    // 切回/键盘收起再弹），applyHeight→audit→fit→prune 的尾步曾把工具
+    // 又写回候选行——3.73.115 前的版本随机出现「工具插进候选行」。
+    // 工具箱行独立后，组合中工具常驻在工具箱行：高度刷新不得把它们
+    // 藏掉，也不得把它们插回候选栏。
     world.context.Feelime.toolbarSet(['edit'], ['clipboard']);
     world.engineState({
         mode: 'double-pinyin', composing: true, rawInput: 'ui', revision: 1,
         candidates: [{ id: 'a', text: '是' }, { id: 'b', text: '时' }],
         hasPreviousPage: false, hasNextPage: true,
     });
-    equal(world.$('editTool').hidden, true, 'editTool yielded while composing');
-    equal(world.$('clipboardButton').hidden, true, 'clipboard yielded while composing');
+    equal(world.$('editTool').hidden, false, 'editTool stays while composing (toolbox row)');
+    equal(world.$('clipboardButton').hidden, false, 'clipboard stays while composing (toolbox row)');
+    assert(world.$('editTool').closest('#toolboxRow'), 'editTool still on the toolbox row');
+    assert(world.$('clipboardButton').closest('#toolboxRow'), 'clipboard still on the toolbox row');
     const fixes0 = world.context.window.Feelime.toolbarExclusionFixes();
-    // advance(0) 之前读——证明源头就没写回，不是守卫微任务事后擦的。
+    // advance(0) 之前读——证明源头就没写错，不是守卫微任务事后擦的。
     world.context.window.Feelime.applyHeightNow();
-    equal(world.$('editTool').hidden, true, 'prune keeps editTool hidden (source)');
-    equal(world.$('clipboardButton').hidden, true, 'prune keeps clipboard hidden (source)');
+    equal(world.$('editTool').hidden, false, 'prune keeps editTool visible (source)');
+    equal(world.$('clipboardButton').hidden, false, 'prune keeps clipboard visible (source)');
+    assert(world.$('editTool').closest('#toolboxRow'), 'prune keeps editTool on the toolbox row');
+    assert(world.$('clipboardButton').closest('#toolboxRow'), 'prune keeps clipboard on the toolbox row');
     world.clock.advance(0);
     equal(world.context.window.Feelime.toolbarExclusionFixes(), fixes0,
-        'guard had nothing to fix: no stray un-hide during composing');
+        'guard had nothing to fix: no stray move during composing');
 });
 
 test('× during a variant replay unfreezes the composing UI instead of stranding it (#109 escape)', {since: '3.73.116'}, () => {
@@ -10078,7 +10211,7 @@ test('stroke taps feed stroke codes; 7 opens the symbol bar', {since: '3.48.0'},
     const bar = () => [...world.document.querySelectorAll('#candidates .candidate')]
         .map(b => b.textContent).join('');
     equal(bar(), '@#.*+-_/=', 'symbol bar shows the western/technical set');
-    assert(world.$('setupButton').hidden, 'toolbar yields to the symbol bar');
+    assert(!world.$('setupButton').hidden, 'toolbox row stays under the symbol bar');
     // 点选符号=直上屏+关闭符号行+工具栏复原。
     world.tap([...world.document.querySelectorAll('#candidates .candidate')][0]);
     equal(world.native.of('commitText').slice(-1)[0].args[0], '@', 'pick commits the symbol literally');
@@ -10598,14 +10731,15 @@ test('handwriting: every stroke fires its own request (reqId mismatch drops stal
     equal(world.$('candidates').children[0].textContent, '新', 'current reqId rendered');
 });
 
-test('handwriting: pen-down yields the whole toolbar row including the dismiss chevron', {since: '3.73.16'}, () => {
+test('handwriting: pen-down yields the candidate row; the toolbox row stays', {since: '3.73.16'}, () => {
     // #39-6 复发修复：让位提前到落笔——写字全程（笔迹进行中/已有
-    // 笔迹/有候选）整行让位，收起键一并隐藏；短笔画窜进工具栏区
-    // 无按钮可触发。行内只留「手写」标识与 ×。
+    // 笔迹/有候选）候选行让位，收起键隐藏；3.74.9：工具箱行常驻，
+    // 短笔画窜进工具栏区仍有按钮可触发是独立行常驻的取舍。行内只留
+    // 「手写」标识与 ×。
     const world = handwritingWorld();
     const pad = world.$('inkPad');
     world.touchDown(pad, 20, 20);
-    equal(world.$('setupButton').hidden, true, 'F logo yields at pen-down');
+    equal(world.$('setupButton').hidden, false, 'F logo stays at pen-down (toolbox row)');
     equal(world.$('hide').hidden, true, 'dismiss chevron yields at pen-down');
     equal(world.$('inkTag').hidden, false, 'handwriting tag shows while stroking');
     equal(world.$('composeClear').hidden, false, 'clear (x) stays reachable');
@@ -10805,17 +10939,20 @@ test('handwriting: candidates take the whole bar while the toolbar yields (wetyp
         reqId: world.context.window.Feelime.debugState().inkReqId,
         candidates: [{ text: '中', score: 0.8 }, { text: '忠', score: 0.2 }], error: null,
     });
-    tools.forEach(id => equal(world.$(id).hidden, true, `${id} yielded to the candidate row`));
+    // 3.74.9：候选行只让候选栏，工具箱行的工具常驻（不藏也不插回
+    // 候选栏——互斥的守卫对象仍是候选栏内的按钮）。
+    tools.forEach(id => equal(world.$(id).hidden, false, `${id} stays in the toolbox row`));
     equal(world.$('inkTag').hidden, false, 'mode tag shown');
     equal(world.$('composeClear').hidden, false, 'clear entry shown');
     equal(world.$('candidates').children.length, 2, 'candidates fill the bar');
-    // 引擎回声不得把工具栏插回候选行。
+    // 引擎回声不得把工具栏插进候选行。
     world.engineState({ composing: '', rawInput: '', candidates: [], revision: 7,
         hasPreviousPage: false, hasNextPage: false });
-    equal(world.$('mic').hidden, true, 'mic stays hidden after an engine echo');
+    equal(world.$('mic').hidden, false, 'mic stays visible after an engine echo');
+    assert(world.$('mic').closest('#toolboxRow'), 'mic still on the toolbox row');
     // 重唤键盘触发的工具栏对账也不得插回（applyHeight → audit）。
     world.context.window.Feelime.toolbarAudit();
-    equal(world.$('setupButton').hidden, true, 'audit keeps the yield');
+    equal(world.$('setupButton').hidden, false, 'audit keeps the toolbox row');
     // × = 清笔迹+候选 → 工具栏整行恢复（wetype 同款出口）。
     world.tap(world.$('composeClear'));
     tools.forEach(id => equal(world.$(id).hidden, false, `${id} restored after ×`));
@@ -11036,9 +11173,10 @@ test('handwriting round-3: assoc words land in the bar after an ink pick', {sinc
     equal(bar.length, 2, 'assoc words render in handwriting mode');
     assert(bar.every(b => (b.className || '').split(/\s+/).includes('assoc')),
         'assoc styling matches the pinyin path');
-    // 工具栏整行让位与拼音联想同一语义；「手写」标识只跟识别候选走。
-    assert(world.$('setupButton').hidden, 'toolbar yields to assoc words');
-    assert(world.$('mic').hidden, 'mic yields too');
+    // 3.74.9：工具箱行与拼音联想同一语义——常驻；「手写」标识只跟
+    // 识别候选走。
+    assert(!world.$('setupButton').hidden, 'toolbox row stays under assoc words');
+    assert(!world.$('mic').hidden, 'mic stays too');
     equal(world.$('inkTag').hidden, true, 'mode tag follows ink candidates only');
     assert(!world.$('composeClear').hidden, '× is the cancel entry');
     // 点联想词 = 连续联想：commitAssoc + 清条 + 下一轮由 native 推。
@@ -11066,7 +11204,7 @@ test('handwriting round-3: a new recognition displaces assoc words (mutex intact
     equal(bar.length, 1, 'ink candidates take the bar back');
     equal(bar[0].textContent, '工', 'recognition result rendered');
     assert(!(bar[0].className || '').split(/\s+/).includes('assoc'), 'no assoc styling');
-    assert(world.$('setupButton').hidden, 'toolbar stays yielded');
+    assert(!world.$('setupButton').hidden, 'toolbox row stays under ink candidates');
     equal(world.$('inkTag').hidden, false, 'mode tag back with ink candidates');
 });
 
@@ -11833,7 +11971,7 @@ test('bottom sym split: off keeps single 123 key, on splits symbols/123 (#113)',
         .filter(el => el.textContent === '123');
     equal(off123.length, 1, 'single 123 key when split is off');
     equal(off123[0].dataset.lp, 'numpad', 'legacy long-press goes to numpad');
-    equal(offBottom.querySelectorAll('.kb-key').length, 5, 'five bottom keys (123 . space cn/en enter)');
+    equal(offBottom.querySelectorAll('.kb-key').length, 6, 'six bottom keys (globe 123 . space cn/en enter)');
 
     // 开：拆【符号】+【123】两键，123 直达数字键盘（无长按态）。
     const on = fresh({ mode: 'pinyin' });

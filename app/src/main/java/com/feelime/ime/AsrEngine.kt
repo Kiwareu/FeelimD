@@ -81,6 +81,8 @@ class AsrEngine(
     private val worker = Executors.newSingleThreadScheduledExecutor { task -> Thread(task, "feelime-asr") }
     private val modelStore = ModelStore(context)
     private val preferences = context.getSharedPreferences(AsrSettings.PREFS, Context.MODE_PRIVATE)
+    private val keyboardPreferences =
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
     private val idleUnload = AsrIdleUnload(
         schedule = { delay, block ->
             val task = worker.schedule(block, delay, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -90,23 +92,49 @@ class AsrEngine(
         unload = { if (!released.get() && !starting.get()) unloadModels() },
     )
     private val preferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == AsrSettings.KEY_IDLE_UNLOAD && !released.get()) {
+        if ((key == AsrSettings.KEY_IDLE_UNLOAD || key == PREF_POWER_SAVING) && !released.get()) {
             runCatching { worker.execute { if (!released.get()) refreshIdleUnloadSetting() } }
         }
     }
 
     init {
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
+        keyboardPreferences.registerOnSharedPreferenceChangeListener(preferenceListener)
     }
 
+    /** 省电模式（3.74.9）：与 SettingsBridge.setPowerSaving 同一 pref。 */
+    fun isPowerSaving(): Boolean =
+        keyboardPreferences.getBoolean(PREF_POWER_SAVING, false)
+
     private fun refreshIdleUnloadSetting() {
-        idleUnload.setEnabled(preferences.getBoolean(AsrSettings.KEY_IDLE_UNLOAD, false))
+        val saving = isPowerSaving()
+        // 省电模式强制空闲卸载（1 分钟），不依赖 idleUnload 开关；常规
+        // 模式按开关，5 分钟。
+        idleUnload.setEnabled(
+            saving || preferences.getBoolean(AsrSettings.KEY_IDLE_UNLOAD, false),
+        )
+        idleUnload.setTimeout(
+            if (saving) AsrIdleUnload.POWER_SAVING_TIMEOUT_MS
+            else AsrIdleUnload.DEFAULT_TIMEOUT_MS,
+        )
     }
 
     /** 仅卸载模型链，保留 worker；下一次 start 会按当前模型来源重新加载。 */
     private fun unloadModels() {
         check(!running.get())
         releaseRecognizerChain()
+    }
+
+    /** 省电模式：键盘收起即卸模型链（FeelimeService.onWindowHidden 调）。
+     *  录音中/启动中不卸；下次 start 按当前来源重载。 */
+    fun unloadNow() {
+        if (released.get()) return
+        worker.execute {
+            if (!released.get() && !running.get() && !starting.get()) {
+                idleUnload.close()
+                unloadModels()
+            }
+        }
     }
 
     /** transcripts never reach release logs; only lengths are recorded. */
@@ -129,6 +157,9 @@ class AsrEngine(
     private var finalPassRecognizer: FinalPassRecognizer? = null
     private var postProcessor: TranscriptPostProcessor? = null
     private var loadedModels: AsrModelSnapshot? = null
+    /** 建链时的省电状态：开关翻转后链构成变了（流式-only ↔ 全链），
+     *  缓存命中与 isWarm 必须按它失配重建，不能复用旧链。 */
+    private var loadedPowerSaving: Boolean = false
 
     /** 最近一次「真加载」（recognizer 缓存未命中、从盘重建链）完成的
      *  时间戳（elapsedRealtime，0=尚未加载过）。语音就绪震动（公众号
@@ -142,7 +173,8 @@ class AsrEngine(
      *  ~100ms，推 loading 会让语音浮层「闪一下」（用户实测），引擎
      *  已热时 UI 直接从 idle 到聆听。 */
     @Synchronized fun isWarm(): Boolean =
-        recognizer != null && loadedModels == selectedModels()
+        recognizer != null && loadedModels == selectedModels() &&
+            loadedPowerSaving == isPowerSaving()
 
     @Synchronized fun start() {
         if (released.get()) return
@@ -194,6 +226,7 @@ class AsrEngine(
     @Synchronized fun release() {
         if (!released.compareAndSet(false, true)) return
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
+        keyboardPreferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         stopRequested.set(true)
         cancelRequested.set(true)
         running.set(false)
@@ -236,7 +269,8 @@ class AsrEngine(
      * changes must take effect without restarting the IME service. */
     private fun ensureRecognizer(): Boolean {
         val selected = selectedModels()
-        if (recognizer != null && loadedModels == selected) return true
+        val saving = isPowerSaving()
+        if (recognizer != null && loadedModels == selected && loadedPowerSaving == saving) return true
         // onLoading 只在真要加载时推（缓存命中的热启动不推）——例行
         // 等待 ~100ms 就转聆听，推 loading 只会让浮层「闪一下」（用户
         // 实测）。startVoice 侧同口径（isWarm 时跳过 loading 态推送）。
@@ -255,12 +289,19 @@ class AsrEngine(
                 modelAssetManager(context, source),
                 streamingRecognizerConfig(source, AsrHotwords.vocabPath(context, source)),
             )
-            finalPassRecognizer = runCatching {
+            // 省电模式只走流式：终 pass（243MB 大模型）与标点模型不加载。
+            // refine() 遇 null 用流式原文；标点后处理 source=null 时降级
+            // 为纯规范化（TranscriptPostProcessor 的 no-op 路径）。
+            finalPassRecognizer = if (saving) null else runCatching {
                 FinalPassRecognizer(context, modelStore, selected.sourceFor("asr-final"))
             }.onFailure { Log.w(TAG, "Final-pass Paraformer unavailable; using streaming result", it) }
                 .getOrNull()
-            postProcessor = TranscriptPostProcessor(context, modelStore, selected.sourceFor("punctuation"))
+            postProcessor = TranscriptPostProcessor(
+                context, modelStore,
+                if (saving) null else selected.sourceFor("punctuation"),
+            )
             loadedModels = selected
+            loadedPowerSaving = saving
             lastHardLoadAtMs = SystemClock.elapsedRealtime()
         } catch (failure: Throwable) {
             releaseRecognizerChain()

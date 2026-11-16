@@ -115,6 +115,24 @@
   只在有查询词时出现。复用候选条/面板头的 pill 语言，不引新 token。
 - 深浅主题验收截图：preview 页 + 设备截图存档。
 
+### 7.3 省电模式外观（keyboard.md §12.5，3.74.9）
+
+- 开启时 `--glass-blur: 0px`（磨砂归零）、`--radius-key: 8px`（圆角
+  下限）、`body.power-saving` 关按键/候选动画（transition:none，按压
+  仍换色、不做缩放插值）。复用现有 token，不引新 token；关掉后恢复
+  hello 下发的玻璃值。
+- 深浅主题验收截图：preview 页（`?powerSaving=1` 直达省电态）+ 设备截图存档。
+
+### 7.4 工具箱行（keyboard.md §2.1，3.74.9）
+
+- 独立行 `#toolboxRow`（40px，上下边距竖屏 2/10px、横屏 4/4px），与候
+  选条同款玻璃底（`hsl(var(--bg-hue) … / calc(0.7 + var(--panel-alpha)
+  * 0.26))` + `inset 0 1px 0 var(--glass-sheen)`），工具按钮复用候选
+  条的 `.tool` 语言（按压态、`.state-on`、编辑态 × 徽标），不引新 token。
+- F logo 固定行首；spacer 把左右两组撑开；编辑态 × 徽标、拖拽排序、
+  溢出隐藏与旧候选条工具栏同一套接线，落点矩形取工具箱行本身。
+- 深浅主题验收截图：preview 页 + 设备截图存档。
+
 ## 8. 完整设置页
 
 设置页（`assets/settings/`）与键盘同源 token、同主题机制；卡片圆角、

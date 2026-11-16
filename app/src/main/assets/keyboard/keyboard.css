@@ -257,15 +257,17 @@ button { font: inherit; }
 /* 只藏字母键区（qwerty/.kb-rows）——symbolLayer/ninePad 也是工具栏
  * 可达视图（codex 复审 P1-9：数字/符号/Emoji 按钮放上工具栏后，无条件
  * 藏死=点开落空白；它们 [hidden] 自管，hwPanelHeightState 报 full 配套
- * 撑高）。ctrlLayer/voiceOverlay 同理不进隐藏列（控制层是候选条行视图、
+ * 撑高）。ctrlLayer/voiceOverlay 同理不进隐藏列（控制层是工具箱行视图、
  * 语音遮罩有 .open 开关）；也不写 body.hwkb #candidateBar{display:flex}
  * ——那条会盖掉 [hidden] 的 UA 隐藏（engineStatus 顶替、控制层借条
  * 都靠 hidden 让位）。 */
 body.hwkb #qwertyLayer,
 body.hwkb .kb-rows { display: none; }
 /* 候选条在 hwkb 态独占键区：margin 归零（原生高度预算已按 40px bar
- * 计算，2/10px margin 会让 bar 沉底）。 */
+ * 计算，2/10px margin 会让 bar 沉底）。工具箱行同理藏起——hwkb 只
+ * 保留 candidateBar（设计语义），工具随软键盘回来。 */
 body.hwkb #candidateBar { margin: 0; }
+body.hwkb #toolboxRow { display: none; }
 /* #H 候选条形态快捷切换键（#87 顺带优化）：modeToggle 的紧凑形态，
  * 只在 hwkb 形态显示。cn-main=当前模式简称、cn-sub=快捷对目标简称
  * （右下角小字，#modeToggle 同款排版）；点按翻对、长按模式菜单。 */
@@ -362,9 +364,12 @@ body.landscape #engineStatus { min-height: 40px; }
 }
 /* The landscape bar grew (26 -> 40) and moved DOWN (margin-top
  * 2 -> 14) so the pinyin preedit line (0-14px) no longer overlaps the
- * candidates; applyHeight() reserves 78px for the landscape chrome. */
+ * candidates; layoutChrome() reserves 130px for the landscape chrome
+ * (3.74.9: +48 工具箱行). */
 body.landscape #candidateBar { height: 40px; margin-top: var(--preedit-band, 18px); margin-bottom: 4px; }
+body.landscape #toolboxRow { height: 40px; margin-top: 4px; margin-bottom: 4px; }
 body.landscape #candidateBar .tool,
+body.landscape #toolboxRow .tool,
 body.landscape #settingsPageBar .tool { width: 30px; height: 30px; }
 body.landscape #candidates { min-height: 40px; }
 body.landscape .candidate { min-height: 40px; line-height: normal; font-size: calc(16px * var(--cand-font-scale, 1)); display: flex; align-items: center; }
@@ -477,13 +482,17 @@ body[data-one-hand="right"] #sidePad { display: block; left: 0; }
  * 不跟键区右缘（那会和候选脱节）。 */
 body[data-one-hand="right"] #preeditLine { left: calc(var(--side-pad-w, 64px) + 8px); right: auto; }
 /* 工具按钮在缩窄的候选条里临界溢出（8 键 + gap 会顶进侧边条）：单手
- * 模式下收紧行间距。 */
-body[data-one-hand] #candidateBar { gap: 5px; }
+ * 模式下收紧行间距。工具箱行同口径。 */
+body[data-one-hand] #candidateBar,
+body[data-one-hand] #toolboxRow { gap: 5px; }
 /* 收起键/设置键贴着让位边界时与侧边栏视觉压边（真机截图回归）。
  * 用容器 padding 内收：margin-right 对最后一个 flex 项无效（不改变
- * 自身位置），hide 是末项、setup 是首项，padding 两侧各留 8px 缝。 */
-body[data-one-hand="left"] #candidateBar { padding-right: 8px; }
-body[data-one-hand="right"] #candidateBar { padding-left: 8px; }
+ * 自身位置），hide 是末项、setup 是首项，padding 两侧各留 8px 缝。
+ * 工具箱行同口径（setup 首项、右组末项）。 */
+body[data-one-hand="left"] #candidateBar,
+body[data-one-hand="left"] #toolboxRow { padding-right: 8px; }
+body[data-one-hand="right"] #candidateBar,
+body[data-one-hand="right"] #toolboxRow { padding-left: 8px; }
 
 /* ===== 工具栏编辑模式（issue #15）=====
  * 长按候选条任意可编辑工具进入；键区被 #toolbarEditor（未上栏 icon
@@ -580,15 +589,17 @@ body.toolbar-edit #numPadLayer { display: none; }
     font-weight: 700;
 }
 /* 候选条编辑态：可编辑 icon 右上角 × 徽章（点按移除）；非编辑态隐藏
- * 且不参与按钮 flex 布局。 */
+ * 且不参与按钮 flex 布局。工具箱行同口径（3.74.9 工具搬家）。 */
 .tool-x { display: none; }
-body.toolbar-edit #candidateBar .tool[data-tool] {
+body.toolbar-edit #candidateBar .tool[data-tool],
+body.toolbar-edit #toolboxRow .tool[data-tool] {
     position: relative;
     /* × 伸出按钮顶边 5px，左组紧邻候选区（DOM 靠后=绘制在上）时会被
      * 盖住点不到——编辑态把工具抬到候选区之上。 */
     z-index: 2;
 }
-body.toolbar-edit #candidateBar .tool[data-tool] .tool-x {
+body.toolbar-edit #candidateBar .tool[data-tool] .tool-x,
+body.toolbar-edit #toolboxRow .tool[data-tool] .tool-x {
     display: block;
     position: absolute;
     top: -5px;
@@ -726,6 +737,26 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     background: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) var(--bar-l, 50%) / calc(0.7 + var(--panel-alpha) * 0.26));
     box-shadow: inset 0 1px 0 var(--glass-sheen);
 }
+/* ===== Toolbox row (3.74.9) =====
+ * 工具箱行：工具从候选栏移入的独立行，打字时常驻；与候选栏同材质
+ * （同背景/圆角/内阴影），左右两组由弹性间隔分开，setupButton 固定
+ * 首位。高度计入 layoutChrome（竖屏 52 / 横屏 48，见 JS）。 */
+#toolboxRow {
+    flex: none;
+    /* 40px - 与候选条同高。 */
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+    margin-bottom: 10px;
+    padding: 0 4px;
+    border-radius: calc(var(--radius-key) + 6px);
+    background: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) var(--bar-l, 50%) / calc(0.7 + var(--panel-alpha) * 0.26));
+    box-shadow: inset 0 1px 0 var(--glass-sheen);
+}
+/* 左右组之间的弹性间隔：左组贴左、右组贴右，挤满时自然归零。 */
+.toolbox-spacer { flex: 1; min-width: 0; }
 .clip-groups { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 8px; }
 /* 剪贴板/常用语搜索行（2026-11-16）：面板头下方、列表上方常驻；
  * 与候选条同材质（--pill 底），输入框透明占满，× 只在有字时出现。 */
@@ -782,7 +813,8 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
 .clip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .clip-group-input { width: 7em; font: inherit; }
 .panel-item { align-items: flex-start; }
-#candidateBar .tool {
+#candidateBar .tool,
+#toolboxRow .tool {
     flex: none;
     width: 32px;
     height: 32px;
@@ -796,13 +828,15 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     align-items: center;
     justify-content: center;
 }
-#candidateBar .tool:active, #candidateBar .tool.active-touch { background: var(--pressed); }
+#candidateBar .tool:active, #candidateBar .tool.active-touch,
+#toolboxRow .tool:active, #toolboxRow .tool.active-touch { background: var(--pressed); }
 /* 开关型工具（振动/声音/联想/单手）：开着时点亮。色彩模式是三态
  * 循环无开/关语义，syncToolStates 不再给它挂 state-on。
  * 底色用 active 深绿（mic listening / ctrl active 同配方）、icon 走
  * accent——之前的实心亮绿 + 纯白 icon 在暗色键盘里像颗灯泡（真机
  * 截图定罪）。快捷设置 tile 的 on 也只是 icon 变绿，语义统一。 */
 #candidateBar .tool.state-on,
+#toolboxRow .tool.state-on,
 #toolbarEditorGrid .tool.state-on {
     /* 开 = icon 变 accent + 一圈细描边，底色不动——大色块（实心绿/
      * 深绿底）在暗色键区里两次被用户点名刺眼；快捷设置 tile 的 on
@@ -839,13 +873,16 @@ body.settings-page #settingsPageBar { display: flex; }
 body.stats-page #statsPageBar { display: flex; }
 body.stats-page #candidates,
 body.stats-page #candidateBar > .tool,
+body.stats-page #toolboxRow,
 body.settings-page #statsPageBar { display: none; }
 /* 子页打开时隐藏所有常规工具——直接子元素级选择器，动态开关工具
  * （toolTheme 等五个）自动覆盖，新增工具也不会再漏（真机翻车：逐 id
  * 枚举漏掉动态按钮，「输入法快捷切换」子页标题栏边上挂着一颗色彩
- * 模式）。settingsPageBar 的 ‹/× 在其内部，不受 > 影响。 */
+ * 模式）。settingsPageBar 的 ‹/× 在其内部，不受 > 影响。工具箱行整
+ * 行随子页隐藏（3.74.9）。 */
 body.settings-page #candidates,
-body.settings-page #candidateBar > .tool { display: none; }
+body.settings-page #candidateBar > .tool,
+body.settings-page #toolboxRow { display: none; }
 /* [hidden] must win even against the settings-page swap (lint R2). */
 #setupButton[hidden], #fullSetupButton[hidden], #clipboardButton[hidden],
 #favoritesButton[hidden], #hide[hidden], #settingsPageBar[hidden],
@@ -854,9 +891,11 @@ body.settings-page #candidateBar > .tool { display: none; }
 }
 /* Author display:flex beats the UA [hidden] rule - compose controls and the
  * M4 toolbar swap never actually hid without this (review: P1). */
-#candidateBar .tool[hidden] { display: none; }
-/* The clipboard/favorites panel replaces the toolbar row entirely. */
-#candidateBar[hidden] { display: none; }
+#candidateBar .tool[hidden],
+#toolboxRow .tool[hidden] { display: none; }
+/* The clipboard/favorites panel replaces the toolbar rows entirely. */
+#candidateBar[hidden],
+#toolboxRow[hidden] { display: none; }
 #modeButton {
     width: auto;
     min-width: 30px;
@@ -1015,6 +1054,13 @@ body.landscape { --kb-gap: 6px; }
     .kb-key:active, .kb-key.active-touch, .sym-tab:active, .sym-tab.active-touch,
     .candidate:active, .candidate.active-touch { transform: none; }
 }
+/* 省电模式（3.74.9，body.power-saving 由 hello 下发）：关按键/候选
+ * 动画——按压仍换色（transition:none 只是瞬间切换），不做缩放插值；
+ * 磨砂归零见 applyGlass（--glass-blur: 0px）。 */
+body.power-saving .kb-key, body.power-saving .sym-tab, body.power-saving .candidate { transition: none; }
+body.power-saving .kb-key:active, body.power-saving .kb-key.active-touch,
+body.power-saving .sym-tab:active, body.power-saving .sym-tab.active-touch,
+body.power-saving .candidate:active, body.power-saving .candidate.active-touch { transform: none; }
 .kb-key.kb-letter { position: relative; }
 /* 键帽水位线（#55 反馈 5）：上边/角标/主字/下边四段空白由 JS
  * applyKeycapMetrics 按行高等比分配（3:6:4）——高度变化时三段留白
@@ -3605,14 +3651,17 @@ body[data-floating="on"] #floatHandles { display: block; }
 #floatGrip:active::after, #floatGrip:active::before { filter: brightness(1.15); }
 /* 悬浮缩窄（最小 60% 视口）时工具条随卡片宽连续缩放：尺寸由
  * fitFloatingToolbar 写 --ftool-s/--ftool-icon（26 上限→18 触摸下限），
- * 装不下的工具按容量截尾隐藏（pruneOverflowTools，setup/hide 不截，
- * 收起键永远可点）。放文件尾压过 landscape 30px 档。 */
+ * 装不下的工具按容量截尾隐藏（pruneOverflowTools，setup 不截）。
+ * 放文件尾压过 landscape 30px 档。3.74.9：量的是工具箱行。 */
 body[data-floating="on"] #candidateBar { gap: 5px; }
-body[data-floating="on"] #candidateBar .tool {
+body[data-floating="on"] #toolboxRow { gap: 5px; }
+body[data-floating="on"] #candidateBar .tool,
+body[data-floating="on"] #toolboxRow .tool {
     width: var(--ftool-s, 26px);
     height: var(--ftool-s, 26px);
 }
-body[data-floating="on"] #candidateBar .tool svg {
+body[data-floating="on"] #candidateBar .tool svg,
+body[data-floating="on"] #toolboxRow .tool svg {
     width: var(--ftool-icon, 13px);
     height: var(--ftool-icon, 13px);
 }

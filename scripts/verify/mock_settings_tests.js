@@ -88,6 +88,7 @@ class MockSettingsNative {
     saveAsrSettings(...a) { this._rec('saveAsrSettings', a); }
     setAsrToggles(...a) { this._rec('setAsrToggles', a); }
     setAsrIdleUnload(...a) { this._rec('setAsrIdleUnload', a); }
+    setPowerSaving(...a) { this._rec('setPowerSaving', a); }
     importBgImage(...a) { this._rec('importBgImage', a); }
     saveCustom(...a) { this._rec('saveCustom', a); }
     checkUpdate(...a) { this._rec('checkUpdate', a); }
@@ -3407,6 +3408,23 @@ test('ASR idle unloading defaults off and is controlled by native state', () => 
     world.push({ ...BASE_STATE, uiLanguage: 'en', uiLocale: 'en', asr: { idleUnload: true } });
     assert(toggle.checked, 'native enabled');
     assert(world.doc.querySelector('[data-i18n="voice.asr.idleUnloadHint"]').textContent.includes('5 idle minutes'), 'English hint');
+});
+
+test('power saving mode defaults off and is controlled by native state (3.74.9)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const toggle = world.$('powerSaving');
+    assert(!toggle.checked, 'default off (normal mode)');
+    toggle.checked = true;
+    toggle.listeners.find(listener => listener.type === 'change').handler({ target: toggle });
+    equal(world.lastCall('setPowerSaving').args, [true, world.token], 'bridge token and value');
+    world.push({ ...BASE_STATE, powerSaving: false });
+    assert(!toggle.checked, 'native value wins');
+    world.push({ ...BASE_STATE, powerSaving: true });
+    assert(toggle.checked, 'native enabled');
+    world.push({ ...BASE_STATE, uiLanguage: 'en', uiLocale: 'en', powerSaving: true });
+    assert(toggle.checked, 'native enabled in English');
+    assert(world.doc.querySelector('[data-i18n="voice.asr.powerSavingHint"]').textContent.includes('1 idle minute'), 'English hint');
 });
 
 test('background resource URLs feed preview directly and errors are visible', () => {

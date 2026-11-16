@@ -1259,6 +1259,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     override fun onWindowHidden() {
         super.onWindowHidden()
         InputStats.flush(applicationContext)
+        // 省电模式（3.74.9）：键盘收起即卸语音模型——收起后用户不在打字，
+        // 不必让几百 MB 模型在内存里等 1 分钟空闲计时；下次语音重载。
+        // 只在引擎已建且未在录音时卸；常规模式不走这里（靠空闲计时）。
+        if (::engine.isInitialized && readPowerSaving(this)) {
+            engine.unloadNow()
+        }
         // 键盘收起取证（录屏 13s 收起 3 次）：hide 不是孤立事件，归因看
         // 它前面紧贴着什么——收起前 <1s 有 touchCancel = 系统手势条
         // 抢断触摸流（返回/主页手势）；只有 touchUp = 正常收笔后收起
@@ -2804,6 +2810,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("glassBlur", readGlassBlur(this))
             .put("glassRadius", readGlassRadius(this))
             .put("panelOpacity", readPanelOpacity(this))
+            .put("powerSaving", readPowerSaving(this))
             .put("glassSkin", readGlassSkin(this))
             .put("keyBubble", readKeyBubble(this))
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
