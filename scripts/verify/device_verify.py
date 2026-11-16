@@ -20,31 +20,20 @@ if not SERIAL:
 
 
 def _resolve_pkg():
-    """debug 构建带 .dev 包名后缀（与 Play 正式包共存）：FEELIME_PKG 显式
-    指定 > 设备上装了 .dev 就测 .dev（套件的日常对象是 debug 迭代包）>
-    回落正式包名（报错路径与旧行为一致）。正式包冒烟时显式
-    FEELIME_PKG=com.feelime.ime。"""
+    """3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
+    后缀）：FEELIME_PKG 显式指定优先，否则直接用正式包名。"""
     import os as _os
-    import subprocess as _sp
     explicit = _os.environ.get("FEELIME_PKG", "").strip()
     if explicit:
         return explicit
-    try:
-        out = _sp.run(["adb", "-s", SERIAL, "shell", "pm list packages"],
-                      capture_output=True, timeout=15).stdout.decode()
-        if "package:com.feelime.ime.dev\n" in out:
-            return "com.feelime.ime.dev"
-    except Exception:
-        pass
     return "com.feelime.ime"
 
 
 PKG = _resolve_pkg()
 
 # shell `ime` 命令按 ComponentName.flattenToShortString 精确匹配注册表
-# （ColorOS 实测）：正式包（applicationId==namespace）注册为 pkg/.Svc
-# 缩写形态，全类名反而不匹配；.dev 包类包不同、无缩写。am start 宽松，
-# 不受影响。
+# （ColorOS 实测）：包名与类 namespace 一致时注册为 pkg/.Svc 缩写形态，
+# 全类名反而不匹配。am start 宽松，不受影响。
 if PKG == "com.feelime.ime":
     IME_SVC = f"{PKG}/.FeelimeService"
 else:

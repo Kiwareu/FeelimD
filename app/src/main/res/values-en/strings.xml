@@ -1,12 +1,12 @@
 <resources>
-    <string name="app_name">Feelime</string>
-    <string name="ime_name">Feelime Chinese-English voice keyboard</string>
+    <string name="app_name">FeelimD</string>
+    <string name="ime_name">FeelimD Chinese-English voice keyboard</string>
     <string name="ime_subtype">Chinese-English voice</string>
-    <string name="setup_title">Feelime</string>
+    <string name="setup_title">FeelimD</string>
     <string name="setup_intro">An offline Chinese-English streaming voice keyboard. The keyboard runs locally in HTML.</string>
     <string name="grant_microphone">1. Grant microphone permission</string>
-    <string name="enable_ime">2. Enable Feelime keyboard</string>
-    <string name="choose_ime">3. Switch to Feelime</string>
+    <string name="enable_ime">2. Enable FeelimD keyboard</string>
+    <string name="choose_ime">3. Switch to FeelimD</string>
     <string name="shortcut_ime_short">Switch input method</string>
     <string name="shortcut_ime_long">Open the system input method picker</string>
     <string name="shortcut_unsupported">Home-screen shortcuts are not supported on this Android version</string>

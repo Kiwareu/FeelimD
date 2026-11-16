@@ -769,8 +769,9 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
 }
 .clip-expand-btn:active { color: var(--text); }
 /* 3.74.11：☆ 加常用语按钮，与展开符号同款纯符号指示（无底、无
- * 圆圈），28px 触控区。行内三符号（⌄ ☆ ×）各 flex:none、gap 8px，
- * 正文 .clip-body flex:1 + min-width:0 收缩让位，横竖屏都不重叠。 */
+ * 圆圈），28px 触控区。行内两枚符号（⌄ ☆，3.74.12 起 × 删除改成左
+ * 右滑动，行里不再放 ×）各 flex:none、gap 8px，正文 .clip-body
+ * flex:1 + min-width:0 收缩让位，横竖屏都不重叠。 */
 .clip-fav-btn {
     flex: none;
     width: 28px;
@@ -2124,6 +2125,8 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden; /* 3.74.12：滑动删除时条目 translateX 跟手位移，
+                          * 横向裁在列表边缘，不撑出横向滚动条。 */
     border-radius: 10px;
     /* 候选列表块与键帽同材质（验收反馈）：背景按「按键不透明度」
      * 合成，壁纸上与键帽一致地透，不再是一块死色。 */
@@ -2181,6 +2184,9 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 }
 .panel-item:active { background: var(--pressed); }
 .panel-item.disabled { color: var(--muted); }
+/* 3.74.12：左右滑动删除中——条目挂删除底色，配合 translateX 跟手
+ * 位移（bindClipSwipe，限 ±64px）；松手未达阈值回弹复位。 */
+.panel-item.clip-swiping { background: rgba(220, 60, 60, .16); }
 .panel-text {
     flex: 1;
     min-width: 0;
@@ -2190,17 +2196,6 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
     -webkit-line-clamp: 2;
     overflow: hidden;
     word-break: break-all;
-}
-.panel-remove {
-    flex: none;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--muted);
-    font-size: 16px;
 }
 #panelEmpty {
     flex: 1;

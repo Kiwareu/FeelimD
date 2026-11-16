@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 发版产物构建 + 硬校验 + GitHub 发布（分阶段）。
 #
-# 为什么存在：发版序列曾复用 gate 验证过的 direct/debug 产物，而 1.0.19
-# 起 debug 构建 applicationId 带 .dev 后缀（与正式包共存的设计）——照老
-# 序列走会把 com.feelime.ime.dev 发上 release（issue #40，用户装出
-# 「Feelime Dev」）。本脚本把「必须 release 产物」固化成门禁：
-#   1. 只构建 assembleDirectRelease（release 构建无 .dev 后缀）
+# 为什么存在：发版序列曾复用 gate 验证过的 direct/debug 产物，而 debug
+# 构建与 release 构建曾共用包名（3.74.12 前 debug 带 .dev 后缀才区分；
+# 3.74.12 起 debug 也是正式包名 com.feelime.ime，包名已无法区分，全靠
+# 签名与构建类型）——照老序列走会把 debug 产物发上 release（issue #40，
+# 用户装出「Feelime Dev」）。本脚本把「必须 release 产物」固化成门禁：
+#   1. 只构建 assembleDirectRelease
 #   2. 逐个产物校验 applicationId 精确等于 com.feelime.ime（任何后缀/别名
 #      一律拒绝）、versionName 精确等于 tag、签名者非 debug 证书
 #   3. thin→cp→full→cp 顺序坑固化（同路径输出互相覆盖，memory 1.0.14）
@@ -204,7 +205,7 @@ do_stage() {
     echo "== upload assets to draft $TAG =="
     gh release upload "$TAG" "$THIN" "$FULL" --clobber
     # ---- 暂存后核验（不依赖人记得）：资产 state + 远端 digest 与本地
-    # sha256 逐一比对 + 下载 thin 包复核包名（.dev 泄漏的最后防线）。
+    # sha256 逐一比对 + 下载 thin 包复核包名（debug 产物泄漏的最后防线）。
     echo "== post-stage verify =="
     RID="$(gh api "repos/{owner}/{repo}/releases/tags/$TAG" -q .id)"
     for i in $(seq 1 40); do

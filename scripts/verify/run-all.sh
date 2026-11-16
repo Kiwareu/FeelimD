@@ -138,17 +138,10 @@ fi
 : "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
 : "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
 
-# debug 构建包名带 .dev 后缀（与正式包共存）：FEELIME_PKG 显式指定 >
-# 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
-FEELIME_PKG_RESOLVED="${FEELIME_PKG:-}"
-if [ -z "$FEELIME_PKG_RESOLVED" ]; then
-    if adb -s "$FEELIME_ADB_SERIAL" shell pm list packages 2>/dev/null \
-        | grep -q '^package:com\.feelime\.ime\.dev$'; then
-        FEELIME_PKG_RESOLVED=com.feelime.ime.dev
-    else
-        FEELIME_PKG_RESOLVED=com.feelime.ime
-    fi
-fi
+# 3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
+# 后缀）：FEELIME_PKG 显式指定优先，否则直接用正式包名
+# （与 device_verify._resolve_pkg 同规）。
+FEELIME_PKG_RESOLVED="${FEELIME_PKG:-com.feelime.ime}"
 PKG="$FEELIME_PKG_RESOLVED"
 # shell `ime` 按 flattenToShortString 精确匹配（同 device_verify.IME_SVC）
 if [ "$PKG" = com.feelime.ime ]; then

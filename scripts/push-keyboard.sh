@@ -19,16 +19,9 @@ fi
 SERIAL=${1:-}
 ADB=(adb)
 [ -n "$SERIAL" ] && ADB=(adb -s "$SERIAL")
-# debug 构建包名带 .dev 后缀（与正式包共存）：显式 FEELIME_PKG >
-# 设备装了 .dev 用 .dev > 正式包名。
-PKG=${FEELIME_PKG:-}
-if [ -z "$PKG" ]; then
-    if "${ADB[@]}" shell pm list packages 2>/dev/null | grep -q '^package:com\.feelime\.ime\.dev$'; then
-        PKG=com.feelime.ime.dev
-    else
-        PKG=com.feelime.ime
-    fi
-fi
+# 3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
+# 后缀）：显式 FEELIME_PKG 优先，否则直接用正式包名。
+PKG=${FEELIME_PKG:-com.feelime.ime}
 
 "${ADB[@]}" shell pm path "$PKG" >/dev/null || {
     echo "Feelime is not installed on the connected device." >&2

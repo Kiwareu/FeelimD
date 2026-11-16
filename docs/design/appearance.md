@@ -143,7 +143,8 @@
   `--pill` 底、类型小标 11px `--accent-text`；「全文」chip 用 accent 底
   打头。条目右侧 ⌄「展开」= 纯符号（3.74.11 起无按钮底色、无圆形边框，
   28px 点按区），不占正文区。3.74.11：全文特别长（200 字以上）只显示前
-  200 字加省略号。
+  200 字加省略号。3.74.12：⌄ 对所有可贴条目都显示（无片段也开视图，只
+  有全文预览 +「全文」chip）。
 - 深浅主题验收截图：preview 页 + 设备截图存档。
 
 ### 7.6 快捷设置横屏紧凑（keyboard.md §6.1，3.74.10）
@@ -153,18 +154,21 @@
   可见，状态行（开/关/跟随系统）不被裁。竖屏不受影响。
 - 深浅主题验收截图：preview 页（`?act=qs&mode=landscape`）+ 设备截图存档。
 
-### 7.7 删除确认与剪贴板行符号（keyboard.md §3.3，3.74.11）
+### 7.7 删除确认与剪贴板行符号（keyboard.md §3.3，3.74.11–3.74.12）
 
 - 删除确认卡 `#confirmCard` = phraseCard 同款浮层语言（圆角 28px 玻璃
   底、居中、min(348px, 100%−16px)），右上角 ×（`.confirm-close`，28px，
   绝对定位右上；`#confirmText` 右留 28px 内边距、长文不压到 × 下）；
   「删除」钮 = `.danger` 红，取消钮 = 次级。只在明确点「删除」时执行，
   其余关闭路径一律不执行。
-- 剪贴板行右侧三枚符号：⌄ 展开、☆ 加到常用语、× 删除——全部纯符号，
-  无按钮底色、无圆形边框（`.clip-expand-btn` / `.clip-fav-btn` =
-  `border: 0; border-radius: 0; background: transparent`），字色
-  `--key-subtext`，active 态变 `--text`；三枚 `flex:none` 固定宽
-  （28/28/24px），正文区 `flex:1 + min-width:0`，横竖屏都不重叠、不遮盖。
+- 剪贴板行右侧两枚符号（3.74.12 起 × 删除改成左右滑动，行里不再放 ×）：
+  ⌄ 展开、☆ 加到常用语——全部纯符号，无按钮底色、无圆形边框
+  （`.clip-expand-btn` / `.clip-fav-btn` = `border: 0; border-radius: 0;
+  background: transparent`），字色 `--key-subtext`，active 态变 `--text`；
+  两枚 `flex:none` 固定宽（28/28px），正文区 `flex:1 + min-width:0`，横竖
+  屏都不重叠、不遮盖。滑动删除中条目挂 `.clip-swiping`（删除底色
+  `rgba(220, 60, 60, .16)`）并跟手位移（限 ±64px），`#panelList` 横向裁
+  剪（`overflow-x: hidden`），条目不撑出横向滚动条。
 - 「删除前确认」开关在设置页剪贴板卡：默认开；开关本身沿用系统 Toggle
   语言。
 - 深浅主题验收截图：preview 页 + 设备截图存档。

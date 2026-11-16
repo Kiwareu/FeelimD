@@ -387,7 +387,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.74.11";
+  const KEYBOARD_VERSION = "3.74.12";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -10099,16 +10099,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const preview2 = document.createElement("span");
           preview2.className = "panel-text";
           preview2.textContent = tooLong ? Array.from(item.text).slice(0, 400).join("") + t("\u2026\uFF08\u5185\u5BB9\u8FC7\u957F\uFF09") : item.text;
-          const remove = document.createElement("span");
-          remove.className = "panel-remove";
-          remove.textContent = "\xD7";
-          remove.setAttribute("aria-label", t("\u5220\u9664"));
-          remove.addEventListener("click", (event) => {
-            event.stopPropagation();
-            this.confirmDelete(t("\u5220\u9664\u8FD9\u6761\u526A\u8D34\u677F\uFF1F"), () => {
-              this.call(() => Native.removeClipboard(item.id, this.token));
-            });
-          });
           const fav = document.createElement("button");
           fav.type = "button";
           fav.className = "clip-fav-btn";
@@ -10122,10 +10112,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const body = document.createElement("span");
           body.className = "clip-body";
           body.append(preview2);
-          const pieces = this.clipPieces(item.text);
-          const canSplit = !tooLong && pieces.length > 0;
           let longPressed2 = false;
-          if (canSplit) {
+          if (!tooLong) {
             const expandBtn = document.createElement("button");
             expandBtn.type = "button";
             expandBtn.className = "clip-expand-btn";
@@ -10135,19 +10123,26 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
               event.stopPropagation();
               this.openClipSplit(item);
             });
-            row.append(body, expandBtn, fav, remove);
+            row.append(body, expandBtn, fav);
             this.bindItemLongPress(row, () => {
               longPressed2 = true;
               this.openClipSplit(item);
             });
-          } else if (!tooLong) {
-            row.append(body, fav, remove);
           } else {
-            row.append(body, remove);
+            row.append(body);
           }
+          this.bindClipSwipe(row, () => {
+            this.confirmDelete(t("\u5220\u9664\u8FD9\u6761\u526A\u8D34\u677F\uFF1F"), () => {
+              this.call(() => Native.removeClipboard(item.id, this.token));
+            });
+          });
           row.addEventListener("click", () => {
             if (longPressed2) {
               longPressed2 = false;
+              return;
+            }
+            if (row.__clipSwiped) {
+              row.__clipSwiped = false;
               return;
             }
             commit();
@@ -10689,6 +10684,72 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       el.addEventListener("touchend", clear, { passive: true });
       el.addEventListener("touchcancel", clear, { passive: true });
     }
+    /** 左右滑动删除剪贴板条目（3.74.12）：横向滑动超过阈值
+     *  （60px）后松手，回调 onSwipe（调用方弹二次确认）；纵向滑动
+     *  仍是列表滚动，交给容器。滑动过程条目跟手位移（限 ±64px）
+     *  并挂 .clip-swiping 露出删除底色；松手未达阈值回弹复位。
+     *  touchend 上 preventDefault 吞掉浏览器可能补发的 click，另
+     *  置 row.__clipSwiped 作二次保险（新一轮 touchstart 即清零，
+     *  不会误吞后来的正常点按）。与 bindItemLongPress 共存：滑动
+     *  超 12px 即取消长按计时，两者互斥。 */
+    bindClipSwipe(row, onSwipe) {
+      const START = 12;
+      const TRIGGER = 60;
+      const MAX_SHIFT = 64;
+      let startX = 0;
+      let startY = 0;
+      let tracking = false;
+      let swiping = false;
+      let dx = 0;
+      const resetVisual = /* @__PURE__ */ __name(() => {
+        row.classList.remove("clip-swiping");
+        row.style.transform = "";
+      }, "resetVisual");
+      row.addEventListener("touchstart", (event) => {
+        const touch = event.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        tracking = true;
+        swiping = false;
+        dx = 0;
+        row.__clipSwiped = false;
+      }, { passive: true });
+      row.addEventListener("touchmove", (event) => {
+        if (!tracking) return;
+        const touch = event.touches[0];
+        dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+        if (!swiping) {
+          if (Math.abs(dx) > START && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            swiping = true;
+            row.classList.add("clip-swiping");
+          } else if (Math.abs(dy) > START) {
+            tracking = false;
+            return;
+          } else {
+            return;
+          }
+        }
+        event.preventDefault();
+        const shift = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, dx));
+        row.style.transform = `translateX(${shift}px)`;
+      }, { passive: false });
+      const finish = /* @__PURE__ */ __name((event, isEnd) => {
+        if (!tracking) return;
+        tracking = false;
+        const wasSwiping = swiping;
+        swiping = false;
+        resetVisual();
+        if (!wasSwiping) return;
+        if (isEnd && Math.abs(dx) >= TRIGGER) {
+          row.__clipSwiped = true;
+          if (event) event.preventDefault();
+          onSwipe();
+        }
+      }, "finish");
+      row.addEventListener("touchend", (event) => finish(event, true), { passive: false });
+      row.addEventListener("touchcancel", (event) => finish(event, false), { passive: true });
+    }
     onClipboard(payload) {
       this.clipboardItems = (payload.items || []).map((item) => ({
         id: String(item.id),
@@ -10776,7 +10837,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     /** 剪贴板放大选择视图（3.74.10）：phraseCard 同款浮层卡片，
      *  比条目本身大、好点。入口两种——条目右侧「展开」按钮与长按
      *  条目；点条目本身仍整条上屏。卡里点一枚 chip 只贴该片段，
-     *  点「全文」贴整条，贴完关面板。 */
+     *  点「全文」贴整条，贴完关面板。3.74.12：无片段的条目也打开
+     *  视图（只有全文预览 +「全文」chip），选词入口对所有可贴条
+     *  目都可达。 */
     clipSplitOpen() {
       const card = document.getElementById("clipSplitCard");
       return !!card && card.classList.contains("open");
@@ -10787,7 +10850,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const chipsEl = document.getElementById("clipSplitChips");
       if (!card || !textEl || !chipsEl || !item) return;
       const pieces = this.clipPieces(item.text);
-      if (!pieces.length) return;
       this.clipSplitItem = item;
       const shown = [...item.text];
       textEl.textContent = shown.length > 200 ? shown.slice(0, 200).join("") + "\u2026" : item.text;

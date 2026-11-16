@@ -396,7 +396,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.11';
+    const KEYBOARD_VERSION = '3.74.12';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -12113,18 +12113,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     preview.textContent = tooLong
                         ? Array.from(item.text).slice(0, 400).join('') + t("…（内容过长）")
                         : item.text;
-                    const remove = document.createElement('span');
-                    remove.className = 'panel-remove';
-                    remove.textContent = '×';
-                    remove.setAttribute('aria-label', t("删除"));
-                    remove.addEventListener('click', event => {
-                        event.stopPropagation();
-                        // 3.74.11：单条删除加二次确认——只有明确点
-                        // 「删除」才删；×/取消/框外/返回一律取消。
-                        this.confirmDelete(t("删除这条剪贴板？"), () => {
-                            this.call(() => Native.removeClipboard(item.id, this.token));
-                        });
-                    });
+                    // 3.74.12：行里不再放 × 删除按钮（用户反馈：× 占位
+                    // 又容易误触）。删除改成左右滑动 + 二次确认
+                    // （bindClipSwipe，见下）。
                     // 3.74.11：剪贴板条目直加常用语（☆）。favoritesAdd
                     // 已有桥方法；输入码留空自动生成，位次 1。点后 toast
                     // 回执，面板不关（可连续加多条）。
@@ -12141,14 +12132,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const body = document.createElement('span');
                     body.className = 'clip-body';
                     body.append(preview);
-                    // 智能拆分（3.74.10）：点条目本身仍整条上屏（老习惯
-                    // 不变）；条目右侧的「展开」按钮或长按条目，打开放大
-                    // 的选择视图（片段 chips + 全文）。超长条目整条置灰、
-                    // 没有拆分入口。
-                    const pieces = this.clipPieces(item.text);
-                    const canSplit = !tooLong && pieces.length > 0;
+                    // 智能拆分（3.74.10，3.74.12 回归修复）：点条目本身
+                    // 仍整条上屏（老习惯不变）；条目右侧的「展开」按钮或
+                    // 长按条目，打开放大的选择视图（片段 chips + 全文）。
+                    // 3.74.11 的 bug：⌄ 与长按只在 clipPieces 找得出片
+                    // 段时才创建——短文本/单字这类拆不出片段的条目既没有
+                    // ⌄、长按也不开视图，选词入口完全没有。3.74.12 起 ⌄
+                    // 与长按对所有可贴条目都可达；无片段时 openClipSplit
+                    // 仍打开视图，只显示全文预览 +「全文」chip。超长条目
+                    // 整条置灰、不能贴、不能拆，也进不了常用语。
                     let longPressed = false;
-                    if (canSplit) {
+                    if (!tooLong) {
                         const expandBtn = document.createElement('button');
                         expandBtn.type = 'button';
                         expandBtn.className = 'clip-expand-btn';
@@ -12158,24 +12152,32 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             event.stopPropagation();
                             this.openClipSplit(item);
                         });
-                        row.append(body, expandBtn, fav, remove);
+                        row.append(body, expandBtn, fav);
                         this.bindItemLongPress(row, () => {
                             longPressed = true;
                             this.openClipSplit(item);
                         });
-                    } else if (!tooLong) {
-                        // 无拆分片段但能贴的条目：仍给 ☆ 加常用语入口。
-                        row.append(body, fav, remove);
                     } else {
-                        // 超长条目整条置灰：不能贴、不能拆，也加不进
-                        // 常用语（56KB 预算收不下），只留删除。
-                        row.append(body, remove);
+                        row.append(body);
                     }
+                    // 左右滑动删除（3.74.12）：左滑或右滑超过阈值后松手，
+                    // 弹二次确认（复用 3.74.11 的确认卡；只有明确点「删
+                    // 除」才删，×/取消/框外/返回一律取消）。超长条目删除
+                    // 同样走滑动（行里没有 ×）。
+                    this.bindClipSwipe(row, () => {
+                        this.confirmDelete(t("删除这条剪贴板？"), () => {
+                            this.call(() => Native.removeClipboard(item.id, this.token));
+                        });
+                    });
                     // Native clicks only: bindTouch's preventDefault would kill
                     // panel scrolling AND bubble a second row click on remove taps
                     // .长按后松手的 click 必须吞掉，否则会把整条贴出去。
+                    // 3.74.12：滑动触发删除后浏览器可能补发一次 click，
+                    // 同样吞掉（bindClipSwipe 在新一轮 touchstart 即清
+                    // 零标记，不会误吞后来的正常点按）。
                     row.addEventListener('click', () => {
                         if (longPressed) { longPressed = false; return; }
+                        if (row.__clipSwiped) { row.__clipSwiped = false; return; }
                         commit();
                     });
                     list.append(row);
@@ -12791,6 +12793,74 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             el.addEventListener('touchcancel', clear, { passive: true });
         }
 
+        /** 左右滑动删除剪贴板条目（3.74.12）：横向滑动超过阈值
+         *  （60px）后松手，回调 onSwipe（调用方弹二次确认）；纵向滑动
+         *  仍是列表滚动，交给容器。滑动过程条目跟手位移（限 ±64px）
+         *  并挂 .clip-swiping 露出删除底色；松手未达阈值回弹复位。
+         *  touchend 上 preventDefault 吞掉浏览器可能补发的 click，另
+         *  置 row.__clipSwiped 作二次保险（新一轮 touchstart 即清零，
+         *  不会误吞后来的正常点按）。与 bindItemLongPress 共存：滑动
+         *  超 12px 即取消长按计时，两者互斥。 */
+        bindClipSwipe(row, onSwipe) {
+            const START = 12;     // 超过即认定横向意图
+            const TRIGGER = 60;   // 松手时超过即触发删除
+            const MAX_SHIFT = 64; // 跟手位移上限
+            let startX = 0;
+            let startY = 0;
+            let tracking = false;
+            let swiping = false;
+            let dx = 0;
+            const resetVisual = () => {
+                row.classList.remove('clip-swiping');
+                row.style.transform = '';
+            };
+            row.addEventListener('touchstart', event => {
+                const touch = event.touches[0];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                tracking = true;
+                swiping = false;
+                dx = 0;
+                row.__clipSwiped = false;
+            }, { passive: true });
+            row.addEventListener('touchmove', event => {
+                if (!tracking) return;
+                const touch = event.touches[0];
+                dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+                if (!swiping) {
+                    if (Math.abs(dx) > START && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                        swiping = true;
+                        row.classList.add('clip-swiping');
+                    } else if (Math.abs(dy) > START) {
+                        tracking = false; // 纵向滚动，交给列表
+                        return;
+                    } else {
+                        return;
+                    }
+                }
+                event.preventDefault(); // 横向已接管，阻止竖向滚动
+                const shift = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, dx));
+                row.style.transform = `translateX(${shift}px)`;
+            }, { passive: false });
+            const finish = (event, isEnd) => {
+                if (!tracking) return;
+                tracking = false;
+                const wasSwiping = swiping;
+                swiping = false;
+                resetVisual();
+                if (!wasSwiping) return;
+                // touchcancel（系统打断）只复位，不触发删除。
+                if (isEnd && Math.abs(dx) >= TRIGGER) {
+                    row.__clipSwiped = true;
+                    if (event) event.preventDefault(); // 吞掉随后的 click
+                    onSwipe();
+                }
+            };
+            row.addEventListener('touchend', event => finish(event, true), { passive: false });
+            row.addEventListener('touchcancel', event => finish(event, false), { passive: true });
+        }
+
         onClipboard(payload) {
             this.clipboardItems = (payload.items || []).map(item => ({
                 id: String(item.id), text: String(item.text), time: Number(item.time) || 0,
@@ -12884,7 +12954,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 剪贴板放大选择视图（3.74.10）：phraseCard 同款浮层卡片，
          *  比条目本身大、好点。入口两种——条目右侧「展开」按钮与长按
          *  条目；点条目本身仍整条上屏。卡里点一枚 chip 只贴该片段，
-         *  点「全文」贴整条，贴完关面板。 */
+         *  点「全文」贴整条，贴完关面板。3.74.12：无片段的条目也打开
+         *  视图（只有全文预览 +「全文」chip），选词入口对所有可贴条
+         *  目都可达。 */
         clipSplitOpen() {
             const card = document.getElementById('clipSplitCard');
             return !!card && card.classList.contains('open');
@@ -12895,8 +12967,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const textEl = document.getElementById('clipSplitText');
             const chipsEl = document.getElementById('clipSplitChips');
             if (!card || !textEl || !chipsEl || !item) return;
+            // 3.74.12：无片段也打开视图——只显示全文预览 +「全文」
+            // chip（之前 `if (!pieces.length) return;` 让拆不出片段
+            // 的条目根本打不开视图，是 3.74.11 的选词回归根因）。
             const pieces = this.clipPieces(item.text);
-            if (!pieces.length) return;
             this.clipSplitItem = item;
             // 3.74.11：全文特别长（约 200 字以上）只显示前 200 字加
             // 省略号，不整段铺开；片段 chips 照常显示，点「全文」

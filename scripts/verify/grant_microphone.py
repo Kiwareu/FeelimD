@@ -10,14 +10,14 @@ import time
 
 SERIAL = os.environ.get("FEELIME_ADB_SERIAL", os.environ.get("ANDROID_SERIAL", ""))
 
-# debug 构建包名带 .dev 后缀（与正式包共存）：显式 FEELIME_PKG >
-# 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
+# 3.74.12 起 debug 构建就是正式包名 com.feelime.ime（不再带 .dev
+# 后缀）：显式 FEELIME_PKG 优先，否则直接用正式包名
+# （与 device_verify._resolve_pkg 同规）。
 def _resolve_pkg():
     explicit = os.environ.get("FEELIME_PKG", "").strip()
     if explicit:
         return explicit
-    out = sh("pm list packages")
-    return "com.feelime.ime.dev" if "package:com.feelime.ime.dev\n" in out else "com.feelime.ime"
+    return "com.feelime.ime"
 
 
 PKG = _resolve_pkg()

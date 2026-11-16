@@ -46,24 +46,22 @@ third_party/                    许可证清单与来源闭包
 ./scripts/push-keyboard.sh --local # 键盘热更新：打包本仓键盘并推到设备（裸调需要 zip 参数）
 ```
 
-**debug 包名带 `.dev` 后缀**（`com.feelime.ime.dev`，名称 "Feelime Dev"），
-与 Play/直装正式包（`com.feelime.ime`）**可同时安装**、数据目录独立。
-配套约定：
+**debug 构建就是正式包名**（`com.feelime.ime`，名称 "FeelimD"，3.74.12 起
+不再带 `.dev` 后缀）——与正式包同名、同数据目录，debug 签名仍走固定
+debug keystore（`FEELIME_DEBUG_*`），与正式签名不同：设备上已有正式签名
+的同包名应用时，须先卸载才能装 debug 包。配套约定：
 
-- 验证脚本/工具的包名统一走解析：`FEELIME_PKG` 显式指定 > 设备装了
-  `.dev` 就用 `.dev` > 正式包名（`device_verify.py::_resolve_pkg`、
-  `run-all.sh`、`push-keyboard.sh` 同规则）。**正式包冒烟时显式
-  `FEELIME_PKG=com.feelime.ime`**。
+- 验证脚本/工具的包名统一走解析：`FEELIME_PKG` 显式指定优先，否则直接
+  用正式包名（`device_verify.py::_resolve_pkg`、`run-all.sh`、
+  `push-keyboard.sh` 同规则）。
 - **组件名字符串按命令分两类**（类在 namespace `com.feelime.ime` 下，
   不随 applicationId 变）：
   - `am start/force-stop` 等：宽松解析，任意形态都行——统一写全类名
-    `{PKG}/com.feelime.ime.FeelimeService`（`.dev` 包下 `pkg/.Svc`
-    缩写会按 applicationId 拼出不存在的类，全类名对两个包都对）。
+    `{PKG}/com.feelime.ime.FeelimeService`。
   - **`ime enable/set`（ColorOS 实测）按 `flattenToShortString` 精确
     匹配注册表**：正式包注册形态是缩写 `com.feelime.ime/.FeelimeService`，
-    写全类名反而报 Unknown input method；`.dev` 包类包不同、注册为全类名。
-    一律用 `device_verify.py::IME_SVC`（按 PKG 自动选形态），不要手写
-    组件串。
+    写全类名反而报 Unknown input method。一律用
+    `device_verify.py::IME_SVC`（按 PKG 自动选形态），不要手写组件串。
 
 ## 本机构建环境（不入仓库）
 
@@ -183,11 +181,10 @@ panelEditor/phraseCard）语义上是叠放小部件，不进表。
 
 **设备层手验（不走 run-all 时的两条铁律，2026-09-28 实录）**：
 
-1. **双包并存必查默认 IME**：设备上 release 包（发版冒烟残留）与 .dev 包
-   并存时，点编辑框唤起的是**系统默认 IME** 的键盘——CDP 会连到旧代码的
-   键盘页白忙一场（症状：新行为完全不生效 / strictReady 模式恒
-   preparing）。动手前先
-   `adb shell ime set com.feelime.ime.dev/com.feelime.ime.FeelimeService`
+1. **必查默认 IME**：设备上可能装着多个输入法，点编辑框唤起的是**系统默认
+   IME** 的键盘——CDP 会连到旧代码的键盘页白忙一场（症状：新行为完全不生效
+   / strictReady 模式恒 preparing）。动手前先
+   `adb shell ime set com.feelime.ime/.FeelimeService`
    并核对设置页首页状态为「默认输入法在线」。
 2. **覆盖安装新包后必须 `am force-stop` 重启 IME 进程**：输入法服务进程
    跨 `install -r` 存活并继续跑旧 dex，hello/新逻辑全是旧行为。CDP 的
@@ -284,8 +281,9 @@ DevTools 合成 TouchEvent 切到符号层（`<123>`）时会触发 qemu **静�
 - **GitHub release 产物走 publish-release.sh**（issue #40 事故后固化，
   2026-09-27）：`scripts/publish-release.sh v<ver> [--upload]
   [--notes-file <f>]` 只构建 assembleDirectRelease 并逐产物硬校验——
-  applicationId 精确等于 `com.feelime.ime`（debug 构建 1.0.19 起带
-  `.dev` 后缀，**绝不复用 direct/debug 产物发版**）、versionName 精确
+  applicationId 精确等于 `com.feelime.ime`（3.74.12 起 debug 构建也是正式
+  包名，包名已无法区分 debug 与 release，**绝不复用 direct/debug 产物发版**）、
+  versionName 精确
   等于 tag、签名者 CN=Feelime Release；任何一项失败拒绝输出/上传。
   `--upload` 自动完成全套发布：release 不存在先 create（1.2.2 实录：
   `gh release upload` 只能往已存在的 release 里传）→ 传资产 →

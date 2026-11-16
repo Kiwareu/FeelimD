@@ -107,8 +107,9 @@ ANDROID_HOME=… ./gradlew testDebugUnitTest   # 应用 JVM 套件（direct/play
 ## 2. 设备门禁
 
 **设备套件跑 debug 构建**（依赖设置页测试字段与 DevTools，release 都没有
-——release 包冒烟走 §4a）。debug 包名带 `.dev` 后缀，套件的包名/组件串
-统一由 `FEELIME_PKG` / `IME_SVC` 解析（规则见 §4 与 AGENTS.md）。
+——release 包冒烟走 §4a）。3.74.12 起 debug 构建就是正式包名
+com.feelime.ime（不再带 .dev 后缀），套件的包名/组件串统一由 `FEELIME_PKG`
+/ `IME_SVC` 解析（规则见 §4 与 AGENTS.md）。
 
 前置环境变量（`run-all.sh` 第一步会核对装机 APK 与本地字节一致）：
 
@@ -306,8 +307,7 @@ import 其它套件当库（历史教训：height_card 曾被 6 个套件当库�
 - 引擎数据部署是异步的：全新安装后等 `.ready` 出现再跑套件。
 - **`ime enable/set` 的组件串按 `flattenToShortString` 精确匹配**（ColorOS
   实测）：正式包必须写缩写 `com.feelime.ime/.FeelimeService`，全类名报
-  Unknown input method；`.dev` 包（类包≠applicationId）注册为全类名。
-  脚本一律用 `device_verify.py::IME_SVC`，不要手写。
+  Unknown input method。脚本一律用 `device_verify.py::IME_SVC`，不要手写。
 
 ### 4a. release 包冒烟（对将发布的 APK 本身）
 

@@ -1,12 +1,12 @@
 <resources>
-    <string name="app_name">Feelime</string>
-    <string name="ime_name">Feelime 中英语音输入法</string>
+    <string name="app_name">FeelimD</string>
+    <string name="ime_name">FeelimD 中英语音输入法</string>
     <string name="ime_subtype">中英语音</string>
-    <string name="setup_title">Feelime</string>
+    <string name="setup_title">FeelimD</string>
     <string name="setup_intro">离线中英混合流式语音输入法。键盘界面全部运行在本地 HTML 中。</string>
     <string name="grant_microphone">1. 授予麦克风权限</string>
-    <string name="enable_ime">2. 启用 Feelime 输入法</string>
-    <string name="choose_ime">3. 切换到 Feelime</string>
+    <string name="enable_ime">2. 启用 FeelimD 输入法</string>
+    <string name="choose_ime">3. 切换到 FeelimD</string>
     <string name="shortcut_ime_short">切换输入法</string>
     <string name="shortcut_ime_long">打开系统输入法选择器</string>
     <string name="shortcut_unsupported">当前系统不支持桌面快捷方式</string>

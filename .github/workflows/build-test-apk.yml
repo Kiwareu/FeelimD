@@ -1,6 +1,7 @@
 # 自动打测试包：main 有新提交（或手动触发）时跑本地三层验证
 # （css lint / mock 桥 / JVM 单测）并构建 direct 调试包
-# （com.feelime.ime.dev，与正式包共存），产物保留 7 天。
+# （3.74.12 起包名就是正式包名 com.feelime.ime，不再带 .dev 后缀；
+# 签名仍走固定 debug keystore），产物保留 7 天。
 #
 # 签名：默认走 Gradle 自动生成的 debug keystore（每次运行签名不同，
 # 装机前需先卸载旧测试包）。如需多次构建互相覆盖升级，请在仓库
