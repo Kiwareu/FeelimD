@@ -35,17 +35,22 @@
     /* 液态玻璃：键帽默认略透（文字仍实色）。用户「按键不透明度」
      * 仍写这个变量，100 = 完全实心。 */
     --key-alpha: 0.86;
-    /* 面板通透度仍由设置控制。底板另有一层更厚的霜，避免页面文字穿透。 */
+    /* 3.75 背景模糊（苹果原生键盘式）：底板不再是近不透明的厚霜——
+     * sheet 渐变只留 .62–.72 的半透明底色，配合 --glass-blur 22px，
+     * 后面的 App 内容透过来是柔和的朦胧影子（看得出颜色和形状、看不
+     * 清文字）；完全透明不行、糊成纯色也不行。省电模式 blur 归零时
+     * 下方 body.power-saving 规则把底色补回实色 --bg，避免无模糊
+     * 透出清晰文字。 */
     --panel-alpha: 0.72;
-    --glass-blur: 28px;
+    --glass-blur: 22px;
     /* 3.74.11：饱和度设计系数上调——旧系数把滑杆顶格也压在
      * 22%（键）/62%（accent），再鲜艳的主题都显淡；磨砂
      * （--key-alpha 0.86 透底 + 28px 模糊）又冲掉一层。新系数
      * 让滑杆拉满 = 鲜艳准确（键 55%/accent 85%），默认樱花粉
      * （sat 52）也真正显粉；低饱和皮肤（墨/霜）仍映射得低，
      * 层次不变。设置页预览系数同步对齐（见 settings.css）。 */
-    --sheet-top: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) 22% / .90);
-    --sheet-bottom: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 12% / .94);
+    --sheet-top: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) 22% / .66);
+    --sheet-bottom: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 12% / .72);
     --bar-l: 18%;
     --glass-sheen: rgba(255, 255, 255, .55);
     --glass-edge: rgba(255, 255, 255, .28);
@@ -123,8 +128,8 @@ html.theme-light {
     --mod-active-bg: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(89% - 10% * var(--key-sat, 1) + (100% - 89%) * 0.75 * var(--key-lt, 0)));
     --glass-v2-edge: rgba(0, 0, 0, .14);
     --bar-l: 96%;
-    --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(97% - 8% * var(--bg-sat, 1)) / .90);
-    --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) calc(90% - 8% * var(--bg-sat, 1)) / .84);
+    --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(97% - 8% * var(--bg-sat, 1)) / .62);
+    --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) calc(90% - 8% * var(--bg-sat, 1)) / .68);
     --glass-sheen: rgba(255, 255, 255, .92);
     --glass-edge: rgba(255, 255, 255, .55);
     --glass-veil: hsl(var(--bg-hue) calc(52% * var(--bg-sat, 1)) calc(96% - 8% * var(--bg-sat, 1)) / .78);
@@ -179,8 +184,8 @@ html.theme-dark {
         --scrim: #ffffffb0;
         --mod-active-bg: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(89% - 10% * var(--key-sat, 1) + (100% - 89%) * 0.75 * var(--key-lt, 0)));
         --bar-l: 96%;
-        --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(97% - 8% * var(--bg-sat, 1)) / .90);
-        --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) calc(90% - 8% * var(--bg-sat, 1)) / .84);
+        --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(97% - 8% * var(--bg-sat, 1)) / .62);
+        --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) calc(90% - 8% * var(--bg-sat, 1)) / .68);
         --glass-sheen: rgba(255, 255, 255, .92);
         --glass-edge: rgba(255, 255, 255, .55);
         --glass-veil: hsl(var(--bg-hue) calc(52% * var(--bg-sat, 1)) calc(96% - 8% * var(--bg-sat, 1)) / .78);
@@ -717,8 +722,8 @@ body[data-bg-image="on"] #softKeyboard { background: transparent; }
         linear-gradient(180deg, var(--glass-sheen), transparent 24%),
         radial-gradient(70% 42% at 50% -8%, rgba(255, 255, 255, .42), transparent 68%),
         linear-gradient(180deg, var(--sheet-top), var(--sheet-bottom));
-    -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.45);
-    backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.45);
+    -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(1.45);
+    backdrop-filter: blur(var(--glass-blur, 22px)) saturate(1.45);
 }
 body[data-bg-image="on"] #softKeyboard {
     background: transparent;
@@ -731,8 +736,19 @@ body[data-bg-image="on"] #glassField {
     backdrop-filter: none;
 }
 body[data-bg-image="on"] #bgImage {
-    filter: blur(calc(var(--glass-blur, 28px) + 10px));
+    filter: blur(calc(var(--glass-blur, 22px) + 10px));
     transform: scale(1.14);
+}
+/* 3.75 省电模式：blur 被 applyGlass 强制归 0，半透明底板会直接透出
+ * 下方 App 的清晰文字——底色补回实色 --bg（上沿高光保留），同时显
+ * 式关掉 backdrop-filter。背景图模式不进这条（veil + 自身模糊已够）。 */
+body.power-saving:not([data-bg-image="on"]) #glassField {
+    background:
+        linear-gradient(180deg, var(--glass-sheen), transparent 24%),
+        radial-gradient(70% 42% at 50% -8%, rgba(255, 255, 255, .42), transparent 68%),
+        var(--bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 /* 拼音加粗（issue #8）：设置开关，默认关。 */
 body[data-preedit-bold="1"] #preeditLine { font-weight: 600; }

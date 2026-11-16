@@ -123,6 +123,7 @@ body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; 
   <label>底部留白 <select id="previewBottomPad"><option value="0">0 dp</option><option value="12">12 dp</option><option value="24">24 dp</option><option value="36">36 dp</option><option value="48">48 dp</option></select></label>
   <label>界面 <select id="previewUiVersion"><option value="glass">液态玻璃</option><option value="classic">经典</option></select></label>
   <label>字母数字 <input type="checkbox" id="previewDigits" checked></label>
+  <label>App 底衬 <input type="checkbox" id="previewBehind" checked></label>
   <a href="settings-preview.html">完整设置预览</a>
   <button id="actLog">桥日志</button>
   <button id="actCheck">验收清单</button>
@@ -691,6 +692,11 @@ html, body { background: #c7c9cf; }
 .host-caret { display: inline-block; width: 2px; height: 1.1em;
     background: #333; vertical-align: text-bottom; margin: 0 1px; }
 #softKeyboard { position: absolute; left: 0; right: 0; bottom: 0; }
+/* 3.75 背景模糊验收：假 App 底衬（仅预览注入，不进真机代码）。fixed 铺满
+   整个 iframe 视口、z-index -2 落在 #glassField（-1）之下——键盘底板
+   的 backdrop-filter 在同一文档内采样它；真机上采样的是 WebView 背后
+   的真实 App（原生 WebView 背景透明，FeelimeService 两处 TRANSPARENT）。 */
+#previewAppBackdrop { position: fixed; inset: 0; z-index: -2; pointer-events: none; overflow: hidden; }
 </style></head>`);
     if (patched === html) throw new Error('index.html 结构变化：内联替换未命中');
     frame.srcdoc = patched;
@@ -703,6 +709,15 @@ html, body { background: #c7c9cf; }
             host.innerHTML = '<span style="color:#98a">（模拟宿主 app 的输入框，输入内容会落在这里）</span>';
             doc.body.insertBefore(host, doc.body.firstChild);
         }
+        // 假 App 底衬（3.75 背景模糊验收）：彩色聊天界面，键盘底板的
+        // backdrop-filter 把它磨成朦胧影子；关掉开关可对比无底衬状态。
+        if (doc && doc.body && !doc.getElementById('previewAppBackdrop')) {
+            const bd = doc.createElement('div');
+            bd.id = 'previewAppBackdrop';
+            bd.innerHTML = '<div style="height:100%;background:linear-gradient(180deg,#dbeafe 0%,#fef3c7 45%,#fce7f3 100%)"><div style="height:52px;background:linear-gradient(90deg,#6366f1,#8b5cf6 55%,#ec4899);display:flex;align-items:center;padding:0 14px;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:#fff;opacity:.9"></div><div style="flex:1;height:12px;border-radius:6px;background:rgba(255,255,255,.75)"></div><div style="width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.5)"></div></div><div style="margin:14px 12px 0;height:120px;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899 45%,#8b5cf6);position:relative"><div style="position:absolute;top:14px;left:16px;width:34px;height:34px;border-radius:50%;background:#fff7cc"></div><div style="position:absolute;bottom:14px;left:16px;right:16px;height:10px;border-radius:5px;background:rgba(255,255,255,.8)"></div></div><div style="margin:16px 12px 0;display:flex;gap:8px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:#14b8a6;flex:none"></div><div style="max-width:70%;background:#fff;border-radius:4px 14px 14px 14px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.12)"><div style="height:10px;width:150px;border-radius:5px;background:#e2e8f0"></div><div style="height:10px;width:110px;border-radius:5px;background:#e2e8f0;margin-top:6px"></div></div></div><div style="margin:12px 12px 0;display:flex;gap:8px;justify-content:flex-end"><div style="max-width:70%;background:#95ec69;border-radius:14px 4px 14px 14px;padding:10px 12px"><div style="height:10px;width:130px;border-radius:5px;background:rgba(255,255,255,.85)"></div><div style="height:10px;width:90px;border-radius:5px;background:rgba(255,255,255,.85);margin-top:6px"></div></div><div style="width:30px;height:30px;border-radius:50%;background:#f59e0b;flex:none"></div></div><div style="margin:12px 12px 0;display:flex;gap:8px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:#ec4899;flex:none"></div><div style="max-width:70%;background:#dbeafe;border-radius:4px 14px 14px 14px;padding:10px 12px"><div style="height:10px;width:170px;border-radius:5px;background:#fff"></div></div></div></div>';
+            doc.body.insertBefore(bd, doc.body.firstChild);
+        }
+        applyBehind();
         applyDefaultKbHeight();
         // 视图高度刚被 JS 改写（native 侧是首次 layout 就绪），行高必须
         // 按最终高度重算一遍。
@@ -754,6 +769,13 @@ function setMode(name) {
     // floatBand/heightCeil 都随之换值）；预览页同步这个语义。
     setTimeout(pushHello, 60);
 }
+// App 底衬开关：显隐 iframe 内的假 App 底衬（默认开）。
+function applyBehind() {
+    const doc = frame.contentDocument;
+    const el = doc && doc.getElementById('previewAppBackdrop');
+    if (el) el.style.display = document.getElementById('previewBehind').checked ? '' : 'none';
+}
+document.getElementById('previewBehind').onchange = applyBehind;
 document.getElementById('previewLocale').onchange = pushHello;
 document.getElementById('previewTheme').onchange = pushHello;
     document.getElementById('previewPreset').onchange = pushHello;
@@ -952,11 +974,14 @@ build();
     const locale = params.get('locale');
     const uiv = params.get('uiv');
     const digits = params.get('digits');
+    const behind = params.get('behind');
     if (theme) document.getElementById('previewTheme').value = theme;
     if (locale) document.getElementById('previewLocale').value = locale;
     if (uiv) document.getElementById('previewUiVersion').value = uiv;
     if (digits === '0') document.getElementById('previewDigits').checked = false;
     if (digits === '1') document.getElementById('previewDigits').checked = true;
+    if (behind === '0') document.getElementById('previewBehind').checked = false;
+    if (behind === '1') document.getElementById('previewBehind').checked = true;
     if (params.get('mode') === 'landscape') setMode('landscape');
     const touch = (win, el, type, x, y) => el.dispatchEvent(new win.TouchEvent(type, {
         bubbles: true, cancelable: true,
