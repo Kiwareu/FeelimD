@@ -1,0 +1,1803 @@
+<!doctype html>
+<!-- Feelime full settings. The page is deliberately a thin, semantic shell:
+     all user-facing copy is keyed and translated by settings.js so the same
+     WebView can follow the device language without shipping another APK. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Feelime 设置</title>
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+
+<!-- Home: status, independent UI-language choice, and topic entries. -->
+<div class="page" data-page="home">
+  <header class="hero">
+    <div class="hero-mark">
+      <span class="hero-logo" id="heroLogo" aria-hidden="true">F.</span>
+      <div class="hero-titles">
+        <h1>Feelime</h1>
+        <p class="hero-tag" data-i18n="hero.tag">离线中英混合语音输入法</p>
+      </div>
+    </div>
+    <!-- IME 状态行已删（用户实录：不该占在搜索框上方）。正常态零噪音；
+         异常态（未启用/未默认）由下方「输入法状态」卡的 LED+按钮承接。 -->
+  </header>
+
+  <!-- 设置搜索（验收 2026-09-24）：模糊匹配快速定位配置项；索引取每卡
+       的标题+行文本+小注+data-keywords 意图词，点击直达对应页并锚定。 -->
+  <div class="search-box" id="settingsSearchBox">
+    <div class="search-field">
+      <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
+           stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
+      </svg>
+      <input id="settingsSearch" type="search" autocomplete="off"
+             data-i18n-placeholder="search.placeholder" placeholder="搜索设置：高度、气泡、双拼、词库…">
+    </div>
+    <div id="searchResults" class="search-results" hidden></div>
+  </div>
+
+  <main>
+    <section class="card" id="sec-ime" aria-labelledby="imeTitle">
+      <div class="section-heading">
+        <h2 id="imeTitle" data-i18n="ime.title">输入法状态</h2>
+        <span class="eyebrow" data-i18n="status.title">状态</span>
+      </div>
+      <div class="rows">
+        <div class="row" id="imeEnabledRow">
+          <span class="led" data-led aria-hidden="true"></span>
+          <span class="row-label" data-i18n="ime.enabled">在系统中启用 Feelime</span>
+          <button class="btn" id="btnEnableIme" type="button" data-i18n="ime.enableAction">去启用</button>
+        </div>
+        <div class="row" id="imeDefaultRow">
+          <span class="led" data-led aria-hidden="true"></span>
+          <span class="row-label" data-i18n="ime.default">设为默认输入法</span>
+          <button class="btn" id="btnPickIme" type="button" data-i18n="ime.pickAction">去切换</button>
+        </div>
+      </div>
+      <div class="actions ime-actions">
+        <button class="btn local" id="btnAddShortcut" type="button" data-i18n="ime.addShortcut">添加桌面快捷方式</button>
+        <button class="btn local" id="btnAddTile" type="button" data-i18n="ime.addTile">添加快捷设置磁贴</button>
+      </div>
+    </section>
+
+    <section class="card" id="sec-language" aria-labelledby="languageTitle">
+      <div class="section-heading">
+        <h2 id="languageTitle" data-i18n="language.title">界面语言</h2>
+        <span class="eyebrow" data-i18n="language.badge">界面</span>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="language.label">显示语言</span>
+          <small data-i18n="language.hint">默认跟随系统；只影响 Feelime 界面，不改变输入语言。</small>
+        </span>
+        <select id="uiLanguage" class="select" aria-describedby="languageHint" data-i18n-aria="language.label" aria-label="显示语言">
+          <option value="auto" data-i18n="language.auto">跟随系统</option>
+          <option value="zh" data-i18n="language.zh">中文</option>
+          <option value="en" data-i18n="language.en">English</option>
+        </select>
+      </div>
+      <p id="languageHint" class="hint" data-i18n="language.note">输入语言仍由键盘模式决定。</p>
+    </section>
+
+    <nav class="card entries" id="entries" aria-label="设置分组" data-i18n-aria="nav.groups">
+      <p class="entry-group" data-i18n="nav.group.daily">日常</p>
+      <button class="entry" type="button" data-target="appearance" data-keywords="外观 皮肤 壁纸 玻璃 配色 主题">
+        <span class="entry-label"><span data-i18n="entry.appearance.title">外观与皮肤</span><small data-i18n="entry.appearance.subtitle">液态玻璃 · 配色 · 壁纸</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="keyboards" data-keywords="全拼 双拼 九键 九宫格 笔画 布局 键盘">
+        <span class="entry-label"><span data-i18n="entry.layout.title">键盘布局</span><small data-i18n="entry.layout.subtitle">全拼 · 双拼 · 九键 · 笔画</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="fuzzy" data-keywords="模糊音 平翘舌 前后鼻音 n l">
+        <span class="entry-label"><span data-i18n="entry.fuzzy.title">模糊音</span><small data-i18n="entry.fuzzy.subtitle">平翘舌 · 前后鼻音 · n/l</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="input" data-anchor="sec-assoc" data-keywords="联想 候选 英文 混输 造词">
+        <span class="entry-label"><span data-i18n="entry.candidates.title">候选与联想</span><small data-i18n="entry.candidates.subtitle">联想 · 中英混输 · 英文词位置</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="dict" data-keywords="词库 导入 自造词">
+        <span class="entry-label"><span data-i18n="entry.dict.title">词库</span><small data-i18n="entry.dict.subtitle">导入词库 · 自造词 · 常用语</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="voice" data-keywords="语音 普通话 离线 标点">
+        <span class="entry-label"><span data-i18n="entry.voice.title">语音输入</span><small data-i18n="entry.voice.subtitle">离线识别 · 普通话说明 · 标点</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="dict" data-anchor="sec-clipboard" data-keywords="剪贴板 常用语 符号词">
+        <span class="entry-label"><span data-i18n="entry.clip.title">剪贴板与常用语</span><small data-i18n="entry.clip.subtitle">只存在本机 · 常用语与符号词</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="input" data-anchor="keySound" data-keywords="按键音 振动 音效 气泡">
+        <span class="entry-label"><span data-i18n="entry.feedback.title">按键音效与振动</span><small data-i18n="entry.feedback.subtitle">声音 · 振动 · 气泡</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="about" data-anchor="sec-privacy" data-keywords="隐私 离线 上传">
+        <span class="entry-label"><span data-i18n="entry.privacy.title">隐私与离线</span><small data-i18n="entry.privacy.subtitle">按键、语音、壁纸都不上传</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <p class="entry-group" data-i18n="nav.group.more">更多</p>
+      <button class="entry" type="button" data-target="input">
+        <span class="entry-label"><span data-i18n="entry.input.title">键盘与输入</span><small data-i18n="entry.input.subtitle">手感 · 双拼方案 · 定制按键</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="update">
+        <span class="entry-label"><span data-i18n="entry.update.title">键盘热更新</span><small data-i18n="entry.update.subtitle">键盘前端文件更新</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="backup">
+        <span class="entry-label"><span data-i18n="entry.backup.title">备份与恢复</span><small data-i18n="entry.backup.subtitle">设置 · 常用语 · 词库</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="test">
+        <span class="entry-label"><span data-i18n="entry.test.title">输入测试</span><small data-i18n="entry.test.subtitle">唤起键盘试一试</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="about">
+        <span class="entry-label"><span data-i18n="entry.about.title">关于</span><small data-i18n="entry.about.subtitle">版本信息 · 组件说明</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+    </nav>
+  </main>
+</div>
+
+<!-- Keyboard and input. -->
+<div class="page" data-page="appearance" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.appearance">外观</h2>
+  </header>
+  <main>
+  <section class="card" aria-labelledby="appearanceTitle">
+    <div class="section-heading"><h2 id="appearanceTitle" data-i18n="input.appearance.title">外观</h2><span class="eyebrow" data-i18n="input.appearance.badge">主题</span></div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.themeMode">色彩模式</span>
+        <small data-i18n="input.feel.themeModeHint">跟随系统，或固定浅色/深色。</small>
+      </span>
+      <select id="themeMode" class="select" aria-label="色彩模式" data-i18n-aria="input.feel.themeMode">
+        <option value="auto" data-i18n="themeMode.auto">跟随系统</option>
+        <option value="light" data-i18n="themeMode.light">浅色</option>
+        <option value="dark" data-i18n="themeMode.dark">深色</option>
+      </select>
+    </div>
+    <!-- #70 用户键盘字体：单槽位导入（TTF/OTF）；二进制不进备份，
+         换机后需重新导入——hint 与状态行都要交代这点。 -->
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.userFont">键盘字体</span>
+        <small data-i18n="input.feel.userFontHint">用导入的字体渲染键盘文字（TTF/OTF）；不随数据备份，换机后需重新导入。</small>
+      </span>
+      <span class="slider-with-action">
+        <button type="button" id="btnImportFont" class="ghost-btn" data-keywords="字体 导入 ttf otf font 键盘字体" data-i18n="input.feel.userFontImport">导入字体…</button>
+        <button type="button" id="btnClearFont" class="ghost-btn" hidden data-i18n="input.feel.userFontClear">恢复系统字体</button>
+      </span>
+    </div>
+    <p class="save-note" id="userFontNote" role="status" aria-live="polite"></p>
+    <!-- #80 大字体导入确认：20MB 是软上限，资源消耗提示后用户可选择继续。
+         必须放在字体行所在的 appearance 页内——祖先 .page[hidden] 会把
+         跨页弹窗整个藏掉（codex review P1：首版放 update 页用户看不到）。 -->
+    <div class="consent" id="fontConsent" hidden role="dialog" aria-labelledby="fontConsentTitle" aria-describedby="fontConsentMessage">
+      <div class="section-heading">
+        <h3 id="fontConsentTitle" data-i18n="fontLarge.title">字体文件较大</h3>
+        <span class="eyebrow" data-i18n="fontLarge.badge">提示</span>
+      </div>
+      <p class="hint block" id="fontConsentMessage">这个字体文件超过 20MB。大字体会增加内存占用和加载时间，配置较低的设备可能出现卡顿。仍要导入吗？</p>
+      <div class="actions">
+        <button class="btn" id="fontConsentCancel" type="button" data-i18n="fontLarge.cancel">取消</button>
+        <button class="btn primary" id="fontConsentConfirm" type="button" data-i18n="fontLarge.confirm">仍要导入</button>
+      </div>
+    </div>
+    <!-- 皮肤（用户验收五轮）：标准 entry 行进三级页（背景/键面独立色调+饱和度）。 -->
+    <button class="entry" type="button" data-target="skin" data-keywords="皮肤 主题 配色 色调 饱和度 skin theme">
+      <span class="entry-label"><span data-i18n="entry.skin.title">皮肤</span>
+      <small data-i18n="entry.skin.subtitle">色调 · 饱和度 · 背景图</small></span>
+      <span class="entry-chevron" aria-hidden="true">›</span>
+    </button>
+    <!-- #39 横屏三项（挖孔安全区/高度上限/透明度）归外观（用户拍板：
+         显示形态类设置，不与模糊音等输入设置混排）。 -->
+    <button class="entry" type="button" data-target="landscape" data-keywords="横屏 landscape 挖孔 安全区 高度 上限 透明度 铺满">
+      <span class="entry-label"><span data-i18n="entry.landscape.title">横屏显示</span>
+      <small data-i18n="entry.landscape.subtitle">挖孔安全区 · 高度上限 · 透明度</small></span>
+      <span class="entry-chevron" aria-hidden="true">›</span>
+    </button>
+    <label class="row switch-row" for="keyBubble">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyBubble">按键气泡</span>
+        <small data-i18n="input.feel.keyBubbleHint">按下按键时在键帽正上方放大显示所按的字符，松手后停留一会儿再消失（默认开启）。</small>
+      </span>
+      <input type="checkbox" id="keyBubble" data-keywords="按键放大 预览 气泡 按错了 key preview bubble" class="toggle">
+    </label>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bubbleLinger">气泡停留时长</span>
+        <small data-i18n="input.feel.bubbleLingerHint">松手后气泡多停留一会儿再消失，看得清按了什么；0 为立即消失。</small>
+      </span>
+      <select id="bubbleLinger" class="select" data-keywords="停留 时间 延迟 立刻消失 看不清 linger" aria-label="气泡停留时长" data-i18n-aria="input.feel.bubbleLinger">
+        <option value="0">0 ms</option>
+        <option value="250">250 ms</option>
+        <option value="400">400 ms</option>
+        <option value="600">600 ms</option>
+      </select>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.toastMs">提示停留时长</span>
+        <small data-i18n="input.feel.toastMsHint">键盘上的提示条（如「已撤销本次听写」）显示多久，300-10000 毫秒，默认 1600。</small>
+      </span>
+      <span class="range-group">
+        <output id="toastMsOut" for="toastMs" class="range-out">1600 ms</output>
+        <input type="range" id="toastMs" class="slider" min="300" max="10000" step="100" value="1600" aria-label="提示停留时长" data-i18n-aria="input.feel.toastMs" data-keywords="toast 提示 停留 时长 撤销 时间 毫秒">
+      </span>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.kbHeight">键盘高度</span>
+        <small data-i18n="input.feel.kbHeightHint">竖屏键盘的高度；键盘上拖拽调节与此处等效。</small>
+      </span>
+      <span class="slider-with-action">
+        <output id="kbHeightOut" for="kbHeight" class="range-out">272 px</output>
+        <input type="range" id="kbHeight" data-keywords="太高 太低 调大 调小 变小 一半 高度调整 taller shorter height" class="slider" aria-label="键盘高度" data-i18n-aria="input.feel.kbHeight">
+        <button type="button" id="kbHeightReset" class="ghost-btn" data-i18n="input.feel.kbHeightReset">恢复默认</button>
+      </span>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.padPortrait">底部留白 · 竖屏</span>
+        <small data-i18n="input.feel.padHint">键盘下方的空白高度，0 保持贴底（终端场景），补偿全面屏手势条或系统元素。</small>
+      </span>
+      <select id="bottomPadPortrait" data-keywords="留白 底部空隙 手势条 全面屏 bottom padding" class="select" aria-label="底部留白 · 竖屏" data-i18n-aria="input.feel.padPortrait">
+        <option value="0">0 dp</option>
+        <option value="12">12 dp</option>
+        <option value="24">24 dp</option>
+        <option value="36">36 dp</option>
+        <option value="48">48 dp</option>
+      </select>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.padLandscape">底部留白 · 横屏</span>
+        <small data-i18n="input.feel.padLandscapeHint">横屏单独保存，互不影响。</small>
+      </span>
+      <select id="bottomPadLandscape" class="select" aria-label="底部留白 · 横屏" data-i18n-aria="input.feel.padLandscape">
+        <option value="0">0 dp</option>
+        <option value="12">12 dp</option>
+        <option value="24">24 dp</option>
+        <option value="36">36 dp</option>
+        <option value="48">48 dp</option>
+      </select>
+    </div>
+    <div class="row block" id="kbPreviewRow">
+      <span class="row-label">
+        <span data-i18n="input.appearance.preview">预览</span>
+        <small data-i18n="input.appearance.previewHint">进入本页时，真实键盘会在屏幕底部弹出（本页自动让位），上面的设置实时生效，直接在这里打字试。</small>
+      </span>
+      <input type="text" id="previewEditor" class="text-input" data-i18n-placeholder="input.appearance.previewPlaceholder" placeholder="直接在这里打字试试" autocomplete="off">
+    </div>
+  </section>
+  </main>
+</div>
+
+<div class="page" data-page="skin" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="appearance" data-i18n-aria="nav.backAppearance" aria-label="返回外观">‹</button>
+    <h2 class="page-title" data-i18n="page.skin">皮肤</h2>
+  </header>
+  <main>
+  <section class="card" aria-labelledby="kbGroupHead">
+    <div class="section-heading"><h2 id="kbGroupHead" data-i18n="input.feel.kbGroup">键盘</h2></div>
+    <!-- #31 键盘色调：预置色板（accent 三件套风格包），点击切换即时生效。 -->
+    <div class="row language-row stack" id="themePresetRow" data-keywords="色调 颜色 调色板 预置 风格 accent preset color 色相 滑条">
+      <span class="row-label">
+        <span data-i18n="input.feel.themePreset">键盘色调</span>
+        <small data-i18n="input.feel.themePresetHint">一个色相驱动整套键盘配色（键帽/面板/强调色）；拖滑条自定义，或点预置快捷档。</small>
+      </span>
+      <span class="preset-wrap">
+        <input type="range" id="themeHue" min="0" max="360" step="1" value="160"
+               aria-label="自定义色相" />
+        <span class="preset-swatches" id="themePresetSwatches" role="radiogroup" aria-label="键盘色调"></span>
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="饱和度 黑白 灰 灰度 无彩色 monochrome grayscale saturation">
+      <span class="row-label">
+        <span data-i18n="input.feel.themeSat">键盘饱和度</span>
+        <small data-i18n="input.feel.themeSatHint">拉到最左是黑白灰（明暗模式定黑白基底），往右色彩渐浓。</small>
+      </span>
+      <span class="preset-wrap">
+        <input type="range" id="themeSat" min="0" max="100" step="1" value="100"
+               aria-label="键盘饱和度" />
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="色号 hex 颜色代码 亮色 color code rgb">
+      <span class="row-label">
+        <span data-i18n="input.feel.themeHex">键盘色号</span>
+        <small data-i18n="input.feel.themeHexHint">整套配色的基础色（暗色模式基准）；输入 #RRGGBB，可选比滑条更亮的颜色。</small>
+      </span>
+      <span class="hex-wrap">
+        <span class="hex-swatch" id="themeHexSwatch" aria-hidden="true"></span>
+        <input type="text" id="themeHex" class="hex-input" spellcheck="false" autocomplete="off"
+               data-i18n-placeholder="input.feel.hexPlaceholder" placeholder="#RRGGBB" />
+      </span>
+    </div>
+  <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bgImageLight">亮色背景</span>
+        <small data-i18n="input.feel.bgImageHint">自定义壁纸铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽后只存在本机，不会上传。</small>
+      </span>
+      <select id="bgImageLight" class="select" aria-label="亮色背景" data-i18n-aria="input.feel.bgImageLight">
+        <option value="none" data-i18n="无">无</option>
+        <option value="builtin" data-i18n="内置">内置</option>
+        <option value="pick" data-i18n="选择图片">选择图片…</option>
+      </select>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bgImageDark">暗色背景</span>
+        <small data-i18n="input.feel.bgImageHintDark">亮暗切换时各自使用对应组的图片。</small>
+      </span>
+      <select id="bgImageDark" class="select" aria-label="暗色背景" data-i18n-aria="input.feel.bgImageDark">
+        <option value="none" data-i18n="无">无</option>
+        <option value="builtin" data-i18n="内置">内置</option>
+        <option value="pick" data-i18n="选择图片">选择图片…</option>
+      </select>
+    </div>
+    <p id="bgImageNote" class="hint block" role="status" hidden></p>
+</section>
+  <section class="card" aria-labelledby="keyGroupHead">
+    <div class="section-heading"><h2 id="keyGroupHead" data-i18n="input.feel.keyGroup">键面</h2></div>
+    <!-- 跟随键盘（组级开关，2026-10-13 验收裁定）：开=色调与饱和度都
+         继承键盘组（色号/亮度仍独立可调）；关=两者独立。 -->
+    <div class="row switch-row" id="keyFollowRow" data-keywords="跟随 键盘 继承 联动 follow inherit">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyFollow">跟随键盘</span>
+        <small data-i18n="input.feel.keyFollowHint">开启时键面的色调/饱和度跟随上面的键盘组；关闭后各自独立。</small>
+      </span>
+      <input type="checkbox" id="keyFollow" class="toggle">
+    </div>
+    <div class="row language-row stack" data-keywords="键面 色调 key hue">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyHue">键面色调</span>
+        <small data-i18n="input.feel.keyHueHint">只调键帽/强调色的色相（背景不动）。</small>
+      </span>
+      <span class="preset-wrap">
+        <input type="range" id="keyHue" min="0" max="360" step="1" value="160" aria-label="键面色调" />
+        <span class="preset-swatches" id="keyHueSwatches" role="radiogroup" aria-label="键面色调"></span>
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="键面 饱和度 key saturation">
+      <span class="row-label">
+        <span data-i18n="input.feel.keySat">键面饱和度</span>
+        <small data-i18n="input.feel.keySatHint">只调键帽组的色彩浓度；最左=键帽变黑白灰。</small>
+      </span>
+      <span class="preset-wrap">
+        <output id="keySatOut" for="keySat" class="range-out">100%</output>
+        <input type="range" id="keySat" min="0" max="100" step="1" value="100" aria-label="键面饱和度" />
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="键面 色号 hex 颜色代码 亮色 key color code rgb">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyHex">键面色号</span>
+        <small data-i18n="input.feel.keyHexHint">键帽/强调色的基础色（暗色模式基准）；跟随键盘时显示背景组的合成色。</small>
+      </span>
+      <span class="hex-wrap">
+        <span class="hex-swatch" id="keyHexSwatch" aria-hidden="true"></span>
+        <input type="text" id="keyHex" class="hex-input" spellcheck="false" autocomplete="off"
+               data-i18n-placeholder="input.feel.hexPlaceholder" placeholder="#RRGGBB" />
+      </span>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyOpacity">按键不透明度</span>
+        <small data-i18n="input.feel.keyOpacityHint">键帽在背景图上的透明程度，文字始终实色。</small>
+      </span>
+      <span class="range-group">
+        <output id="keyOpacityOut" for="keyOpacity" class="range-out">100%</output>
+        <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
+      </span>
+    </div>
+        <div class="row stack" data-keywords="预览 效果 preview">
+      <span class="row-label">
+        <span data-i18n="input.feel.themePreview">效果预览</span>
+        <small data-i18n="input.feel.themePreviewHint">色调、饱和度、按键不透明度与背景图在这里实时反映；亮暗各一组。</small>
+      </span>
+      <span class="theme-preview-duo" id="themePreview" aria-hidden="true">
+        <span class="tp-group"><span class="tp-tag" data-i18n="preview.light">亮色</span>
+          <span class="tp-board tp-board-light">
+            <span class="tp-row"><span class="tp-key">A</span><span class="tp-key">B</span><span class="tp-key">C</span><span class="tp-key tp-accent-key">彩</span></span>
+            <span class="tp-row"><span class="tp-key tp-special-key">⇧</span><span class="tp-key">D</span><span class="tp-key">E</span><span class="tp-key tp-accent-key">彩</span></span>
+          </span>
+        </span>
+        <span class="tp-group"><span class="tp-tag" data-i18n="preview.dark">暗色</span>
+          <span class="tp-board tp-board-dark">
+            <span class="tp-row"><span class="tp-key">A</span><span class="tp-key">B</span><span class="tp-key">C</span><span class="tp-key tp-accent-key">彩</span></span>
+            <span class="tp-row"><span class="tp-key tp-special-key">⇧</span><span class="tp-key">D</span><span class="tp-key">E</span><span class="tp-key tp-accent-key">彩</span></span>
+          </span>
+        </span>
+      </span>
+    </div>
+  </section>
+  <section class="card" aria-labelledby="glassHead">
+    <div class="section-heading"><h2 id="glassHead" data-i18n="input.feel.glassTitle">液态玻璃</h2><span class="eyebrow" data-i18n="input.feel.glassBadge">皮肤</span></div>
+    <p class="hint block" data-i18n="input.feel.systemBarNote">地球仪和收起键盘那一行由手机系统设置显示或隐藏，Feelime 不另画一条，也没有开关去关它。系统画出这一条时，键盘会按系统报来的底部空白把按键抬上去，避免挡住系统按钮。</p>
+    <div class="row stack" id="glassSkinRow" data-keywords="皮肤 液态玻璃 主题 磨砂 圆角 透明度">
+      <span class="row-label">
+        <span data-i18n="input.feel.glassSkin">内置皮肤</span>
+        <small data-i18n="input.feel.glassSkinHint">一套皮肤会同时设定色调、透明度、磨砂和圆角。之后仍可以单独微调，微调后不再算某一套皮肤。</small>
+      </span>
+      <div class="skin-grid" id="glassSkinGrid" role="radiogroup" aria-label="内置皮肤"></div>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.glassBlur">磨砂强度</span>
+        <small data-i18n="input.feel.glassBlurHint">背景和壁纸的高斯模糊。0 是清晰，数字越大越像雾面玻璃。</small>
+      </span>
+      <input type="range" id="glassBlur" class="slider" min="0" max="32" step="1" aria-label="磨砂强度" data-i18n-aria="input.feel.glassBlur">
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.glassRadius">圆角</span>
+        <small data-i18n="input.feel.glassRadiusHint">键帽和浮层的圆角。越大越圆。</small>
+      </span>
+      <input type="range" id="glassRadius" class="slider" min="8" max="28" step="1" aria-label="圆角" data-i18n-aria="input.feel.glassRadius">
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.panelOpacity">面板透明度</span>
+        <small data-i18n="input.feel.panelOpacityHint">候选条、菜单和语音卡片有多透。文字保持实色，方便看清。</small>
+      </span>
+      <input type="range" id="panelOpacity" class="slider" min="35" max="100" step="1" aria-label="面板透明度" data-i18n-aria="input.feel.panelOpacity">
+    </div>
+    <label class="row switch-row" for="preeditFrame">
+      <span class="row-label">
+        <span data-i18n="input.feel.preeditFrame">拼音外框</span>
+        <small data-i18n="input.feel.preeditFrameHint">给正在输入的拼音再套一个随字数收缩的框。默认关，拼音直接写在对应汉字上方。</small>
+      </span>
+      <input type="checkbox" id="preeditFrame" class="toggle">
+    </label>
+  </section>
+  </main>
+</div>
+<div class="page" data-page="input" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.input">键盘与输入</h2>
+  </header>
+  <main>
+    <!-- 全拼模糊音（2026-09-30 验收拆分）：input 页过长，开关整体
+         移入「模糊音」三级页，本页只留入口。 -->
+    <section class="card" id="sec-fuzzy-entry" aria-labelledby="fuzzyEntryTitle">
+      <div class="section-heading"><h2 id="fuzzyEntryTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
+      <div class="rows">
+        <button class="row nav-row" id="btnOpenFuzzy" type="button" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh 开关">
+          <span class="row-label"><span data-i18n="input.fuzzy.manage">管理模糊音</span><small data-i18n="input.fuzzy.manageHint">分不清的音一起打：平翘舌、n/l、前后鼻音等开关。</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- #H 硬件键盘（design hardware-keyboard.md）：物理键盘连接时的
+         键盘形态三档。 -->
+    <section class="card" id="sec-hwkb" aria-labelledby="hwkbTitle">
+      <div class="section-heading"><h2 id="hwkbTitle" data-keywords="物理 硬件 键盘 外接 蓝牙 候选条 硬键盘 hardware keyboard" data-i18n="input.hwkb.title">物理键盘</h2><span class="eyebrow" data-i18n="input.hwkb.badge">输入</span></div>
+      <div class="row">
+        <label class="row-label" for="hwkbForm"><span data-i18n="input.hwkb.form">连接物理键盘时</span><small data-i18n="input.hwkb.formHint">仅候选条：键盘收成一条候选（拼音/双拼等模式）；完整键盘：照常显示；跟随系统：由系统的「连接键盘时显示屏幕键盘」开关决定。</small></label>
+        <select id="hwkbForm" class="select" data-keywords="物理 硬件 外接 蓝牙 候选条 跟随系统" aria-label="物理键盘形态" data-i18n-aria="input.hwkb.form">
+          <option value="candidates" data-i18n="input.hwkb.candidates">仅候选条</option>
+          <option value="full" data-i18n="input.hwkb.full">完整键盘</option>
+          <option value="follow" data-i18n="input.hwkb.follow">跟随系统</option>
+        </select>
+      </div>
+      <p class="hint" data-i18n="input.hwkb.hint">硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。</p>
+    </section>
+
+    <section class="card" id="sec-assoc" aria-labelledby="assocTitle">
+      <div class="section-heading"><h2 id="assocTitle" data-i18n="input.assoc.title">中文联想</h2><span class="eyebrow" data-i18n="input.assoc.badge">输入</span></div>
+      <label class="row switch-row" for="associationOn">
+        <span class="row-label"><span data-i18n="input.assoc.enable">选词后联想下一个词</span><small data-i18n="input.assoc.hint">上屏后在候选条给出高频接续词，点击可连续联想；只在全拼/双拼生效。</small></span>
+        <input type="checkbox" id="associationOn" data-keywords="联想 接续词 下一个词 association" class="toggle">
+      </label>
+      <!-- #46 联想让位态退格=清联想恢复工具栏（同右上角 ×）。 -->
+      <label class="row switch-row no-rule" for="backspaceAssocOn">
+        <span class="row-label"><span data-i18n="input.assoc.backspaceClear">联想时退格清除联想</span><small data-i18n="input.assoc.backspaceClearHint">联想候选显示时按退格先清联想、恢复工具栏（不删字）；关闭则退格照旧删字。</small></span>
+        <input type="checkbox" id="backspaceAssocOn" data-keywords="退格 删除 联想 backspace 关闭联想" class="toggle">
+      </label>
+    </section>
+
+    <section class="card" id="sec-datetime" aria-labelledby="datetimeTitle">
+      <div class="section-heading"><h2 id="datetimeTitle" data-i18n="input.datetime.title">日期时间候选</h2><span class="eyebrow" data-i18n="input.datetime.badge">输入</span></div>
+      <label class="row switch-row no-rule" for="dynamicDateTimeOn">
+        <span class="row-label"><span data-i18n="input.datetime.enable">打 date/time/week 出日期时间</span><small data-i18n="input.datetime.hint">候选条直接给当前日期、时间、星期（全拼打 riqi/shijian/xingqi 也出）；不需要可关。</small></span>
+        <input type="checkbox" id="dynamicDateTimeOn" data-keywords="日期 时间 星期 date time" class="toggle">
+      </label>
+    </section>
+
+    <section class="card" id="sec-phrases" aria-labelledby="phrasesTitle">
+      <!-- #54（2026-10-09 用户裁定·简化版）：符号词与自造词保持两个
+           独立功能，但入口统一归词库页——附加符号/emoji 候选的开关与
+           管理按钮已挪往词库页「候选符号词」卡片；输入页本卡只剩
+           英文词直出与万象 / 键引导，标题改「候选增强」。 -->
+      <div class="section-heading"><h2 id="phrasesTitle" data-i18n="input.candidates.title">候选增强</h2><span class="eyebrow" data-i18n="input.phrases.badge">输入</span></div>
+      <!-- #29-3 英文词直出：github/ios/android 等内置英文词在拼音/双拼
+           组合态直接出候选，免切英文模式。 -->
+      <label class="row switch-row no-rule" for="englishWordsOn">
+        <span class="row-label"><span data-i18n="input.english.enable">英文词直出</span><small data-i18n="input.english.hint">拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。</small></span>
+        <input type="checkbox" id="englishWordsOn" data-keywords="英文 english 英文词 直出 github" class="toggle">
+      </label>
+      <!-- #45 万象拼音功能引导：默认 '/' 直发；开启后进引擎可触发 /sj /ri。 -->
+      <label class="row switch-row no-rule" for="wxSlashOn">
+        <span class="row-label"><span data-i18n="input.phrases.wxSlash">万象 / 键功能引导</span><small data-i18n="input.phrases.wxSlashHint">换装万象拼音方案后，开启可在拼音/双拼下用 / 进入功能引导（如 /sj 出时间、/ri 出日期）；关闭则 / 直接上屏。其它键盘不受影响。</small></span>
+        <input type="checkbox" id="wxSlashOn" data-keywords="万象 万象拼音 引导 斜杠 slash 时间 日期" class="toggle">
+      </label>
+      <div class="row" data-keywords="英文 候选 位置 排名 english position">
+        <span class="row-label"><span data-i18n="input.english.posLabel">英文词候选位置</span><small data-i18n="input.english.posHint">自动：不打扰拼音的词排第 1 位、与拼音键序重叠的排第 3 位；也可固定。</small></span>
+        <select id="englishPos" class="select" aria-label="英文词候选位置">
+          <option value="-1" data-i18n="input.english.posAuto">自动</option>
+          <option value="1" data-i18n="input.english.pos1">第 1 位</option>
+          <option value="3" data-i18n="input.english.pos3">第 3 位</option>
+          <option value="5" data-i18n="input.english.pos5">第 5 位</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="card" id="sec-dp" aria-labelledby="dpTitle">
+      <div class="section-heading"><h2 id="dpTitle" data-i18n="input.double.title">双拼方案</h2><span class="eyebrow" data-i18n="input.double.badge">输入</span></div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.double.scheme">方案</span>
+          <small data-i18n="input.double.hint">键盘切到「双拼」模式后按所选方案出字。</small>
+        </span>
+        <select id="dpScheme" class="select" aria-label="双拼方案" data-i18n-aria="input.double.scheme">
+          <option value="ziranma" data-i18n="input.double.ziranma">自然码</option>
+          <option value="flypy" data-i18n="input.double.flypy">小鹤双拼</option>
+          <option value="sogou" data-i18n="input.double.sogou">搜狗 / 微软双拼</option>
+          <option value="ziguang" data-i18n="input.double.ziguang">紫光双拼</option>
+        </select>
+      </div>
+      <p id="dpNote" class="hint block"></p>
+      <div id="dpKeymap"></div>
+    </section>
+
+    <section class="card" id="sec-handwriting" aria-labelledby="handwritingTitle">
+      <div class="section-heading"><h2 id="handwritingTitle" data-keywords="手写 写字 识别 连笔 handwriting" data-i18n="input.ink.title">手写输入</h2><span class="eyebrow" data-i18n="input.ink.badge">手写</span></div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.ink.delay">停顿触发识别</span>
+          <small data-i18n="input.ink.delayHint">停笔后等这么久就识别上一个字；写得慢选「慢」，抢着识别选「快」。</small>
+        </span>
+        <select id="inkDelay" class="select" aria-label="识别时机" data-i18n-aria="input.ink.delay">
+          <option value="3" data-i18n="input.ink.live">实时（逐笔识别）</option>
+          <option value="0" data-i18n="input.ink.fast">快（约 300 毫秒）</option>
+          <option value="1" data-i18n="input.ink.standard">标准（约 600 毫秒）</option>
+          <option value="2" data-i18n="input.ink.slow">慢（约 1200 毫秒）</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="card" id="sec-feel" aria-labelledby="feelTitle">
+      <div class="section-heading"><h2 id="feelTitle" data-i18n="input.feel.title">键盘手感</h2><span class="eyebrow" data-i18n="input.feel.badge">微调</span></div>
+      <!-- 字母键盘布局（#36 全局化）：拼音/双拼/英文共用的形态参数，
+           从双拼卡上移（不再只对双拼生效）。
+           2026-09-30 整行隐藏（用户裁定）：现行 14 键贴合与讯飞原版
+           14 键方案不符，入口先收——已选 14 的用户不受影响（pref 保留，
+           键盘侧实现不动），待重做为讯飞口径后再放出。 -->
+      <div class="row language-row" hidden>
+        <span class="row-label">
+          <span data-i18n="input.feel.kbLayout">字母键盘布局</span>
+          <small data-i18n="input.feel.kbLayoutHint">拼音、双拼、英文键盘通用；14 键把相邻两字母合并成宽键帽，按键更大更不易误触。</small>
+        </span>
+        <select id="kbLayout" class="select" aria-label="字母键盘布局" data-i18n-aria="input.feel.kbLayout">
+          <option value="26" data-i18n="input.double.layout26">26 键</option>
+          <option value="14" data-i18n="input.double.layout14">14 键</option>
+        </select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.hold">长按触发时长</span>
+          <small data-i18n="input.feel.holdHint">长按弹出选字、锁定大写、打开模式菜单的等待时间。</small>
+        </span>
+        <select id="holdMs" data-keywords="长按延迟 触发太慢 太快 hold delay" class="select" aria-label="长按触发时长" data-i18n-aria="input.feel.hold">
+          <option value="200">200 ms</option>
+          <option value="300">300 ms</option>
+          <option value="350">350 ms</option>
+          <option value="450">450 ms</option>
+          <option value="600">600 ms</option>
+        </select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.candFont">候选字号</span>
+          <small data-i18n="input.feel.candFontHint">候选词文字的大小（80-150%），不改变键盘行高。</small>
+        </span>
+        <span class="range-group">
+          <output id="candidateFontOut" for="candidateFont" class="range-out">100%</output>
+          <input type="range" id="candidateFont" class="slider" min="80" max="150" step="5" value="100" aria-label="候选字号" data-i18n-aria="input.feel.candFont" data-keywords="候选 大小 字号 百分比">
+        </span>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.keycapFont">键帽字号</span>
+          <small data-i18n="input.feel.keycapFontHint">键帽主文字的大小（50-150%），不改变键盘行高；过大时自动收在角标下方。</small>
+        </span>
+        <span class="range-group">
+          <output id="keycapFontOut" for="keycapFont" class="range-out">100%</output>
+          <input type="range" id="keycapFont" class="slider" min="50" max="150" step="5" value="100" aria-label="键帽字号" data-i18n-aria="input.feel.keycapFont" data-keywords="键帽 大小 字号 按键 按键文字 keycap">
+        </span>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.preeditFont">拼音字号</span>
+          <small data-i18n="input.feel.preeditFontHint">打字时拼音字母的大小；特大档会占一行更多高度。</small>
+        </span>
+        <select id="preeditFont" data-keywords="拼音大小 字号 字体大小 preedit size" class="select" aria-label="拼音字号" data-i18n-aria="input.feel.preeditFont">
+          <option value="0">100%</option>
+          <option value="1">120%</option>
+          <option value="2">135%</option>
+        </select>
+      </div>
+      <label class="row switch-row" for="preeditBold">
+        <span class="row-label"><span data-i18n="input.feel.preeditBold">拼音加粗</span><small data-i18n="input.feel.preeditBoldHint">打字时的拼音字母用粗体显示，默认关。</small></span>
+        <input type="checkbox" id="preeditBold" data-keywords="粗体 加粗 拼音字体 bold" class="toggle">
+      </label>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.oneHand">单手模式</span>
+          <small data-i18n="input.feel.oneHandHint">键盘贴左或贴右，空出的侧边条放光标与编辑操作。</small>
+        </span>
+        <select id="oneHand" class="select" aria-label="单手模式" data-i18n-aria="input.feel.oneHand">
+          <option value="0" data-i18n="关">关</option>
+          <option value="1" data-i18n="左手">左手</option>
+          <option value="2" data-i18n="右手">右手</option>
+        </select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.oneHandPad">单手压缩比例</span>
+          <small data-i18n="input.feel.oneHandPadHint">大屏上把键盘进一步收窄，方便拇指够到全部按键。</small>
+        </span>
+        <select id="oneHandPad" class="select" aria-label="单手压缩比例" data-i18n-aria="input.feel.oneHandPad">
+          <option value="0" data-i18n="pad.default">不压缩</option>
+          <option value="15" data-i18n="pad.15">收窄 15%</option>
+          <option value="25" data-i18n="pad.25">收窄 25%</option>
+          <option value="35" data-i18n="pad.35">收窄 35%</option>
+        </select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.sideContent">侧边条内容</span>
+          <small data-i18n="input.feel.sideContentHint">单手模式下空出区域的内容。</small>
+        </span>
+        <select id="sideContent" class="select" aria-label="侧边条内容" data-i18n-aria="input.feel.sideContent">
+          <option value="0" data-i18n="光标控制">光标控制</option>
+          <option value="1" data-i18n="空白">空白</option>
+        </select>
+      </div>
+
+      <label class="row switch-row" for="flickSwap">
+        <span class="row-label">
+          <span data-i18n="input.feel.flickSwap">上下滑方向互换</span>
+          <small data-i18n="input.feel.flickSwapHint">默认上滑出数字/符号、下滑出大写；开启后对调（键面小字提示随之下移）。</small>
+        </span>
+        <input type="checkbox" id="flickSwap" data-keywords="上滑 下滑 方向 反过来 对调 互换 swipe direction" class="toggle">
+      </label>
+      <label class="row switch-row" for="doubleShiftLock">
+        <span class="row-label">
+          <span data-i18n="input.feel.doubleShiftLock">双击 Shift 锁定大写</span>
+          <small data-i18n="input.feel.doubleShiftLockHint">300 毫秒内连点两下 Shift 锁定大写（与长按锁定等效）；关闭后退回点按切换。</small>
+        </span>
+        <input type="checkbox" id="doubleShiftLock" data-keywords="双击 连点 shift 大写 锁定 caps lock double tap" class="toggle">
+      </label>
+      <label class="row switch-row" for="cnEnComposingGuard">
+        <span class="row-label">
+          <span data-i18n="input.feel.cnEnComposingGuard">拼音组词中禁止切换语言</span>
+          <small data-i18n="input.feel.cnEnComposingGuardHint">防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。</small>
+        </span>
+        <input type="checkbox" id="cnEnComposingGuard" data-keywords="误触 中英 切换 组词 拼音 输入中 misclick language switch composing" class="toggle">
+      </label>
+      <label class="row switch-row" for="preeditScrub">
+        <span class="row-label">
+          <span data-i18n="input.feel.preeditScrub">空格横滑移动拼音光标</span>
+          <small data-i18n="input.feel.preeditScrubHint">输入拼音时左右滑动空格键，移动拼音串内的光标方便修改错字；没有输入时仍移动正文光标。默认开启，不需要可在本行关掉。目前支持全拼与双拼（#103）。</small>
+        </span>
+        <input type="checkbox" id="preeditScrub" data-keywords="拼音 光标 空格 滑动 修改 错字 preedit caret space swipe experimental" class="toggle">
+      </label>
+
+      <label class="row switch-row" for="bottomSymSplit">
+        <span class="row-label">
+          <span data-i18n="input.feel.bottomSymSplit">底行符号/数字分键</span>
+          <small data-i18n="input.feel.bottomSymSplitHint">开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。</small>
+        </span>
+        <input type="checkbox" id="bottomSymSplit" data-keywords="底行 符号 数字 123 九宫格 分键 拆分 numpad symbols split bottom" class="toggle">
+      </label>
+
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.scrub">光标移动速度</span>
+          <small data-i18n="input.feel.scrubHint">光标拖拽时每个刻度移动的距离。</small>
+        </span>
+        <select id="scrubSpeed" data-keywords="光标速度 移动快慢 cursor speed" class="select" aria-label="光标移动速度" data-i18n-aria="input.feel.scrub">
+          <option value="1">1x</option>
+          <option value="2">2x</option>
+          <option value="3">3x</option>
+          <option value="4">4x</option>
+          <option value="5">5x</option>
+        </select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.snap">滑动选字范围</span>
+          <small data-i18n="input.feel.snapHint">长按滑选时手指偏离多远取消选择：松=更远也有效，紧=更早取消。</small>
+        </span>
+        <select id="popupSnap" class="select" aria-label="滑动选字范围" data-i18n-aria="input.feel.snap">
+          <option value="0" data-i18n="input.feel.snapLoose">松</option>
+          <option value="1" data-i18n="input.feel.snapStandard">标准</option>
+          <option value="2" data-i18n="input.feel.snapTight">紧</option>
+        </select>
+      </div>
+      <label class="row switch-row" for="keySound">
+        <span class="row-label"><span data-i18n="input.feel.keySound">按键声音</span><small data-i18n="input.feel.keySoundHint">按键时轻响一声，跟随系统音量，静音时不响。</small></span>
+        <input type="checkbox" id="keySound" class="toggle">
+      </label>
+      <!-- #39-14 按键音量：三路音效（哔声/键击/自定义）共用。 -->
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.keySoundVolume">按键音量</span>
+          <small data-i18n="input.feel.keySoundVolumeHint">哔声、系统键击音与自定义音效共用。</small>
+        </span>
+        <span class="range-group">
+          <output id="keySoundVolumeOut" for="keySoundVolume" class="range-out">60%</output>
+          <input type="range" id="keySoundVolume" min="0" max="100" step="5" class="slider" aria-label="按键音量" data-i18n-aria="input.feel.keySoundVolume">
+        </span>
+      </div>
+      <!-- #30-2 音效风格：默认哔声 / 系统键击音 / 自定义文件（SAF 选音频，
+           拷进应用私有目录，SoundPool 预载播放）。 -->
+      <div class="row language-row" id="keySoundStyleRow" data-keywords="音效 自定义 按键音 key sound style">
+        <span class="row-label">
+          <span data-i18n="input.feel.keySoundStyle">按键音效</span>
+          <small><span data-i18n="input.feel.keySoundStyleHint">默认哔声之外的音效；</span><span id="keySoundName"></span></small>
+        </span>
+        <select id="keySoundStyle" class="select" aria-label="按键音效" data-i18n-aria="input.feel.keySoundStyle">
+          <option value="default" data-i18n="input.feel.kssDefault">默认哔声</option>
+          <option value="keypress" data-i18n="input.feel.kssKeypress">系统键击音</option>
+          <option value="custom" data-i18n="input.feel.kssCustom">自定义音效</option>
+        </select>
+      </div>
+      <div class="row" id="keySoundFileRow" hidden>
+        <span class="row-label"><span data-i18n="input.feel.keySoundFile">自定义音效文件</span><small data-i18n="input.feel.keySoundFileHint">选一段 2MB 内的短音频（ogg/mp3/wav）；不合适可清除换回默认。</small></span>
+        <span style="display:flex;gap:8px">
+          <button class="btn small" id="btnPickKeySound" type="button" data-i18n="input.feel.keySoundPick">选择文件</button>
+          <button class="btn small" id="btnClearKeySound" type="button" data-i18n="input.feel.keySoundClear">清除</button>
+        </span>
+      </div>
+      <label class="row switch-row" for="keyHaptic">
+        <span class="row-label"><span data-i18n="input.feel.keyHaptic">按键振动</span><small data-i18n="input.feel.keyHapticHint">按键时轻短振动一下，强度跟随机型；系统触感总开关关闭时不震。</small></span>
+        <input type="checkbox" id="keyHaptic" class="toggle">
+      </label>
+      <!-- #39-14 振动强度：有幅度马达走振幅档，无幅度机型按时长近似。 -->
+      <div class="row language-row" id="keyHapticStrengthRow">
+        <span class="row-label">
+          <span data-i18n="input.feel.keyHapticStrength">振动强度</span>
+          <small id="keyHapticStrengthHint" data-i18n="input.feel.keyHapticStrengthHint">本机马达不支持强弱调节时按轻重的时长近似。</small>
+        </span>
+        <select id="keyHapticStrength" class="select" aria-label="振动强度" data-i18n-aria="input.feel.keyHapticStrength">
+          <option value="0" data-i18n="input.feel.hapticLight">弱</option>
+          <option value="1" data-i18n="input.feel.hapticMedium">中</option>
+          <option value="2" data-i18n="input.feel.hapticStrong">强</option>
+        </select>
+      </div>
+      <!-- 全局震动跟随系统（3.74.10）：开 = 强度用系统默认，弱/中/强
+           选择置灰；关 = 手动三档。 -->
+      <label class="row switch-row" for="keyHapticFollowSystem">
+        <span class="row-label"><span data-i18n="input.feel.keyHapticFollowSystem">强度跟随系统</span><small data-i18n="input.feel.keyHapticFollowSystemHint">开 = 强度用系统默认，弱/中/强选择置灰；关 = 手动弱/中/强三档。</small></span>
+        <input type="checkbox" id="keyHapticFollowSystem" class="toggle">
+      </label>
+      <p id="feelNote" class="hint block"></p>
+    </section>
+
+    <!-- #39-12 三级页定稿：input 页只留入口，开关/JSON/编辑器进
+         「定制按键」二级页，「编辑器」三级页免 JSON 手搓。 -->
+    <section class="card" id="sec-custom" aria-labelledby="customTitle">
+      <div class="section-heading"><h2 id="customTitle" data-i18n="input.custom.title">定制按键</h2><span class="eyebrow" data-i18n="input.custom.badge">高级</span></div>
+      <div class="rows">
+        <button class="row nav-row" id="btnOpenCustomKeys" type="button" data-keywords="自定义键盘 快捷键 终端 vim 自定义按键 custom keys editor 编辑器">
+          <span class="row-label"><span data-i18n="input.custom.manage">管理定制按键</span><small id="customSummary">未定制</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
+      </div>
+      <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
+    </section>
+
+    <!-- 键盘选择（2026-09-30 验收拆分）：内容移入「键盘选择」三级页，
+         本页只留入口；键盘 tile 深链（openSetupPage → focusSetting）
+         按元素最近页自动跟随，不受影响。 -->
+    <section class="card" id="secKeyboards-entry" aria-labelledby="keyboardsEntryTitle">
+      <div class="section-heading"><h2 id="keyboardsEntryTitle" data-keywords="键盘选择 长按菜单 快捷切换 勾选键盘" data-i18n="input.keyboards.title">键盘选择</h2><span class="eyebrow" data-i18n="input.keyboards.badge">菜单</span></div>
+      <div class="rows">
+        <button class="row nav-row" id="btnOpenKeyboards" type="button" data-keywords="键盘选择 长按菜单 快捷切换 勾选键盘 键盘列表 藏键盘">
+          <span class="row-label"><span data-i18n="input.keyboards.manage">管理键盘与快捷切换</span><small data-i18n="input.keyboards.manageHint">长按菜单列出哪些键盘、快捷切换键在两个键盘间往返。</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 全拼模糊音（2026-09-30 验收拆分）：键盘与输入的三级页，开关原样
+     迁入（id 不变，深链/搜索锚点跟随所在页）。 -->
+<div class="page" data-page="fuzzy" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.backInput" aria-label="返回键盘与输入">‹</button>
+    <h2 class="page-title" data-i18n="page.fuzzy">模糊音</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-fuzzy" aria-labelledby="fuzzyTitle">
+      <div class="section-heading"><h2 id="fuzzyTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
+      <label class="row switch-row" for="fuzzyBit1">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.ping">平翘舌</span><small data-i18n="input.fuzzy.g.ping.hint">z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。</small></span>
+        <input type="checkbox" id="fuzzyBit1" class="toggle" data-fuzzy-bit="1">
+      </label>
+      <label class="row switch-row" for="fuzzyBit2">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.nl">声母 n/l</span><small data-i18n="input.fuzzy.g.nl.hint">打 nai 也能出「来」，打 lai 也能出「奶」。</small></span>
+        <input type="checkbox" id="fuzzyBit2" class="toggle" data-fuzzy-bit="2">
+      </label>
+      <label class="row switch-row" for="fuzzyBit4">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.fh">声母 f/h</span><small data-i18n="input.fuzzy.g.fh.hint">打 fu 也能出「湖」，打 hu 也能出「父」。</small></span>
+        <input type="checkbox" id="fuzzyBit4" class="toggle" data-fuzzy-bit="4">
+      </label>
+      <label class="row switch-row" for="fuzzyBit8">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.rl">声母 r/l</span><small data-i18n="input.fuzzy.g.rl.hint">打 re 也能出「乐」，打 le 也能出「热」。</small></span>
+        <input type="checkbox" id="fuzzyBit8" class="toggle" data-fuzzy-bit="8">
+      </label>
+      <label class="row switch-row" for="fuzzyBit16">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.nasal">前后鼻音</span><small data-i18n="input.fuzzy.g.nasal.hint">an/ang、en/eng、in/ing：打 zang 也能出「张」，打 zhon 也能出「中」。</small></span>
+        <input type="checkbox" id="fuzzyBit16" class="toggle" data-fuzzy-bit="16">
+      </label>
+    </section>
+  </main>
+</div>
+
+<!-- 横屏显示（#39）：挖孔安全区 / 高度上限 / 整体透明度——三项都是
+     横屏专属，收进一个三级页。 -->
+<div class="page" data-page="landscape" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="appearance" data-i18n-aria="nav.backAppearance" aria-label="返回外观">‹</button>
+    <h2 class="page-title" data-i18n="page.landscape">横屏显示</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-landscape" aria-labelledby="landscapeTitle">
+      <div class="section-heading"><h2 id="landscapeTitle" data-keywords="横屏 挖孔 安全区 高度 上限 透明度 铺满 landscape" data-i18n="input.landscape.title">横屏显示</h2><span class="eyebrow" data-i18n="input.landscape.badge">横屏</span></div>
+      <label class="row switch-row" for="landscapeSafeArea">
+        <span class="row-label"><span data-i18n="input.landscape.safeArea">左右留安全区</span><small data-i18n="input.landscape.safeAreaHint">键盘背景铺满含挖孔的整条短边，但按键区避开挖孔侧；关闭后按键也铺满。</small></span>
+        <input type="checkbox" id="landscapeSafeArea" class="toggle">
+      </label>
+      <div class="row">
+        <label class="row-label" for="landscapeCeil"><span data-i18n="input.landscape.ceil">高度上限</span><small data-i18n="input.landscape.ceilHint">横屏键盘最高可占屏幕高度的百分比（40%–100%）。</small></label>
+        <output id="landscapeCeilOut" for="landscapeCeil" class="range-out">60%</output>
+      </div>
+      <input type="range" id="landscapeCeil" min="40" max="100" step="5" value="60"
+             class="slider" aria-label="横屏高度上限" data-i18n-aria="input.landscape.ceil" data-keywords="横屏 高度 上限 百分比">
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.landscape.height">横屏键盘高度</span>
+          <small data-i18n="input.landscape.heightHint">横屏键盘的高度；键盘上拖拽调节与此处等效。横竖屏分开记忆。</small>
+        </span>
+        <span class="slider-with-action">
+          <output id="kbHeightLandscapeOut" for="kbHeightLandscape" class="range-out"></output>
+          <input type="range" id="kbHeightLandscape" class="slider" aria-label="横屏键盘高度" data-i18n-aria="input.landscape.height" data-keywords="横屏 键盘 高度 landscape">
+          <button type="button" id="kbHeightLandscapeReset" class="ghost-btn" data-i18n="input.landscape.heightReset">恢复默认</button>
+        </span>
+      </div>
+      <div class="row">
+        <label class="row-label" for="landscapeOpacity"><span data-i18n="input.landscape.opacity">整体不透明度</span><small data-i18n="input.landscape.opacityHint">横屏时键盘整层（含背景）的透明程度，调低可看到被键盘盖住的内容。</small></label>
+        <output id="landscapeOpacityOut" for="landscapeOpacity" class="range-out">100%</output>
+      </div>
+      <input type="range" id="landscapeOpacity" min="10" max="100" step="5" value="100"
+             class="slider" aria-label="横屏整体不透明度" data-i18n-aria="input.landscape.opacity" data-keywords="横屏 透明 半透明 opacity">
+    </section>
+  </main>
+</div>
+
+<!-- 键盘选择（2026-09-30 验收拆分）：键盘与输入的三级页，长按菜单
+     键盘列表 + 快捷切换对原样迁入（id 不变）。 -->
+<div class="page" data-page="keyboards" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.backInput" aria-label="返回键盘与输入">‹</button>
+    <h2 class="page-title" data-i18n="page.keyboards">键盘选择</h2>
+  </header>
+  <main>
+    <section class="card" id="secKeyboards" aria-labelledby="keyboardsTitle">
+      <div class="section-heading"><h2 id="keyboardsTitle" data-keywords="键盘选择 长按菜单 快捷切换 勾选键盘" data-i18n="input.keyboards.title">键盘选择</h2><span class="eyebrow" data-i18n="input.keyboards.badge">菜单</span></div>
+      <div class="row block" id="menuModesRow">
+        <span class="row-label"><span data-i18n="input.keyboards.enable">长按菜单里列出哪些键盘</span><small data-i18n="input.keyboards.hint">勾选的键盘出现在长按切换键的菜单里；不勾的还可以在菜单里临时勾回来。改动即时生效。</small></span>
+      </div>
+      <div id="kbModeList" data-keywords="键盘选择 长按菜单 勾选 键盘列表 藏键盘 显示键盘"></div>
+      <!-- 快捷切换策略（用户裁定 2026-11-05）：与物理键盘无关，从 hwkb 卡
+           迁来与配对同场；默认固定配对（首个 option 即默认展示值）。 -->
+      <div class="row">
+        <label class="row-label" for="quickSwitchPolicy"><span data-i18n="input.quickSwitch.policy">快捷切换（切换键/Ctrl+空格）</span><small data-i18n="input.quickSwitch.policyHint">固定配对：始终在你选定的两个键盘间切换；当前键盘↔英文：从英文切回最近使用的键盘。</small></label>
+        <select id="quickSwitchPolicy" class="select" data-keywords="快捷 切换 中英 Ctrl 空格 配对" aria-label="快捷切换策略" data-i18n-aria="input.quickSwitch.policy">
+          <option value="fixed" data-i18n="input.quickSwitch.fixed">固定配对</option>
+          <option value="follow" data-i18n="input.quickSwitch.follow">当前键盘↔英文</option>
+        </select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.keyboards.pairA">快捷切换 · 第一个</span>
+          <small data-i18n="input.keyboards.pairHint">点切换键在两个键盘之间往返；选最常用的两个。</small>
+        </span>
+        <select id="quickPairA" data-keywords="切换键 两个键盘 快捷切换 quick switch pair" class="select" aria-label="快捷切换第一个键盘" data-i18n-aria="input.keyboards.pairA"></select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.keyboards.pairB">快捷切换 · 第二个</span>
+        </span>
+        <select id="quickPairB" class="select" aria-label="快捷切换第二个键盘" data-i18n-aria="input.keyboards.pairB"></select>
+      </div>
+      <span class="save-note" id="keyboardsNote" role="status" aria-live="polite"></span>
+    </section>
+  </main>
+</div>
+
+<!-- 词库（issue #37 验收反馈）：一级入口的二级页，承接原候选符号词卡里
+     的 rime .dict.yaml 叠加导入；用户自定义基底词库（issue #23/#40）将来
+     也落在这个页。 -->
+<div class="page" data-page="dict" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.dict">词库</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-clipboard" aria-labelledby="clipboardNoteTitle">
+      <div class="section-heading"><h2 id="clipboardNoteTitle" data-i18n="clip.title">剪贴板与常用语</h2><span class="eyebrow" data-i18n="clip.badge">本机</span></div>
+      <p class="hint block" data-i18n="clip.note">键盘工具栏里的剪贴板只保存在这台手机上，不上传，也不进云备份。条数不另设上限，全部正文大约 32MB。复制一段文字后，点键盘上的剪贴板图标就能贴回去。常用语和符号词在下面管理。</p>
+    </section>
+    <!-- 基底词库（issue #23）：整库换装，设备端 librime maintenance 现场编译。
+         与下方「导入词库」（叠加词条）是两个通道：换基底 vs 加词条。 -->
+    <section class="card" id="sec-dict-base" aria-labelledby="dictBaseTitle">
+      <div class="section-heading"><h2 id="dictBaseTitle" data-i18n="dict.base.title">基底词库</h2><span class="eyebrow" data-i18n="dict.base.badge">基底</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span id="dictBaseCurrent">内置 rime-frost（白霜拼音）</span>
+          <small data-i18n="dict.base.hint">换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典；万象拼音请选去声调的 Lite 版 zip 整包），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。</small>
+        </span>
+      </div>
+      <!-- #7 已导入词库列表：默认 + 各槽（点选激活，可删除）。 -->
+      <div id="dictBaseSlots" class="dict-slots"></div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnBaseDictPick" type="button" data-i18n="dict.base.pick">选择词库文件换装</button>
+        <span class="save-note" id="dictBaseNote" role="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" id="dictBaseBuilding" hidden></p>
+      <!-- 导入进度条（#95 后续）：COPYING 按源流字节、COMPILING 按产物
+           落盘步进；ETA 用 elapsed/percent 外推。 -->
+      <div class="progress" id="dictBaseProgressBar" hidden><i></i></div>
+      <!-- #37 形码/音形码表特征提示：换装通道只支持拼音系码表，检测到
+           大部分编码切不成拼音音节时持续警示。 -->
+      <p class="hint" id="dictBaseNonPinyin" hidden data-i18n="dict.base.nonPinyin">抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。</p>
+      <!-- #35 带调码表提示：导入的疑似完整版（如万象拼音 Base，码列带
+           声调 ā bà），键盘打不出声调字符，需改用去声调的 Lite 版。 -->
+      <p class="hint" id="dictBaseToned" hidden data-i18n="dict.base.toned">此词库的编码带声调（疑似完整版，如万象拼音 Base）：键盘打不出声调符号，很多字将无法命中，请改用去声调的 Lite 版（或换回内置词库）。</p>
+      <!-- #35 T9 内存门：大词库（如万象 Lite）编译九宫格 prism 的内存
+           随词条数放大（真机实测会耗尽内存被系统中止），跳过编译、
+           九宫格模式暂不可用。 -->
+      <p class="hint" id="dictBaseT9Skip" hidden data-i18n="dict.base.t9Skip">此词库词条较多：编译九宫格（T9）词库的内存开销超出本机承受（会被系统中止），本次导入跳过了九宫格，拼音/双拼不受影响；换更小的词库或恢复内置后九宫格即恢复。</p>
+    </section>
+
+    <!-- 音形码表（issue #20，首版小鹤音形）：用户导入形码方案码表，
+         设备端编译独立 flypy table/prism（不动拼音基底）；导入后模式
+         菜单出现「音形」模式。 -->
+    <section class="card" id="sec-dict-flypy" aria-labelledby="flypyTitle">
+      <div class="section-heading"><h2 id="flypyTitle" data-i18n="flypy.title">音形码表</h2><span class="eyebrow" data-i18n="flypy.badge">音形</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span id="flypyCurrent">未导入</span>
+          <small data-i18n="flypy.hint">导入形码方案码表（如小鹤音形的 rime 词表 .dict.yaml，或 TAB 分隔的「词、码」纯文本）：两码音 + 两码形，四码唯一顶字上屏。在本机编译为独立的音形模式，不影响拼音词库；可随时移除。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnFlypyPick" type="button" data-i18n="flypy.pick">导入音形码表</button>
+        <button class="btn ghost-btn" id="btnFlypyRevert" type="button" hidden data-i18n="flypy.revert">移除码表</button>
+        <span class="save-note" id="flypyNote" role="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" id="flypyBuilding" hidden></p>
+      <div class="progress" id="flypyBuildingBar" hidden><i></i></div>
+    </section>
+
+    <section class="card" id="sec-dict-import" aria-labelledby="dictImportTitle">
+      <div class="section-heading"><h2 id="dictImportTitle" data-i18n="dict.import.title">导入词库</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span data-i18n="dict.import.enable">rime 词库文件（.dict.yaml）</span>
+          <small data-i18n="input.phrases.importHint">词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnImportDict" type="button" data-i18n="input.phrases.importBtn">选择文件导入</button>
+        <button class="btn ghost-btn" id="btnClearImportedDict" type="button" hidden data-i18n="input.phrases.clearBtn">清空导入词</button>
+        <span class="save-note" id="dictImportNote" role="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码&lt;TAB&gt;位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；要让第三列对全部词（不只符号词）生效，文件头部声明 columns: [text, code, rank]；适合把 rime-ice 等社区词库里的自选词补进来。</p>
+    </section>
+
+    <!-- #54（2026-10-09 用户裁定·简化版）：候选符号词从输入页归位到
+         词库页——与自造词相邻成对（预置内容 vs 手动维护，各自独立）。 -->
+    <section class="card" id="sec-dict-phrases" aria-labelledby="dictPhrasesTitle">
+      <div class="section-heading"><h2 id="dictPhrasesTitle" data-keywords="符号 emoji 候选 symbol" data-i18n="input.phrases.title">候选符号词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <label class="row switch-row no-rule" for="phrasesOn">
+        <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，默认排在候选第 3 位，可在「管理词条」里逐词指定位置；全拼和双拼通用。</small></span>
+        <input type="checkbox" id="phrasesOn" data-keywords="符号 emoji 候选 symbol" class="toggle">
+      </label>
+      <!-- #81 词频排序总开关（默认关）：未指定位置的符号词是否随使用次数前移 -->
+      <label class="row switch-row no-rule" for="symbolFreqSort">
+        <span class="row-label"><span data-i18n="input.phrases.freqSort">基于词频排序</span><small data-i18n="input.phrases.freqSortHint">未指定位置的符号词随使用次数前移（5 次后可升到首位，空格直选）；关闭时一律固定在第 3 位附近。手动指定的位置不受此开关影响。</small></span>
+        <input type="checkbox" id="symbolFreqSort" data-keywords="词频 排序 频率 symbol freq" class="toggle">
+      </label>
+      <button class="btn" id="btnManagePhrases" type="button" data-i18n="input.phrases.manage">管理词条</button>
+    </section>
+
+    <section class="card" id="sec-dict-user-words" aria-labelledby="dictUserWordsTitle">
+      <div class="section-heading"><h2 id="dictUserWordsTitle" data-keywords="自造词 造词 常用词 名字 公司名 user words" data-i18n="dict.userwords.title">自造词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span data-i18n="dict.userwords.enable">手动维护的常用词</span>
+          <small data-i18n="dict.userwords.hint">逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnManageUserWords" type="button" data-i18n="dict.userwords.manage">管理词条</button>
+        <span class="save-note" id="userWordsCount" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <!-- 拼音纠错 + 习惯自动词库（3.74.10）：两个开关 + 自动收入的词列表。 -->
+    <section class="card" id="sec-dict-lexicon" aria-labelledby="dictLexiconTitle">
+      <div class="section-heading"><h2 id="dictLexiconTitle" data-keywords="拼音纠错 打错 纠错 习惯 自动词库" data-i18n="dict.lexicon.title">纠错与习惯词库</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <label class="row switch-row" for="pinyinCorrection">
+        <span class="row-label"><span data-i18n="dict.lexicon.correction">拼音纠错</span><small data-i18n="dict.lexicon.correctionHint">默认开启；打错拼音也能出候选（按编辑距离纠一格），纠错候选带「纠」标、排在候选后面，点选直接上屏</small></span>
+        <input type="checkbox" id="pinyinCorrection" data-keywords="拼音纠错 打错 纠错 correction typo" class="toggle">
+      </label>
+      <label class="row switch-row" for="habitLexicon">
+        <span class="row-label"><span data-i18n="dict.lexicon.habit">习惯自动词库</span><small data-i18n="dict.lexicon.habitHint">默认开启；常打的词满 3 次自动收入自造词，只存在本机。关掉后不再自动收入，已收入的词保留</small></span>
+        <input type="checkbox" id="habitLexicon" data-keywords="习惯 自动词库 habit auto learn" class="toggle">
+      </label>
+      <div class="section-heading"><h2 id="autoWordsTitle" data-i18n="dict.lexicon.autoWords">自动收入的词</h2></div>
+      <ul id="autoWordList" class="phrase-list"></ul>
+      <p id="autoWordEmpty" class="hint block" data-i18n="dict.lexicon.autoWordsEmpty" hidden>还没有自动收入的词，多打几次常用词就会出现在这里。</p>
+      <span class="save-note" id="autoWordsNote" role="status" aria-live="polite"></span>
+    </section>
+  </main>
+</div>
+
+<!-- 自造词（issue #29-5）：词库管理的三级编辑页，镜像候选符号词页。 -->
+<div class="page" data-page="userwords" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="dict" data-i18n-aria="nav.backDict" aria-label="返回词库">‹</button>
+    <h2 class="page-title" data-i18n="page.userwords">自造词</h2>
+  </header>
+  <main>
+    <section class="card" aria-labelledby="userWordsListTitle">
+      <div class="section-heading"><h2 id="userWordsListTitle" data-i18n="userwords.list.title">词条</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <ul id="userWordList" class="phrase-list"></ul>
+      <p id="userWordEmpty" class="hint block" data-i18n="userwords.list.empty" hidden>还没有词条，在下方添加。</p>
+      <div class="phrase-form">
+        <input id="userWordText" class="input" type="text" maxlength="32" data-i18n-placeholder="userwords.form.text" placeholder="词条（如 你好世界）">
+        <input id="userWordCode" class="input" type="text" maxlength="48" data-i18n-placeholder="userwords.form.code" placeholder="输入码（留空自动按拼音生成）">
+        <div class="actions">
+          <button class="btn primary" id="btnSaveUserWord" type="button" data-i18n="userwords.form.add">添加</button>
+          <button class="btn" id="btnCancelUserWordEdit" type="button" data-i18n="userwords.form.cancel" hidden>取消</button>
+        </div>
+      </div>
+      <p class="hint" data-i18n="userwords.list.note">输入码留空即自动按拼音生成（多音字会生成全部读音组合，并自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。</p>
+      <span class="save-note" id="userWordsNote" role="status" aria-live="polite"></span>
+    </section>
+  </main>
+</div>
+
+<!-- Custom phrase list (issue #17): third-level page under 词库（#54 归位）. -->
+<div class="page" data-page="phrases" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="dict" data-i18n-aria="nav.backDict" aria-label="返回词库">‹</button>
+    <h2 class="page-title" data-i18n="page.phrases">候选符号词</h2>
+  </header>
+  <main>
+    <section class="card" aria-labelledby="phrasesListTitle">
+      <div class="section-heading"><h2 id="phrasesListTitle" data-i18n="phrases.list.title">词条</h2><span class="eyebrow" data-i18n="input.phrases.badge">输入</span></div>
+      <ul id="phraseList" class="phrase-list"></ul>
+      <p id="phraseEmpty" class="hint block" data-i18n="phrases.list.empty" hidden>还没有词条，在下方添加。</p>
+      <div class="phrase-form">
+        <input id="phraseText" class="input" type="text" maxlength="20" data-i18n-placeholder="phrases.form.text" placeholder="词条（如 ↑ 或 你好）">
+        <input id="phraseCode" class="input" type="text" maxlength="16" data-i18n-placeholder="phrases.form.code" placeholder="输入码（如 shang）">
+        <input id="phraseRank" class="input" type="number" min="1" max="9" inputmode="numeric" data-i18n-placeholder="phrases.form.rank" placeholder="位置 1-9">
+        <div class="actions">
+          <button class="btn primary" id="btnSavePhrase" type="button" data-i18n="phrases.form.add">添加</button>
+          <button class="btn" id="btnCancelPhraseEdit" type="button" data-i18n="phrases.form.cancel" hidden>取消</button>
+        </div>
+      </div>
+      <p class="hint" data-i18n="phrases.list.note">输入码用全拼（单个音节自动适配双拼按键）；位置 1-9 指定该词固定排在候选第几位，留空默认第 3 位；点词条可修改，✕ 删除。改动即时生效。</p>
+      <span class="save-note" id="phrasesNote" role="status" aria-live="polite"></span>
+    </section>
+  </main>
+</div>
+
+<!-- Voice recognition and ASR options. -->
+<div class="page" data-page="voice" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.voice">语音识别</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-voice" aria-labelledby="voiceTitle">
+      <div class="section-heading"><h2 id="voiceTitle" data-i18n="voice.models.title">麦克风与语音模型</h2><span class="eyebrow" data-i18n="voice.models.badge">语音</span></div>
+      <div class="rows">
+        <div class="row" id="micRow">
+          <span class="led" data-led aria-hidden="true"></span>
+          <span class="row-label"><span data-i18n="voice.mic.permission">麦克风权限</span><small data-i18n="voice.mic.hint">语音输入必需，全程本地处理</small></span>
+          <button class="btn" id="btnMic" type="button" data-i18n="voice.mic.action">去授权</button>
+        </div>
+        <label class="row switch-row" for="voiceReadyHaptic">
+          <span class="row-label">
+            <span data-i18n="voice.readyHaptic">语音就绪震动</span>
+            <small data-i18n="voice.readyHapticHint">语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。</small>
+          </span>
+          <input type="checkbox" id="voiceReadyHaptic" data-keywords="语音 震动 加载 就绪 聆听 voice vibrate ready haptic" class="toggle">
+        </label>
+      </div>
+      <div class="rows">
+        <label class="row" for="modelBackend">
+          <span class="row-label"><span data-i18n="voice.backend.label">模型来源</span></span>
+          <select id="modelBackend" class="select">
+            <option value="auto" data-i18n="voice.backend.auto">安装包优先</option>
+            <option value="remote" data-i18n="voice.backend.remote">使用下载模型</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint" data-i18n="voice.backend.hint">切换后下次录音生效。选择下载模型会覆盖安装包中的模型，请先下载所需模型。</p>
+      <div class="rows model-source-settings">
+        <div class="row source-head">
+          <span class="row-label" id="voiceSourceLabel"><span data-i18n="voice.downloadSource.label">模型下载源</span><small data-i18n="voice.downloadSource.pick">点选项即保存；「测速」比较各源延迟</small></span>
+          <button class="btn small" id="btnSpeedTest" type="button" data-i18n="voice.downloadSource.speedTest">测速</button>
+        </div>
+        <div id="modelSourceRows" role="radiogroup" aria-labelledby="voiceSourceLabel"></div>
+        <div id="modelSourceCustomBox" hidden>
+          <label class="field-label" id="modelDownloadCustomLabel" for="modelDownloadCustom" data-i18n="voice.downloadSource.custom">自定义源</label>
+          <input type="url" id="modelDownloadCustom" data-i18n-placeholder="voice.downloadSource.customPlaceholder" placeholder="例如：https://example.com/models/" autocomplete="off">
+          <div class="actions">
+            <button class="btn primary small" id="btnSaveCustomSource" type="button" data-i18n="voice.downloadSource.save">保存自定义源</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint" data-i18n="voice.downloadSource.hint">下载后会校验文件完整性；默认走 Gitee 国内镜像，也可选 GitHub 直连或 gh-proxy 加速。</p>
+      <div class="rows" id="modelRows"></div>
+      <div class="consent" id="modelConsent" hidden role="dialog" aria-labelledby="modelConsentTitle" aria-describedby="modelConsentMessage">
+        <div class="section-heading">
+          <h3 id="modelConsentTitle" data-i18n="model.consent.title">确认下载流量</h3>
+          <span class="eyebrow" data-i18n="model.consent.badge">流量提示</span>
+        </div>
+        <p class="hint block" id="modelConsentMessage"></p>
+        <div class="actions">
+          <button class="btn" id="modelConsentCancel" type="button" data-i18n="model.consent.cancel">取消</button>
+          <button class="btn primary" id="modelConsentConfirm" type="button" data-i18n="model.consent.confirm">继续下载</button>
+        </div>
+      </div>
+      <p class="save-note model-note" id="modelNote" role="status" aria-live="polite"></p>
+      <p class="hint" data-i18n="voice.models.note">完整安装包已内置全部模型；精简安装包在此按需下载（断点续传，逐文件校验）。</p>
+      <p class="hint" data-i18n="model.importFormat">仅支持与内置清单对应的官方模型 tar.bz2 或 zip 归档。</p>
+    </section>
+
+    <section class="card" id="sec-asr" aria-labelledby="asrTitle">
+      <div class="section-heading"><h2 id="asrTitle" data-i18n="voice.asr.title">语音识别设置</h2><span class="eyebrow" data-i18n="voice.asr.badge">识别</span></div>
+      <p class="hint block" data-i18n="voice.asr.honest">当前离线模型对较标准的普通话效果最好：语速放稳、环境安静，说完一句再点「说完了」。标点由本机标点模型自动补上（不是喊「逗号」），句尾句号可以在下面关掉。这里不会把声音传到网上，也不能靠换设置凭空提高识别率。</p>
+      <div class="rows">
+        <label class="row switch-row" for="stripPeriod">
+          <span class="row-label"><span data-i18n="voice.asr.stripPeriod">去掉句尾句号</span><small data-i18n="voice.asr.stripHint">问号、叹号保留；关闭后保留模型输出</small></span>
+          <input type="checkbox" id="stripPeriod" class="toggle">
+        </label>
+        <label class="row switch-row" for="numItn">
+          <span class="row-label"><span data-i18n="voice.asr.numItn">数字写成阿拉伯数字</span><small data-i18n="voice.asr.numItnHint">数量、日期、金额、小数自动转换（三个 → 3个）；默认关闭</small></span>
+          <input type="checkbox" id="numItn" class="toggle">
+        </label>
+        <label class="row switch-row" for="asrIdleUnload">
+          <span class="row-label"><span data-i18n="voice.asr.idleUnload">空闲时释放语音模型</span><small data-i18n="voice.asr.idleUnloadHint">默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载</small></span>
+          <input type="checkbox" id="asrIdleUnload" class="toggle">
+        </label>
+        <label class="row switch-row" for="powerSaving">
+          <span class="row-label"><span data-i18n="voice.asr.powerSaving">省电模式</span><small data-i18n="voice.asr.powerSavingHint">默认关闭；开启后磨砂和按键动画关闭，语音只用流式识别，模型空闲 1 分钟释放</small></span>
+          <input type="checkbox" id="powerSaving" data-keywords="省电 电池 续航 性能 power saving battery" class="toggle">
+        </label>
+      </div>
+      <label class="field-label" for="hotwords" data-i18n="voice.asr.hotwordsLabel">热词（一行一个，可填中文或英文；识别优先考虑这些词）</label>
+      <small class="hint block" data-i18n="voice.asr.hotwordsWeightHint">某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20（最多一位小数），不填用默认力度；数字过大可能出现重复词或误识别其他词，调小即可。</small>
+      <textarea id="hotwords" rows="4" data-i18n-placeholder="voice.asr.hotwordsPlaceholder" placeholder="例如：&#10;倪妮&#10;姚程:10 ← 总识别错时加权重&#10;GPU"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="btnSaveAsr" type="button" data-i18n="action.saveAsr">保存识别设置</button>
+        <span class="save-note" id="asrNote" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Keyboard hot update. -->
+<div class="page" data-page="update" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.update">键盘热更新</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-update" aria-labelledby="updateTitle">
+      <div class="section-heading"><h2 id="updateTitle" data-i18n="update.title">键盘热更新</h2><span class="eyebrow" data-i18n="update.badge">更新</span></div>
+      <p class="hint block" data-i18n="update.note">仅替换 HTML/CSS/JS，不涉及引擎、词典与语音模型。</p>
+      <label class="field-label" for="updateSource" data-i18n="update.sourceLabel">更新源地址（metainfo.json）</label>
+      <input type="url" id="updateSource" data-i18n-placeholder="update.sourcePlaceholder" placeholder="https://example.com/feelime/metainfo.json" autocomplete="off">
+      <label class="row switch-row" for="autoUpdateCheck">
+        <span class="row-label"><span data-i18n="update.autoCheck">启动时自动检查更新</span><small data-i18n="update.autoCheckHint">每天最多检查一次；清空更新源后自动检查停用</small></span>
+        <input type="checkbox" id="autoUpdateCheck" class="toggle">
+      </label>
+      <label class="field-label" for="updateUrl" data-i18n="update.urlLabel">键盘包地址（联网下载）</label>
+      <input type="url" id="updateUrl" data-i18n-placeholder="update.urlPlaceholder" placeholder="https://example.com/feelime-keyboard.zip" autocomplete="off">
+      <div class="actions">
+        <button class="btn primary" id="btnCheckUpdate" type="button" data-i18n="action.checkUpdate">检查更新</button>
+        <button class="btn" id="btnInstallZip" type="button" data-i18n="action.install">联网下载安装</button>
+        <button class="btn local" id="btnImportZip" type="button" data-i18n="action.importLocal">从本地 ZIP 导入</button>
+        <button class="btn" id="btnRestore" type="button" data-i18n="action.restore">恢复内置</button>
+      </div>
+      <p class="hint" data-i18n="update.localHint">从本地 ZIP 导入不需要网络，仍会校验签名和兼容性。</p>
+      <pre class="status-block" id="updateStatus" aria-live="polite"></pre>
+      <p class="danger-note" id="updateDanger" hidden data-i18n="update.unsigned">⚠ 未签名键盘拥有 IME 权限（仅限调试构建）</p>
+      <div class="consent" id="kbSigConsent" hidden role="dialog" aria-labelledby="kbSigConsentTitle" aria-describedby="kbSigConsentMessage">
+        <div class="section-heading">
+          <h3 id="kbSigConsentTitle" data-i18n="kbSig.title">键盘包签名不符</h3>
+          <span class="eyebrow" data-i18n="kbSig.badge">安全提示</span>
+        </div>
+        <p class="hint block" id="kbSigConsentMessage" data-i18n="kbSig.message">这个键盘包的签名与官方发布密钥不一致（可能是自改包或第三方包）。仍要导入将以“已确认签名不符”的状态运行，重启后仍生效。</p>
+        <div class="actions">
+          <button class="btn" id="kbSigConsentCancel" type="button" data-i18n="kbSig.cancel">取消</button>
+          <button class="btn primary" id="kbSigConsentConfirm" type="button" data-i18n="kbSig.confirm">仍要导入</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Userdata backup and restore. -->
+<div class="page" data-page="backup" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.backup">备份与恢复</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-backup" aria-labelledby="backupTitle">
+      <div class="section-heading"><h2 id="backupTitle" data-i18n="backup.title">备份与恢复</h2><span class="eyebrow" data-i18n="backup.badge">备份</span></div>
+      <p class="hint block" data-i18n="backup.note">把设置、常用语、自定义键位与输入词库打包成一个 JSON 文件，方便换机或手工编辑。</p>
+      <div class="actions">
+        <button class="btn primary" id="btnExportBackup" type="button" data-i18n="backup.export">导出数据</button>
+        <button class="btn" id="btnImportBackup" type="button" data-i18n="backup.import">导入数据</button>
+      </div>
+      <div class="consent" id="backupConsent" hidden role="dialog" aria-labelledby="backupConsentTitle" aria-describedby="backupConsentMessage">
+        <div class="section-heading">
+          <h3 id="backupConsentTitle" data-i18n="backup.consent.title">确认覆盖</h3>
+          <span class="eyebrow" data-i18n="backup.consent.badge">覆盖提示</span>
+        </div>
+        <p class="hint block" id="backupConsentMessage" data-i18n="backup.consent.message">导入会覆盖当前的设置、常用语、自定义键位与词库，且无法撤销。确定继续吗？</p>
+        <div class="actions">
+          <button class="btn" id="backupConsentCancel" type="button" data-i18n="backup.consent.cancel">取消</button>
+          <button class="btn primary" id="backupConsentConfirm" type="button" data-i18n="backup.consent.confirm">选择文件导入</button>
+        </div>
+      </div>
+      <p class="save-note model-note" id="backupNote" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- #43 WebDAV 云端备份：时间戳文件名不覆盖历史；恢复前列表选择。 -->
+    <section class="card" id="sec-webdav" aria-labelledby="webdavTitle">
+      <div class="section-heading"><h2 id="webdavTitle" data-keywords="webdav 云备份 云端 坚果云 网盘 cloud" data-i18n="webdav.title">云端备份（WebDAV）</h2><span class="eyebrow" data-i18n="backup.badge">备份</span></div>
+      <p class="hint block" data-i18n="webdav.note">备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。</p>
+      <label class="field-label" for="webdavProvider" data-i18n="webdav.providerLabel">服务商</label>
+      <select id="webdavProvider" class="select">
+        <option value="jg" data-i18n="webdav.provider.jg">坚果云</option>
+        <option value="inf" data-i18n="webdav.provider.inf">InfiniCLOUD</option>
+        <option value="nc" data-i18n="webdav.provider.nc">Nextcloud / 群晖</option>
+        <option value="custom" data-i18n="webdav.provider.custom">自定义…</option>
+      </select>
+      <label class="field-label" for="webdavUrl" data-i18n="webdav.urlLabel">服务器地址</label>
+      <input id="webdavUrl" type="url" maxlength="512" data-i18n-placeholder="webdav.url" placeholder="https://dav.jianguoyun.com/dav/" autocomplete="off">
+      <label class="field-label" for="webdavDir" data-i18n="webdav.dirLabel">子目录</label>
+      <input id="webdavDir" type="text" maxlength="64" data-i18n-placeholder="webdav.dir" placeholder="feelime-backup" autocomplete="off">
+      <p class="hint block" data-i18n="webdav.dirHint">备份文件存放在服务器地址下的这个子目录里。部分服务商（如坚果云）不支持把文件直接存到根目录，建议保留子目录；留空则存到根目录。</p>
+      <label class="field-label" for="webdavUser" data-i18n="webdav.userLabel">用户名</label>
+      <input id="webdavUser" type="text" maxlength="128" data-i18n-placeholder="webdav.user" placeholder="用户名" autocomplete="off">
+      <label class="field-label" for="webdavPass" data-i18n="webdav.passLabel">应用密码</label>
+      <input id="webdavPass" type="password" maxlength="256" data-i18n-placeholder="webdav.pass" placeholder="应用密码（不是登录密码）" autocomplete="new-password">
+      <div class="actions" style="margin-top:12px">
+        <button class="btn primary" id="btnWebdavSave" type="button" data-i18n="webdav.save">保存并测试</button>
+        <button class="btn" id="btnWebdavBackup" type="button" data-i18n="webdav.backup">立即备份</button>
+        <button class="btn ghost-btn" id="btnWebdavRestore" type="button" data-i18n="webdav.restoreBtn">恢复云端备份</button>
+      </div>
+      <p class="save-note" id="webdavNote" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- #43 WebDAV 备份弹窗：预填时间戳文件名、可改；与云端重名时
+         警告并换成「覆盖」按钮（用户裁定：覆盖前必须提示）。 -->
+    <div id="webdavBackupModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="webdavBackupMask"></div>
+      <div class="ck-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="webdavBackupTitle">
+        <div class="ck-modal-head"><span id="webdavBackupTitle" data-i18n="webdav.backupModal.title">备份到云端</span>
+          <button class="ck-modal-x" id="webdavBackupX" type="button" aria-label="close">×</button></div>
+        <div id="webdavBackupBody">
+          <p class="hint block" data-i18n="webdav.backupModal.hint">将上传一份新备份文件，文件名默认按当前时间生成，可修改。</p>
+          <label class="field-label" for="webdavNameInput" data-i18n="webdav.backupModal.nameLabel">备份文件名</label>
+          <input id="webdavNameInput" type="text" maxlength="128" autocomplete="off" spellcheck="false">
+          <p class="danger-note" id="webdavDupWarn" hidden></p>
+        </div>
+        <div class="ck-modal-foot">
+          <button class="btn" id="webdavBackupCancel" type="button" data-i18n="backup.consent.cancel">取消</button>
+          <button class="btn primary" id="webdavBackupGo" type="button" data-i18n="webdav.backupModal.go">开始备份</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- #43 WebDAV 恢复弹窗：两步——云端列表选择（时间/大小分列）→
+         覆盖确认（复用本地导入的覆盖确认语义）。 -->
+    <div id="webdavRestoreModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="webdavRestoreMask"></div>
+      <div class="ck-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="webdavRestoreTitle">
+        <div class="ck-modal-head"><span id="webdavRestoreTitle" data-i18n="webdav.restoreModal.title">恢复云端备份</span>
+          <button class="ck-modal-x" id="webdavRestoreX" type="button" aria-label="close">×</button></div>
+        <div id="webdavRestoreBody">
+          <div id="webdavPickView">
+            <p class="hint block" id="webdavPickHint"></p>
+            <ul id="webdavPickList" class="webdav-pick-list" role="listbox"></ul>
+          </div>
+          <div id="webdavConfirmView" hidden>
+            <p class="hint block" data-i18n="webdav.consent.message">恢复会覆盖当前的设置、常用语、自定义键位与词库，且无法撤销。确定继续吗？</p>
+            <p class="hint"><code id="webdavConfirmName"></code></p>
+          </div>
+        </div>
+        <div class="ck-modal-foot" id="webdavFootPick">
+          <button class="btn" id="webdavRestoreCancel" type="button" data-i18n="backup.consent.cancel">取消</button>
+          <button class="btn primary" id="webdavRestoreGo" type="button" disabled data-i18n="webdav.consent.confirm">恢复这份备份</button>
+        </div>
+        <div class="ck-modal-foot" id="webdavFootConfirm" hidden>
+          <button class="btn" id="webdavRestoreBack" type="button" data-i18n="webdav.restoreModal.back">返回</button>
+          <button class="btn ck-btn-danger" id="webdavRestoreConfirm" type="button" data-i18n="webdav.consent.confirm">恢复这份备份</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- About and component notices. -->
+<div class="page" data-page="about" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.about">关于</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-about" aria-labelledby="aboutTitle">
+      <div class="section-heading"><h2 id="aboutTitle" data-i18n="about.versionTitle">版本信息</h2><span class="eyebrow" data-i18n="about.badge">信息</span></div>
+      <div class="rows" id="aboutRows"></div>
+      <div class="actions">
+        <button class="btn primary" id="btnCopyAbout" type="button" data-i18n="action.copyVersion">复制版本信息</button>
+        <button class="btn" id="btnAboutCheckUpdate" type="button" hidden data-i18n="action.checkUpdate">检查更新</button>
+        <button class="btn" id="btnDlThin" type="button" hidden data-i18n="action.dlThin">下载精简版</button>
+        <button class="btn" id="btnDlFull" type="button" hidden data-i18n="action.dlFull">下载完整版</button>
+        <button class="btn" id="btnAppStore" type="button" hidden data-i18n="action.appStore">在 Google Play 查看应用</button>
+        <button class="btn" id="btnGithubRepo" type="button" data-i18n="action.githubRepo">GitHub 仓库</button>
+        <button class="btn" id="btnGithubIssues" type="button" data-i18n="action.githubIssues">问题反馈</button>
+        <button class="btn" id="btnGithubUpstream" type="button" data-i18n="action.githubUpstream">官方原版仓库</button>
+        <button class="btn" id="btnFeishuGroup" type="button" data-i18n="action.feishuGroup">加入飞书交流群</button>
+        <span class="save-note" id="aboutNote" role="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" data-i18n="about.copyHint">反馈问题时直接粘贴；复制内容标记为敏感，不会进入键盘剪贴板历史。</p>
+      <p class="hint" data-i18n="about.offlineHint">全程离线：语音识别与文字候选都不联网。</p>
+      <p class="hint" data-i18n="about.forkNote">本仓库按个人使用习惯定制，与官方原版有所不同；检查更新默认走本仓库，官方原版更新请见上方链接。</p>
+    </section>
+
+    <section class="card" id="sec-privacy" aria-labelledby="privacyTitle">
+      <div class="section-heading"><h2 id="privacyTitle" data-i18n="privacy.title">隐私与离线</h2><span class="eyebrow" data-i18n="privacy.badge">本机</span></div>
+      <p class="hint block" data-i18n="privacy.note">按键、候选、语音和壁纸都只留在这台手机上。Feelime 不上传输入内容，也不带统计上报。语音模型是随安装包或你手动下载的离线模型。诊断开关只在你打开之后记录引擎事件，不含你打过的字。</p>
+    </section>
+
+    <section class="card" id="sec-diagnostics" aria-labelledby="diagTitle">
+      <div class="section-heading"><h2 id="diagTitle" data-i18n="diag.title">诊断记录</h2><span class="eyebrow" data-i18n="diag.badge">调试</span></div>
+      <label class="row switch-row" for="diagnosticsOn">
+        <span class="row-label"><span data-i18n="diag.toggle">记录引擎诊断事件</span><small data-i18n="diag.toggleHint">复现「按键字母直接上屏」这类故障前打开。只记录引擎与编辑器事件（包名、inputType、降级原因），不含任何输入内容。</small></span>
+        <input type="checkbox" id="diagnosticsOn" class="toggle">
+      </label>
+      <div class="actions">
+        <button class="btn" id="btnExportDiagnostics" type="button" data-i18n="diag.copy">导出诊断信息</button>
+        <span class="save-note" id="diagNote" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <section class="card" id="sec-notices" aria-labelledby="noticesTitle">
+      <div class="section-heading"><h2 id="noticesTitle" data-i18n="about.noticesTitle">第三方许可与组件说明</h2><span class="eyebrow" data-i18n="about.legalBadge">许可</span></div>
+      <button class="entry" type="button" id="btnOpenLicenses">
+        <span class="entry-label"><span data-i18n="about.openLicenses">开源许可与致谢</span><small data-i18n="about.openLicensesHint">组件清单 · 上游链接 · 完整说明</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+    </section>
+  
+</main>
+</div>
+
+<!-- 开源许可与致谢（三级页，关于下）：排版化的组件清单，完整原文
+     仍取 state.notices（assets third-party/THIRD_PARTY_NOTICES.txt）。
+     组件行的名称/许可证/链接是专有名词，不进 i18n；用途句双语。 -->
+<!-- #39-12 三级页（合成一页）：键盘与输入 → 定制按键——开关、编辑器、
+     预览、快捷库全在这一页；JSON 兜底折叠在页底。 -->
+<div class="page" data-page="customkeys" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="page.customkeys">定制按键</h2>
+  </header>
+  <main>
+    <section class="card" aria-labelledby="ckHead">
+      <div class="section-heading"><h2 id="ckHead" data-i18n="ck.status.title">定制按键</h2><span class="eyebrow" data-i18n="input.custom.badge">高级</span></div>
+      <!-- #50 长按空格=虚拟定制键（用户裁定）：动作与定制按键同编辑器
+           同 DSL（文本/组合键/链接/设置项/面板/多步链），语音输入与关闭
+           为两个特殊类型。启用开关已随符号页定制一起迁入符号页四级页
+           （只控制符号层，语言键盘定制不受其影响）。 -->
+      <div class="rows">
+        <div class="row" id="spaceHoldRow" data-keywords="语音 长按空格 麦克风 剪贴板 表情 编辑 控制键 关闭 定制 voice hold space clipboard favorites edit control custom">
+          <span class="row-label"><span data-i18n="voice.holdSpace">长按空格</span><small id="spaceHoldSummary">语音输入</small></span>
+          <button class="btn" id="spaceHoldEdit" type="button" data-i18n="ck.space.edit">编辑动作</button>
+        </div>
+      </div>
+    </section>
+    <!-- 语言键盘定制入口：每个语言键盘一个四级页（布局预览 + 点键改
+         角标/上滑/下滑）；双拼不分方案存一份。 -->
+    <section class="card" aria-labelledby="ckLangHead">
+      <div class="section-heading"><h2 id="ckLangHead" data-i18n="ck.lang.title">语言键盘</h2></div>
+      <div class="rows" id="ckLangRows">
+        <div class="row" data-cklang="pinyin" data-keywords="全拼 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.pinyin">全拼键盘</span><small id="cklangCount-pinyin">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="dp" data-keywords="双拼 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.dp">双拼键盘</span><small id="cklangCount-dp">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="english" data-keywords="英文 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.english">英文键盘</span><small id="cklangCount-english">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="french" data-keywords="法语 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.french">法语键盘</span><small id="cklangCount-french">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="russian" data-keywords="俄语 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.russian">俄语键盘</span><small id="cklangCount-russian">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </section>
+    <!-- #112 键盘符号栏定制（2026-11-15 二轮：三键盘独立入口独立页面，
+         用户裁定一页三段塞不下）。数据挂同一份定制 JSON 的 t9Strip/
+         strokeStrip/inkStrip 字段（saveCustom 对多余字段宽松，native 校验
+         只盯 rows）。 -->
+    <section class="card" aria-labelledby="ckT9Head">
+      <div class="section-heading"><h2 id="ckT9Head" data-i18n="ck.t9.title">键盘符号栏</h2></div>
+      <div class="rows">
+        <div class="row" id="ckT9StripEntry" data-keywords="T9 九宫格 符号栏 左侧 定制 排序 拖动">
+          <span class="row-label"><span data-i18n="ck.t9.entryT9">T9 九宫格符号栏</span><small id="ckT9StripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" id="ckStrokeStripEntry" data-keywords="笔画 符号栏 左侧 定制 排序 拖动">
+          <span class="row-label"><span data-i18n="ck.t9.entryStroke">笔画键盘符号栏</span><small id="ckStrokeStripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" id="ckInkStripEntry" data-keywords="手写 符号栏 滚动列 定制 排序 拖动">
+          <span class="row-label"><span data-i18n="ck.t9.entryInk">手写键盘符号栏</span><small id="ckInkStripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </section>
+    <!-- 「定制」符号页（原有 tab 迁入四级页）：关闭符号页定制时整卡
+         隐藏（开关在符号页内，renderCustom 按 state 显隐）。 -->
+    <section class="card" id="ckSymCard" aria-labelledby="ckSymHead">
+      <div class="section-heading"><h2 id="ckSymHead" data-i18n="ck.sym.title">符号键盘</h2></div>
+      <div class="rows">
+        <div class="row" id="ckSymbolEntry" data-keywords="符号 定制 剪贴板 收藏 常用语">
+          <span class="row-label"><span data-i18n="ck.sym.entry">「定制」符号页</span><small data-i18n="ck.sym.hint">点按修改，长按移动/删除</small></span>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="page" data-page="cksymbol" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.sym.pageTitle">「定制」符号页</h2>
+  </header>
+  <main>
+    <section class="card">
+      <div class="rows">
+        <label class="row switch-row" for="customEnabled">
+          <span class="row-label"><span data-i18n="input.custom.enabled">启用符号页定制</span><small id="ckStatus">未定制</small></span>
+          <input type="checkbox" id="customEnabled" class="toggle">
+        </label>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="ckRowsHead">
+      <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键：点按修改，长按可移动/删除</h2></div>
+      <div id="ckEditBar" class="ck-edit-bar" hidden>
+        <span class="ck-edit-hint" data-i18n="ck.editBar.hint">拖动移动，点x删除</span>
+        <button class="btn" id="ckEditDone" type="button" data-i18n="ck.editBar.done">完成</button>
+      </div>
+      <div id="ckRowList" aria-live="polite"></div>
+      <p class="hint" data-i18n="ck.quick.title.hint">先点一行里的「＋」，或在下面常用键里一键添加。</p>
+    </section>
+    <details class="card ck-json-fold">
+      <summary data-i18n="ck.json.title">高级</summary>
+      <p class="hint" data-i18n="ck.json.hint">编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。</p>
+      <label class="field-label" for="customJson" data-i18n="input.custom.jsonLabel">定制 JSON（{"version":1,"rows":[[{"t":"键面","tap":"点击输出","note":"备注"}]]}）</label>
+      <textarea id="customJson" rows="6" spellcheck="false" data-i18n-placeholder="input.custom.jsonPlaceholder" placeholder="粘贴定制 JSON"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="btnSaveCustom" type="button" data-i18n="action.saveCustom">保存定制</button>
+        <button class="btn" id="btnCustomTemplate" type="button" data-i18n="action.insertTemplate">插入实用模板</button>
+        <button class="btn" id="btnCustomTemplateDev" type="button" data-i18n="action.insertTemplateDev">开发者模板</button>
+        <button class="btn" id="btnCustomDocs" type="button" data-i18n="action.viewDocs">查看说明</button>
+        <span class="save-note" id="customNote" role="status" aria-live="polite"></span>
+      </div>
+    </details>
+  </main>
+
+  <!-- 保存条：页内流式布局（page = header + 滚动 main + 本条），滚动
+       区域就是保存条之上的可见空间——不 fixed、不遮挡、无需垫层
+       （fixed+垫层挡住 JSON 卡，用户两轮实录）。分页各自保存
+       （2026-10-12 用户裁定）：保存条只随符号页/语言键盘页走，首页
+       不显示。 -->
+  <div class="ck-save-bar" id="ckSaveBar">
+    <span id="ckDirtyHint" class="ck-dirty-hint" hidden data-i18n="ck.dirty">有未保存的修改</span>
+    <button class="btn" id="ckSave" type="button" data-i18n="ck.save">保存</button>
+    <span class="save-note" id="ckSaveNote" role="status" aria-live="polite"></span>
+  </div>
+</div>
+
+<div class="page" data-page="cklang" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" id="cklangTitle">全拼键盘</h2>
+    <button class="btn" id="cklangReset" type="button" data-i18n="ck.lang.reset">全部恢复</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.lang.hint1">点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。</p>
+      <div id="cklangKb" class="ck-lang-kb"></div>
+      <p class="hint" data-i18n="ck.lang.hint2">分词 / 退格 / 123 / 中英 / 回车不可定制；空格长按沿用「长按空格动作」（跨键盘统一）。</p>
+    </section>
+  </main>
+</div>
+
+<!-- #112 键盘符号栏编辑页 ×3（2026-11-15 二轮：独立入口独立页面，拖动
+     排序替代 ↑↓）。列表/添加行/计数由 JS 渲染（renderStripPage(kind)）；
+     拖动会话 beginStripRowDrag（codex 方案 2026-11-15）。 -->
+<div class="page ck-strip-page" data-page="ckt9strip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitleT9">T9 符号栏</h2>
+    <button class="btn" id="ckt9Reset" type="button" data-i18n="ck.t9.resetOne">恢复默认</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hintT9">九宫格键盘空闲时左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除；打字中该列临时显示拼音音节，与符号栏互不影响。</p>
+      <div class="strip-list" id="ckt9List"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span><small id="ckt9Count"></small></span>
+        <span class="ck-row2-ctl" style="display:flex;gap:8px;">
+          <input type="text" id="ckt9AddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="ckt9AddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="page ck-strip-page" data-page="ckstrokestrip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitleStroke">笔画符号栏</h2>
+    <button class="btn" id="ckstrokeReset" type="button" data-i18n="ck.t9.resetOne">恢复默认</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hintStroke">笔画键盘左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除。</p>
+      <div class="strip-list" id="ckstrokeList"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span><small id="ckstrokeCount"></small></span>
+        <span class="ck-row2-ctl" style="display:flex;gap:8px;">
+          <input type="text" id="ckstrokeAddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="ckstrokeAddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="page ck-strip-page" data-page="ckinkstrip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitleInk">手写符号栏</h2>
+    <button class="btn" id="ckinkReset" type="button" data-i18n="ck.t9.resetOne">恢复默认</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hintInk">手写键盘右侧滚动符号列，拖动 ≡ 调整顺序，点 ✕ 删除。</p>
+      <div class="strip-list" id="ckinkList"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span><small id="ckinkCount"></small></span>
+        <span class="ck-row2-ctl" style="display:flex;gap:8px;">
+          <input type="text" id="ckinkAddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="ckinkAddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="page" data-page="licenses" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="about" data-i18n-aria="nav.backAbout" aria-label="返回关于">‹</button>
+    <h2 class="page-title" data-i18n="page.licenses">开源许可与致谢</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-license-self" aria-labelledby="licenseSelfTitle">
+      <div class="section-heading"><h2 id="licenseSelfTitle" data-i18n="licenses.self.title">本应用许可</h2><span class="eyebrow">GPL-3.0</span></div>
+      <p class="hint" data-i18n="licenses.self.note">Feelime 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。</p>
+    </section>
+
+    <section class="card" id="sec-license-components" aria-labelledby="licenseComponentsTitle">
+      <div class="section-heading"><h2 id="licenseComponentsTitle" data-i18n="licenses.components.title">致谢组件</h2><span class="eyebrow" data-i18n="licenses.components.badge">开源</span></div>
+      <p class="hint" data-i18n="licenses.thanks">Feelime 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。</p>
+      <div class="rows">
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>rime-frost 白霜拼音</b><span class="license-badge">GPL-3.0</span></span>
+            <small><span data-i18n="licenses.cmp.frost">中文基底词库（语料词频重统）</span> · <a href="https://github.com/gaboolic/rime-frost" target="_blank" rel="noopener">github.com/gaboolic/rime-frost</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>librime</b><span class="license-badge">BSD-3</span></span>
+            <small><span data-i18n="licenses.cmp.librime">中文输入引擎（内嵌 Boost/OpenCC/marisa-trie 等）</span> · <a href="https://github.com/rime/librime" target="_blank" rel="noopener">github.com/rime/librime</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>Rime luna-pinyin · prelude · essay</b><span class="license-badge">LGPL-3.0</span></span>
+            <small><span data-i18n="licenses.cmp.rimedata">Rime 方案与数据文件</span> · <a href="https://github.com/rime" target="_blank" rel="noopener">github.com/rime</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>sherpa-onnx</b><span class="license-badge">Apache-2.0</span></span>
+            <small><span data-i18n="licenses.cmp.sherpa">离线语音识别运行时与模型</span> · <a href="https://github.com/k2-fsa/sherpa-onnx" target="_blank" rel="noopener">github.com/k2-fsa/sherpa-onnx</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>Mozc</b><span class="license-badge">BSD-3</span></span>
+            <small><span data-i18n="licenses.cmp.mozc">日文引擎（Abseil/Protobuf/zlib 等随附）</span> · <a href="https://github.com/google/mozc" target="_blank" rel="noopener">github.com/google/mozc</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>Hunspell</b><span class="license-badge">MPL-1.1</span></span>
+            <small><span data-i18n="licenses.cmp.hunspell">拼写检查（法/俄词典随附）</span> · <a href="https://github.com/hunspell/hunspell" target="_blank" rel="noopener">github.com/hunspell/hunspell</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>OkHttp · Okio</b><span class="license-badge">Apache-2.0</span></span>
+            <small><span data-i18n="licenses.cmp.okhttp">模型下载网络（仅下载时联网）</span> · <a href="https://github.com/square/okhttp" target="_blank" rel="noopener">github.com/square/okhttp</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name" data-i18n="licenses.cmp.othersName">其余内嵌依赖</span>
+            <small data-i18n="licenses.cmp.others">Commons Compress、yaml-cpp、LevelDB、RapidJSON 等 · 见下方完整说明</small>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="sec-license-full" aria-labelledby="licenseFullTitle">
+      <div class="section-heading"><h2 id="licenseFullTitle" data-i18n="licenses.full.title">完整说明</h2><span class="eyebrow" data-i18n="about.legalBadge">许可</span></div>
+      <details>
+        <summary data-i18n="about.expandNotices">展开完整说明</summary>
+        <pre class="notices" id="noticesText"></pre>
+      </details>
+    </section>
+  </main>
+</div>
+
+<!-- Test field intentionally stays a real input so the IME is exercised. -->
+<div class="page" data-page="test" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.test">输入测试</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-test" aria-labelledby="testTitle">
+      <div class="section-heading"><h2 id="testTitle" data-i18n="test.title">试输入一段文字</h2><span class="eyebrow" data-i18n="test.badge">测试</span></div>
+      <!-- 多行 textarea（反馈：测试框要支持多行）——rows 起步 4 行，
+           JS 随内容自适应增高，IME 弹出时窗口压缩也完整可见。 -->
+      <textarea id="testInput" rows="4" data-i18n-placeholder="test.placeholder" data-i18n-aria="test.title" aria-label="试输入一段文字" placeholder="点这里唤起 Feelime 试一试" autocomplete="off"></textarea>
+      <p class="hint" data-i18n="test.note">输入内容只留在当前编辑框中。</p>
+    </section>
+  </main>
+</div>
+
+    <!-- 脏态离开确认（页内实现：confirm 依赖 WebChromeClient，不支持时
+         恒 false 会把用户锁死在页面里）。 -->
+    <div id="ckLeaveModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.confirmLeaveTitle">未保存的修改</span></div>
+        <p class="ck-leave-text" data-i18n="ck.confirmLeave">有未保存的修改，离开将丢失。仍要离开吗？</p>
+        <div class="ck-modal-foot">
+          <button id="ckLeaveGo" type="button" class="btn ck-btn-danger" data-i18n="ck.leaveGo">丢弃并离开</button>
+          <button id="ckLeaveStay" type="button" class="btn primary" data-i18n="ck.leaveStay">留下</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑态系统 BACK 确认（2026-10-04 用户裁定）：放弃编辑（退出编辑
+         态，已做改动保留为脏态）/继续编辑。 -->
+    <div id="ckBackModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckBackModalMask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.back.title">正在编辑按键</span></div>
+        <p class="ck-leave-text" data-i18n="ck.back.text">还在编辑模式（拖动移动、点 x 删除）。放弃编辑还是继续？</p>
+        <div class="ck-modal-foot">
+          <button id="ckBackGo" type="button" class="btn ck-btn-danger" data-i18n="ck.back.go">放弃编辑</button>
+          <button id="ckBackStay" type="button" class="btn primary" data-i18n="ck.back.stay">继续编辑</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- × 删除二次确认（2026-10-04 用户裁定：误触即真删太狠）。 -->
+    <div id="ckDelModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckDelModalMask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.del.title">删除按键</span></div>
+        <p class="ck-leave-text" id="ckDelText">确定删除吗？</p>
+        <div class="ck-modal-foot">
+          <button id="ckDelGo" type="button" class="btn ck-btn-danger" data-i18n="ck.del.go">删除</button>
+          <button id="ckDelCancel" type="button" class="btn primary" data-i18n="ck.del.cancel">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑 popup（bottom sheet）：点已有键/「＋」都从这里改，apply
+         后关闭、列表与预览当场刷新（每个动作的变化必须在当前屏可见）。 -->
+    <div id="ckModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckModalMask"></div>
+      <div class="ck-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="ckModalTitle">
+        <div class="ck-modal-head">
+          <span id="ckModalTitle" data-i18n="ck.edit.title">编辑按键</span>
+          <button id="ckModalCancel" type="button" class="ck-modal-x" aria-label="取消" data-i18n-aria="ck.cancel">×</button>
+        </div>
+        <div id="ckEditBody"></div>
+        <div class="ck-modal-foot">
+          <span class="save-note" id="ckEditNote" role="status" aria-live="polite"></span>
+          <button class="btn primary" id="ckApply" type="button" data-i18n="ck.apply">确定</button>
+        </div>
+      </div>
+<script>window.__feelimeES = 0;</script>
+<script src="dp-data.js"></script>
+<script src="settings.js"></script>
+<!-- #90 旧 WebView 同 keyboard/index.html 的探针：settings.js 解析失败
+     （ES2020 语法被拒）时改载 esbuild chrome66 转译副本（见
+     scripts/generate-legacy-web.sh）。dp-data.js 是生成数据，语法恒旧。 -->
+<script>
+    if (!window.__feelimeES) {
+        document.write('<script src="settings.legacy.js"><\/script>');
+    }
+</script>
+</body>
+</html>
