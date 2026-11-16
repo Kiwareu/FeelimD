@@ -22,7 +22,7 @@ class ScelImporterTest {
             Triple(listOf(0, 1, 2), listOf("你好吗" to 50), 0),
         ),
     ): ByteArray {
-        val buf = ByteBuffer.allocate(0x4000).order(ByteOrder.LITTLE_ENDIAN)
+        val buf = ByteBuffer.allocate(0x400000).order(ByteOrder.LITTLE_ENDIAN)
         buf.put(byteArrayOf(0x40, 0x15, 0x00, 0x00))
         buf.position(0x120)
         buf.putInt(groups.size)
@@ -101,7 +101,9 @@ class ScelImporterTest {
         )
         val result = ScelImporter.parse(
             ByteArrayInputStream(buildScel(groups = groups)),
-            existing = setOf("新词" to "xinci"),
+            // 去重按（词，码）对：已有的 新词/nihao 不再进，码不同的
+            // 同名异音词仍可进（多音字是合法的新条目）。
+            existing = setOf("新词" to "nihao"),
         )
         assertEquals(listOf("你好" to "nihao"), result.items)
     }

@@ -108,7 +108,8 @@ class QcelImporterTest {
         )
         val result = QcelImporter.parseBytes(
             buildQcel(groups = groups),
-            existing = setOf("新词" to "xinci"),
+            // 去重按（词，码）对：已有的 新词/nihao 不再进。
+            existing = setOf("新词" to "nihao"),
         )
         assertEquals(listOf("你好" to "nihao"), result.items)
     }

@@ -79,6 +79,10 @@ object ScelImporter {
         }
         val pyTable = HashMap<Int, String>(pyCount)
         repeat(pyCount) {
+            // 先验长度再读：截断在表头的 .scel 之前在这里抛
+            // IndexOutOfBoundsException 直出，调用方只认
+            // ScelFormatException（DICT_SCEL_INVALID）。
+            if (pos + 4 > bytes.size) throw ScelFormatException("truncated pinyin table")
             val idx = readU16(buf, pos)
             pos += 2
             val size = readU16(buf, pos)

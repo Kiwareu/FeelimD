@@ -30,9 +30,9 @@ class AbbrevOfSyllablesTest {
     /** 长句首字母连打（3.74.11，B 项澄清）：6–10 字整句的首字母序列。 */
     @Test
     fun longSentenceAbbrevs() {
-        // 我今天晚上想吃火锅（9 字）
+        // 我今天晚上想吃火锅（9 字；sh/ch 各占两字母，共 11 字符）
         assertEquals(
-            "wjtwsxchg",
+            "wjtwshxchhg",
             CustomPhraseStore.abbrevOfSyllables(
                 listOf("wo", "jin", "tian", "wan", "shang", "xiang", "chi", "huo", "guo")
             )
