@@ -2658,8 +2658,8 @@ test('rename dual recognition (3.74.13): old and new names both work', () => {
     assert(bridgeSrc.includes('fetchGithubWithLegacyFallback'), 'default-source checks fall back to the legacy repo');
     // 发布文件名本版不动：仍发旧名，3.74.14 再翻新。
     const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build-test-apk.yml'), 'utf8');
-    assert(workflow.includes('ZIP="feelime-keyboard-$VERSION.zip"'), 'keyboard zip publish name unchanged this version');
-    assert(workflow.includes('APK="Feelime-$VERSION.apk"'), 'APK publish name unchanged this version');
+    assert(workflow.includes('ZIP="feelimd-keyboard-$VERSION.zip"'), 'keyboard zip publish name is the renamed one');
+    assert(workflow.includes('APK="FeelimD-$VERSION.apk"'), 'APK publish name is the renamed one');
     assert(workflow.includes("printf 'FeelimD %s"), 'release title uses the new name');
 });
 

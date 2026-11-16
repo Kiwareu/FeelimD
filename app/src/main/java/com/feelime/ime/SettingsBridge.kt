@@ -4134,9 +4134,9 @@ class SettingsBridge(
     @JavascriptInterface
     fun openGithub(page: String, token: String) = guarded(token) {
         val url = when (page) {
-            "issues" -> "https://github.com/Kiwareu/feelime/issues"
+            "issues" -> "https://github.com/Kiwareu/FeelimD/issues"
             "upstream" -> "https://github.com/feelime/feelime"
-            else -> "https://github.com/Kiwareu/feelime"
+            else -> "https://github.com/Kiwareu/FeelimD"
         }
         runCatching {
             context.startActivity(

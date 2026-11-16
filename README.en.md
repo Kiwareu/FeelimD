@@ -4,7 +4,7 @@ This repository is a modified, unofficial build based on upstream
 [Feelime](https://github.com/feelime/feelime). It is not the official
 original. Source and releases are under [GPL-3.0](LICENSE). Upstream
 LICENSE and copyright notices are kept.
-This fork: <https://github.com/Kiwareu/feelime>
+This fork: <https://github.com/Kiwareu/FeelimD>
 
 **FeelimD** is an open-source, fully offline keyboard for Android with a
 modern interface and built-in voice input. The keyboard area is rendered

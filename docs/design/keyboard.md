@@ -875,13 +875,15 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   检查、保留手动入口。
 - debug 构建可放行 `http://` 内网源与未签名包（红色警示标明）；
   release 一律 HTTPS + 强制签名。
-- 品牌改名双认（3.74.13）：键盘包文件名同时认 `feelime-keyboard-` 与
-  `feelimd-keyboard-` 两种前缀；APK 文件名同时认 `Feelime-` 与 `FeelimD-`；
-  下载白名单同时放行新旧两个仓库前缀；默认更新源指向新仓库地址
-  `Kiwareu/FeelimD`，改名落地前新地址 404 时回退旧地址再试一次。
-  GitHub 仓库改名后 API 返回 301，传输层不自动跟随重定向
+- 品牌改名已完成（3.74.14）：仓库已改名 `Kiwareu/FeelimD`；发布文件名已翻新
+  为 `feelimd-keyboard-<版本>.zip` 与 `FeelimD-<版本>.apk`。为兼容旧版
+  release，键盘包文件名仍同时认 `feelime-keyboard-` 与 `feelimd-keyboard-`
+  两种前缀；APK 文件名仍同时认 `Feelime-` 与 `FeelimD-`；下载白名单仍
+  同时放行新旧两个仓库前缀；默认更新源指向新仓库地址 `Kiwareu/FeelimD`，
+  旧地址作回退。GitHub 仓库改名后 API 返回 301，传输层不自动跟随重定向
   （`instanceFollowRedirects = false`），由 `GithubReleaseSource` 自行
-  跟随同域重定向（最多 3 跳，跨域不跟随）。发布文件名本版不动，3.74.14 再翻新。
+  跟随同域重定向（最多 3 跳，跨域不跟随）。≤3.74.12 旧版只认旧文件名，
+  3.74.14 发布后旧版更新检测报 NO_INSTALLABLE_ASSET，需手动装一次新版 APK 跨过去。
 
 ### 8.2 包结构与校验
 

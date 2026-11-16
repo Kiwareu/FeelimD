@@ -598,7 +598,7 @@ const I18N = {
         "update.autoCheck": "启动时自动检查更新",
         "update.autoCheckHint": "每天最多检查一次；清空更新源后自动检查停用",
         "update.urlLabel": "键盘包地址（联网下载）",
-        "update.urlPlaceholder": "https://example.com/feelime-keyboard.zip",
+        "update.urlPlaceholder": "https://example.com/feelimd-keyboard.zip",
         "action.checkUpdate": "检查更新",
         "action.install": "联网下载安装",
         "action.importLocal": "从本地 ZIP 导入",
@@ -1517,7 +1517,7 @@ const I18N = {
         "update.autoCheck": "Check for updates when settings opens",
         "update.autoCheckHint": "At most once a day; clearing the source disables automatic checks",
         "update.urlLabel": "Keyboard package URL (network download)",
-        "update.urlPlaceholder": "https://example.com/feelime-keyboard.zip",
+        "update.urlPlaceholder": "https://example.com/feelimd-keyboard.zip",
         "action.checkUpdate": "Check for updates",
         "action.install": "Download and install",
         "action.importLocal": "Import local ZIP",
@@ -7182,8 +7182,8 @@ $("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
 // 关于页「检查更新」：Play 渠道跳商店详情页（版本/更新由商店管理）；
 // 直装渠道查本 fork 的 GitHub Releases——ghproxy
 // 镜像先行（国内可达），直连回退（海外更快）。双认版：新旧两个仓库
-// 地址都问（新仓库在前，改名前新地址 404 时回落旧仓库；改名后旧
-// 地址 301 到新仓库，fetch 自动跟随）。WebView 的 file://
+// 地址都问（新仓库在前；旧地址 301 到新仓库，fetch 自动跟随，
+// 仍作回退）。WebView 的 file://
 // origin 依赖目标端 ACAO:*（GitHub API 满足；镜像若拦截 CORS 则该源
 // 失败，两个源都挂才报错）。
 // 3.74.11 修正（之前四处全错，检测恒报“已是最新”）：
@@ -7240,7 +7240,7 @@ async function checkGithubUpdate() {
             setNote("aboutNote", t("update.available", [tag, current]));
             latestReleaseAssets = {};
             (rel.assets || []).forEach(asset => {
-                // fork 只发一个完整包（Feelime-<版本>.apk，改名后 FeelimD-<版本>.apk）。
+                // fork 只发一个完整包（FeelimD-<版本>.apk）。
                 if (/^Feelim[eD]-.*\.apk$/.test(asset.name || "") && asset.browser_download_url) {
                     latestReleaseAssets.full = asset.browser_download_url;
                 }

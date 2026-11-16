@@ -166,7 +166,7 @@ jobs:
 
   # Fork 自有键盘热更通道 + 正式版发布：把当前键盘打包成签名 zip，
   # 连同本次构建的测试 APK 一起发到本仓库的 keyboard-<版本> release 上。
-  # release 里只含一个 feelime-keyboard-<版本>.zip 键盘资产（应用内更新
+  # release 里只含一个 feelimd-keyboard-<版本>.zip 键盘资产（应用内更新
   # 检查读的就是 releases/latest，只认这个命名）；APK 是附加资产，
   # 不影响更新检查。release 正文取 CHANGELOG.md 里对应版本的章节。
   # 签名身份：FEELIME_SIGNING_KEY（Ed25519 私钥 PEM 内容）+
@@ -201,8 +201,8 @@ jobs:
           set -euo pipefail
           VERSION=$(tr -d '\n' < app/src/main/assets/keyboard/VERSION)
           TAG="keyboard-$VERSION"
-          ZIP="feelime-keyboard-$VERSION.zip"
-          APK="Feelime-$VERSION.apk"
+          ZIP="feelimd-keyboard-$VERSION.zip"
+          APK="FeelimD-$VERSION.apk"
           cp /tmp/feelime-apk/app-direct-debug.apk "$APK"
           # release 正文：CHANGELOG.md 里对应版本的章节；没有就用默认说明。
           NOTES=/tmp/release-notes.md

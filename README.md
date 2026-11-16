@@ -2,7 +2,7 @@
 
 本仓库是上游 [Feelime](https://github.com/feelime/feelime) 的修改版，不是官方原版。
 源码与发布均以 [GPL-3.0](LICENSE) 提供，并保留上游 LICENSE 与版权声明。
-本 fork：<https://github.com/Kiwareu/feelime>
+本 fork：<https://github.com/Kiwareu/FeelimD>
 
 > **FeelimD** is an open-source, fully offline Android keyboard with modern
 > visuals and built-in voice input. Everything — keystrokes, candidates,

@@ -211,7 +211,8 @@ class GithubReleaseSource(
         // when someone happened to embed a signature in it: this adapter only
         // sees metadata, while the package verifier owns signature truth.
         // Both the old (feelime-keyboard-) and the new (feelimd-keyboard-)
-        // prefixes are accepted while the repo rename is rolling out.
+        // prefixes are accepted: old releases still carry the old name,
+        // new releases carry the new name.
         private val KEYBOARD_ZIP_NAME = Regex(
             "^(?:feelime|feelimd)-keyboard-(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)" +
                 "(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?" +
