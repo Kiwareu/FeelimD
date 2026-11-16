@@ -259,16 +259,16 @@
         "暂无候选": "No candidates",
         "剪贴板只留在这台手机上，不上传、不进云备份。条数不另设上限；全部正文大约 32MB，再大就存不下。": "Clipboard stays on this phone. It is not uploaded and is not in cloud backup. There is no fixed item cap; about 32MB of text total is the on-device ceiling.",
         "条": "clips",
-        "全部": "All",
-        "未分组": "Ungrouped",
-        "＋分组": "＋ Group",
-        "分组名": "Group name",
         "加入": "Add",
-        "移到分组": "Move to group",
         "链接": "Link",
         "邮箱": "Email",
-        "号码": "Number",
+        "验证码": "Code",
         "数字": "Digits",
+        "单词": "Word",
+        "文字": "Text",
+        "展开": "Expand",
+        "全文": "Full text",
+        "选择要粘贴的片段": "Choose a piece to paste",
         "收入自造词": "Save to my words",
         "已收入自造词": "Saved to my words",
         "暂无常用语，点右上角「＋添加」": "No saved phrases. Tap Add to create one.",
@@ -391,7 +391,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.9';
+    const KEYBOARD_VERSION = '3.74.10';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1656,8 +1656,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.itemMenuOpen = null;
             this.panelEditItem = null;
             this.clipboardItems = [];
-            this.clipboardGroups = [];
-            this.clipGroupFilter = 'all';
+            // 3.74.10：剪贴板分组已移除（想留的进常用语）；放大拆分视图
+            // 当前打开的条目（null = 未打开）。
+            this.clipSplitItem = null;
             this.clipSearch = '';
             this.favoriteItems = [];
             this.popup = null;
@@ -1759,6 +1760,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // power_saving，hello 下发；开时 applyGlass 强制磨砂 0/圆角
             // 收小，body.power-saving 关按键/候选动画。
             this.powerSaving = false;
+            // 拼音纠错（3.74.10，默认开）：真相源是 native pref
+            // pinyin_correction，hello 下发；打错拼音时以 fix: overlay
+            // 把纠错候选追加进同一池，点选直接上屏。correctionFor 是
+            // 上次查过纠错的 raw，同一输入只查一次。
+            this.pinyinCorrection = true;
+            this.correctionFor = '';
+            this.correctionCandidates = [];
             // #63 双击 Shift 锁定大写（与长按锁定共存；默认开，native
             // pref double_shift_lock 经 hello 下发）。
             this.doubleShiftLock = true;
@@ -2268,6 +2276,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('phraseCardSave').addEventListener('click', () => this.savePanelEditor());
             document.getElementById('phraseCardCancel').addEventListener('click', () => this.closePanelEditor());
             document.getElementById('phraseCardClose').addEventListener('click', () => this.closePanelEditor());
+            // 剪贴板拆分放大视图的关闭按钮（3.74.10）。
+            document.getElementById('clipSplitClose').addEventListener('click', () => this.closeClipSplit());
             // 位次 stepper - exact code matches splice into their
             // 1-based candidate slot (min 1; the pool clamps large values).
             const nudgeRank = step => {
@@ -2348,6 +2358,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const ctrlToolBtn = document.getElementById('ctrlTool');
             if (ctrlToolBtn) ctrlToolBtn.addEventListener('click', () =>
                 this.setControlView(!this.ctrlView));
+            // 全局震动（3.74.10）：工具箱按钮点按也震一次同强度——委托
+            // 到两行容器（按钮在候选栏/工具箱行之间换位，委托一次兜住），
+            // 只认 .tool（候选字按钮不在此列，走候选点按的反馈）。
+            ['candidateBar', 'toolboxRow'].forEach(id => {
+                const bar = document.getElementById(id);
+                if (bar) bar.addEventListener('click', event => {
+                    if (event.target && event.target.closest &&
+                        event.target.closest('.tool')) this.nativeKeyFeedback();
+                });
+            });
             this.bindCtrlLayer();
             // An explicit close affordance on the card (the
             // outside-tap dismissal stays as the second path).
@@ -2679,6 +2699,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 document.getElementById('modeMenu').classList.contains('open') ||
                 document.getElementById('itemMenu').classList.contains('open') ||
                 document.getElementById('phraseCard').classList.contains('open') ||
+                // 剪贴板拆分放大视图（3.74.10）：同样是 band 区浮层卡片，
+                // 不登记 native 就收不到点按。
+                document.getElementById('clipSplitCard').classList.contains('open') ||
                 // The height card lives in the band too - without
                 // this line every real touch on it fell through to the host
                 // app (±/strip/cancel all dead under a finger; synthetic
@@ -7718,9 +7741,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         layoutChrome() {
             const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
             /* 竖屏行距 5→7px，三道缝多 6px，从内容预算里扣掉，避免末行被挤出。 */
-            // 3.74.9：工具箱行独立成行，竖屏 +52 / 横屏 +48（40px 行高
-            // + 竖屏上下 margin 2+10 / 横屏 4+4）。
-            return (this.landscape ? 130 : 144) + bandExtra;
+            // 3.74.10：候选栏与工具箱行统一 40px（竖屏）/ 34px（横屏），
+            // 行间距收敛为 6px 一致节奏：竖屏 48+48+18+22=136，横屏
+            // 56（34+18+4）+42（34+4+4）+20=118。横屏行高不再被
+            // 40px 双行顶到 20px 以下（3.74.9 实机：候选栏比键行还高）。
+            return (this.landscape ? 118 : 136) + bandExtra;
         }
 
         /** Read the native view's total height back as content height. The
@@ -10593,6 +10618,94 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
         }
 
+        /** 拼音纠错（3.74.10，design §1）：输入串按音节切分后若含非法音节
+         *  （切不开的单字母残段）或引擎候选为空，对整串做编辑距离 1 展开，
+         *  经桥查候选后以 fix: overlay 追加进池。按 raw 缓存：同一输入
+         *  只查一次；池重算时直接复用。返回纠错候选数组（可能为空）。 */
+        refreshPinyinCorrection() {
+            const raw = String(this.lastRawInput || '').replace(/[^a-z]/gi, '').toLowerCase();
+            if (this.mode !== 'pinyin' || this.pinyinCorrection !== true ||
+                raw.length < 2 || raw.length > 12 ||
+                typeof Native.queryPinyinCandidates !== 'function') {
+                this.correctionFor = raw;
+                this.correctionCandidates = [];
+                return [];
+            }
+            if (raw === this.correctionFor) return this.correctionCandidates;
+            this.correctionFor = raw;
+            this.correctionCandidates = [];
+            const pieces = this.pinyinPieces(raw);
+            const clean = pieces.length > 0 &&
+                pieces.every(piece => FULL_PINYIN_SYLLABLES_SET.has(piece));
+            const engineEmpty = !(this.expandCandidates || [])
+                .some(candidate => !String(candidate.id).startsWith('fav:') &&
+                    !String(candidate.id).startsWith('dyn:') &&
+                    !String(candidate.id).startsWith('alt:') &&
+                    !String(candidate.id).startsWith('fix:'));
+            if (clean && !engineEmpty) return [];
+            const variants = this.pinyinCorrectionVariants(raw);
+            const seen = new Set();
+            variants.forEach(variant => {
+                let found = [];
+                try {
+                    found = JSON.parse(Native.queryPinyinCandidates(variant, this.token) || '[]');
+                } catch (e) { found = []; }
+                if (!Array.isArray(found)) return;
+                found.slice(0, 3).forEach((text, index) => {
+                    const word = String(text || '');
+                    if (!word || seen.has(word)) return;
+                    seen.add(word);
+                    this.correctionCandidates.push({
+                        id: `fix:${variant}:${index}`, text: word, fix: true, variant,
+                    });
+                });
+            });
+            return this.correctionCandidates.slice(0, 6);
+        }
+
+        /** 编辑距离 1 变体：换位 > 删 > 改 > 增，只保留能干净切成合法音节
+         *  的变体（与原串不同）。返回至多 3 个变体拼音串；够 3 个即停，
+         *  不再展开更贵的改/增。 */
+        pinyinCorrectionVariants(raw) {
+            const out = [];
+            const seen = new Set([raw]);
+            const letters = 'abcdefghijklmnopqrstuvwxyz';
+            const clean = variant => {
+                const pieces = this.pinyinPieces(variant);
+                return pieces.length > 0 &&
+                    pieces.every(piece => FULL_PINYIN_SYLLABLES_SET.has(piece));
+            };
+            const add = variant => {
+                if (!variant || seen.has(variant)) return;
+                seen.add(variant);
+                if (clean(variant)) out.push(variant);
+            };
+            // 换位（最常见打错：hao→hoa）
+            for (let i = 0; i + 1 < raw.length; i++) {
+                add(raw.slice(0, i) + raw[i + 1] + raw[i] + raw.slice(i + 2));
+            }
+            // 删一字母
+            for (let i = 0; i < raw.length; i++) {
+                add(raw.slice(0, i) + raw.slice(i + 1));
+            }
+            if (out.length >= 3) return out.slice(0, 3);
+            // 改一字母
+            for (let i = 0; i < raw.length; i++) {
+                for (const c of letters) {
+                    if (c !== raw[i]) add(raw.slice(0, i) + c + raw.slice(i + 1));
+                }
+                if (out.length >= 3) return out.slice(0, 3);
+            }
+            // 增一字母
+            for (let i = 0; i <= raw.length; i++) {
+                for (const c of letters) {
+                    add(raw.slice(0, i) + c + raw.slice(i));
+                }
+                if (out.length >= 3) return out.slice(0, 3);
+            }
+            return out.slice(0, 3);
+        }
+
         /** 常用语注入 (design §7.4): favorites whose input code
          * prefixes the raw keys join the shared pool. Exact code matches take
          * their configured 1-based rank slot (default 1 = the pool
@@ -10617,7 +10730,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const rawEngine = this.expandCandidates.filter(candidate =>
                 !String(candidate.id).startsWith('fav:') &&
                 !String(candidate.id).startsWith('dyn:') &&
-                !String(candidate.id).startsWith('alt:'));
+                !String(candidate.id).startsWith('alt:') &&
+                !String(candidate.id).startsWith('fix:'));
             // 符号词条重排（issue #17 → #81）先于 overlay 组装：custom_phrase
             // 通道的符号/emoji 词在引擎侧受 initial_quality 的 0/1 悬崖支配
             // （第 1 位或沉底，weight 无法跨流微调，且不入 userdb——引擎不
@@ -10766,6 +10880,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     prevRank = item.rank;
                     prevIndex = at;
                 });
+            // 拼音纠错（3.74.10，design §1）：纠错候选排在池尾（design
+            // 「排后」），以 fix: overlay 进同一池；点选走 choosePoolCandidate
+            // 的 fix: 分支直接上屏，不进 chooseCandidate。
+            this.refreshPinyinCorrection().forEach(item => pool.push(item));
             this.expandCandidates = pool;
             // 比较同一段已有前缀，不能拿上一页的短签名与本页长签名
             // 比较；追加本身不应触发重绘。展开区关闭时留到打开再建节点。
@@ -10803,6 +10921,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 return;
             }
             if (candidate && String(candidate.id).startsWith('fav:')) {
+                this.call(() => Native.clearComposing(this.token));
+                this.call(() => Native.commitText(candidate.text, this.token));
+                return;
+            }
+            // 拼音纠错（3.74.10）：fix: overlay 候选引擎里没有，点选直接
+            // 上屏（同 fav:/dyn:），不清组合外先清组合再直发。
+            if (candidate && String(candidate.id).startsWith('fix:')) {
                 this.call(() => Native.clearComposing(this.token));
                 this.call(() => Native.commitText(candidate.text, this.token));
                 return;
@@ -11096,13 +11221,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             visible.forEach((candidate, index) => {
                 if (index < this.expandRendered) return;
                 const button = document.createElement('button');
-                button.className = index === 0 ? 'expand-candidate first' : 'expand-candidate';
+                button.className = (index === 0 ? 'expand-candidate first' : 'expand-candidate')
+                    + (candidate.fix ? ' fix' : '');
                 button.textContent = candidate.text;
                 // Native clicks only: bindTouch preventDefaults touchstart,
                 // which cancels the strip's pan .
                 let longPressed = false;
                 button.addEventListener('click', () => {
                     if (longPressed) { longPressed = false; return; }
+                    // 全局震动（3.74.10）：展开区候选点选也震一次同强度。
+                    this.nativeKeyFeedback();
                     this.choosePoolCandidate(candidate);
                 });
                 this.bindCandidateLongPress(button, candidate, () => { longPressed = true; });
@@ -11264,9 +11392,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     button.className = candidate.assoc ? 'candidate assoc'
                         : (index === 0 ? 'candidate first' : 'candidate');
                     button.textContent = candidate.text;
-                    button.addEventListener('click', () => (candidate.assoc
-                        ? this.commitAssocWord(candidate.text)
-                        : this.commitInkCandidate(candidate)));
+                    button.addEventListener('click', () => {
+                        // 全局震动（3.74.10）：候选点选也震一次同强度。
+                        this.nativeKeyFeedback();
+                        candidate.assoc
+                            ? this.commitAssocWord(candidate.text)
+                            : this.commitInkCandidate(candidate);
+                    });
                     // Native clicks only：bindTouch 会 preventDefault
                     // touchstart，正好抵掉横向拖动的取消（同引擎候选条）。
                     button.addEventListener('mousedown', event => event.preventDefault());
@@ -11316,7 +11448,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const button = document.createElement('button');
                     button.className = 'candidate assoc';
                     button.textContent = word;
-                    button.addEventListener('click', () => this.commitAssocWord(word));
+                    button.addEventListener('click', () => {
+                        this.nativeKeyFeedback();
+                        this.commitAssocWord(word);
+                    });
                     button.addEventListener('mousedown', event => event.preventDefault());
                     bar.append(button);
                 });
@@ -11336,7 +11471,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     && /^[A-Za-z][A-Za-z0-9]*$/.test(labels[index]);
                 button.className = 'candidate'
                     + (index === 0 ? ' first' : '')
-                    + (latin ? ' en-mix' : '');
+                    + (latin ? ' en-mix' : '')
+                    + (candidate.fix ? ' fix' : '');
                 button.textContent = labels[index];
                 button._poolCandidate = candidate;
                 let longPressed = false;
@@ -11345,6 +11481,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // release would otherwise also fire the pick (same guard
                     // as the favorites rows).
                     if (longPressed) { longPressed = false; return; }
+                    // 全局震动（3.74.10）：候选点选也震一次同强度。
+                    this.nativeKeyFeedback();
                     this.choosePoolCandidate(candidate);
                 });
                 this.bindCandidateLongPress(button, candidate, () => { longPressed = true; });
@@ -11826,6 +11964,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         closePanel() {
             // 「清空」若停在确认态一并撤下，重开面板不能仍挂在确认态。
             this.armPanelClear(false);
+            // 拆分放大视图随面板关闭收起，重开从空白开始。
+            this.closeClipSplit();
             // 编辑卡还开着时面板只是取材完毕回键盘：卡的输入重定向
             // （setPanelInput）继续有效，不能在这里释放。
             if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
@@ -11900,58 +12040,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             list.replaceChildren();
             const layer = document.getElementById('panelLayer');
             let items = this.panelTab === 'clipboard' ? this.clipboardItems : this.favoriteItems;
-            if (this.panelTab === 'clipboard') {
-                const bar = document.createElement('div');
-                bar.className = 'clip-groups';
-                const filters = [['all', t("全部")], ['', t("未分组")]]
-                    .concat((this.clipboardGroups || []).map(name => [name, name]));
-                filters.forEach(([id, label]) => {
-                    const chip = document.createElement('button');
-                    chip.type = 'button';
-                    chip.className = 'clip-chip' + (this.clipGroupFilter === id ? ' on' : '');
-                    chip.textContent = label;
-                    chip.addEventListener('click', event => {
-                        event.stopPropagation();
-                        this.clipGroupFilter = id;
-                        this.renderPanel();
-                    });
-                    bar.append(chip);
-                });
-                const adder = document.createElement('button');
-                adder.type = 'button';
-                adder.className = 'clip-chip';
-                adder.textContent = t("＋分组");
-                adder.addEventListener('click', event => {
-                    event.stopPropagation();
-                    if (bar.querySelector('.clip-group-input')) return;
-                    const input = document.createElement('input');
-                    input.className = 'phrase-input clip-group-input';
-                    input.maxLength = 16;
-                    input.placeholder = t("分组名");
-                    input.addEventListener('focus', () => this.setPanelInput(true));
-                    const commitName = () => {
-                        const name = input.value.trim();
-                        if (name && typeof Native.addClipboardGroup === 'function') {
-                            this.call(() => Native.addClipboardGroup(name, this.token));
-                        }
-                        if (!this.phraseCardOpen()) this.setPanelInput(false);
-                        input.remove();
-                    };
-                    input.addEventListener('keydown', event => {
-                        if (event.key === 'Enter') commitName();
-                    });
-                    input.addEventListener('blur', () => setTimeout(commitName, 180));
-                    bar.append(input);
-                    input.focus();
-                });
-                bar.append(adder);
-                list.append(bar);
-                const filter = this.clipGroupFilter;
-                if (filter === '') items = items.filter(item => !item.group);
-                else if (filter && filter !== 'all') items = items.filter(item => item.group === filter);
-            }
-            // 搜索（2026-11-16）：与分组筛选叠加（AND）——选了分组时只搜
-            // 该分组；不区分大小写（中文无大小写，拉丁按小写比对）。
+            // 搜索（2026-11-16）：只按正文子串过滤，不区分大小写
+            // （中文无大小写，拉丁按小写比对）。3.74.10 起分组已移除，
+            // 不再与分组筛选叠加。
             const q = (this.clipSearch || '').trim();
             if (q) {
                 const needle = q.toLowerCase();
@@ -12016,44 +12107,38 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const body = document.createElement('span');
                     body.className = 'clip-body';
                     body.append(preview);
+                    // 智能拆分（3.74.10）：点条目本身仍整条上屏（老习惯
+                    // 不变）；条目右侧的「展开」按钮或长按条目，打开放大
+                    // 的选择视图（片段 chips + 全文）。超长条目整条置灰、
+                    // 没有拆分入口。
                     const pieces = this.clipPieces(item.text);
-                    if (pieces.length) {
-                        const extracts = document.createElement('span');
-                        extracts.className = 'clip-extracts';
-                        pieces.forEach(piece => {
-                            const chip = document.createElement('button');
-                            chip.type = 'button';
-                            chip.className = 'clip-extract';
-                            chip.textContent = t(piece.kind) + ' ' + (piece.value.length > 28
-                                ? piece.value.slice(0, 28) + '…' : piece.value);
-                            chip.addEventListener('click', event => {
-                                event.stopPropagation();
-                                this.call(() => {
-                                    if (typeof Native.pasteText === 'function') {
-                                        Native.pasteText(piece.value, this.token);
-                                    } else {
-                                        Native.commitText(piece.value, this.token);
-                                    }
-                                });
-                                this.closePanel();
-                            });
-                            extracts.append(chip);
+                    const canSplit = !tooLong && pieces.length > 0;
+                    let longPressed = false;
+                    if (canSplit) {
+                        const expandBtn = document.createElement('button');
+                        expandBtn.type = 'button';
+                        expandBtn.className = 'clip-expand-btn';
+                        expandBtn.textContent = '⌄';
+                        expandBtn.setAttribute('aria-label', t("展开"));
+                        expandBtn.addEventListener('click', event => {
+                            event.stopPropagation();
+                            this.openClipSplit(item);
                         });
-                        body.append(extracts);
+                        row.append(body, expandBtn, remove);
+                        this.bindItemLongPress(row, () => {
+                            longPressed = true;
+                            this.openClipSplit(item);
+                        });
+                    } else {
+                        row.append(body, remove);
                     }
-                    const groupBtn = document.createElement('button');
-                    groupBtn.type = 'button';
-                    groupBtn.className = 'clip-extract';
-                    groupBtn.textContent = item.group || t("移到分组");
-                    groupBtn.addEventListener('click', event => {
-                        event.stopPropagation();
-                        this.openClipGroupMenu(item, groupBtn);
-                    });
-                    row.append(body, groupBtn, remove);
                     // Native clicks only: bindTouch's preventDefault would kill
                     // panel scrolling AND bubble a second row click on remove taps
-                    // .
-                    row.addEventListener('click', commit);
+                    // .长按后松手的 click 必须吞掉，否则会把整条贴出去。
+                    row.addEventListener('click', () => {
+                        if (longPressed) { longPressed = false; return; }
+                        commit();
+                    });
                     list.append(row);
                     return;
                 }
@@ -12633,10 +12718,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         onClipboard(payload) {
-            this.clipboardGroups = Array.isArray(payload.groups) ? payload.groups.map(String) : [];
             this.clipboardItems = (payload.items || []).map(item => ({
                 id: String(item.id), text: String(item.text), time: Number(item.time) || 0,
-                group: String(item.group || ''),
             }));
             if (this.panelOpen && this.panelTab === 'clipboard') this.renderPanel();
         }
@@ -12646,46 +12729,151 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (text) this.showToast(String(text));
         }
 
-        /** 从一段混杂文本里拆出链接、邮箱、号码和连续中文。整段本身不算。 */
+        /** 智能拆分（3.74.10）：对单条剪贴板正文做纯本机拆分，按优先级
+         *  提取片段——链接（http(s)://、www.、域名形态）、邮箱、验证码
+         *  （4–8 位数字，尤指「验证码 / code / 校验码」附近的）、数字
+         *  （手机号、金额等其余数字串）、单词（连续英文/数字字母 token），
+         *  其余正文按句/行保留为「文字」段。单次扫描按 span 占位，低
+         *  优先级不重复已占片段；整段本身不算；最多 8 枚。 */
         clipPieces(text) {
             const source = String(text || '');
+            const trimmed = source.trim();
+            if (!trimmed) return [];
             const found = [];
-            const seen = new Set();
-            const add = (kind, value) => {
-                const clean = String(value || '').trim().replace(/[),.;，。、]+$/u, '');
-                if (clean.length < 2 || seen.has(kind + '\n' + clean)) return;
-                if (clean === source.trim()) return;
-                seen.add(kind + '\n' + clean);
-                found.push({ kind, value: clean });
+            const claimed = []; // [start, end) 已占区间
+            const overlaps = (s, e) => claimed.some(([a, b]) => s < b && a < e);
+            const claim = (s, e) => { claimed.push([s, e]); };
+            const cleanTail = value => String(value || '').trim().replace(/[),.;，。、]+$/u, '');
+            const add = (kind, value, start, end) => {
+                const clean = cleanTail(value);
+                if (clean.length < 2) return;
+                // 整段本身不算；但仍占位——低优先级不得再从整段里切
+                // 子词（如裸链接不应再拆出 https/example/com 三枚单词）。
+                if (clean === trimmed) { claim(start, end); return; }
+                if (found.some(p => p.kind === kind && p.value === clean)) return;
+                found.push({ kind, value: clean, start, end });
+                claim(start, end);
             };
-            for (const match of source.matchAll(/https?:\/\/[^\s<>"'，。]+/g)) add('链接', match[0]);
-            for (const match of source.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)) add('邮箱', match[0]);
-            for (const match of source.matchAll(/1[3-9]\d{9}/g)) add('号码', match[0]);
-            for (const match of source.matchAll(/\d{4,}/g)) add('数字', match[0]);
-            const han = source.match(/[\u4e00-\u9fff]{2,}/g) || [];
-            han.slice(0, 3).forEach(part => add('中文', part));
-            return found.slice(0, 6);
+            const scan = (re, kind, pick) => {
+                for (const match of source.matchAll(re)) {
+                    const raw = match[0];
+                    const at = match.index || 0;
+                    const part = pick ? pick(match, at) : null;
+                    if (!part) continue;
+                    const [value, s, e] = part;
+                    if (overlaps(s, e)) continue;
+                    add(kind, value, s, e);
+                }
+            };
+            // 链接：http(s)://、www. 开头；裸域名（a@b.com 的域名部分
+            // 由先扫的邮箱占位，不重复）。
+            scan(/https?:\/\/[^\s<>"'，。、]+/g, '链接', (m, at) => [m[0], at, at + m[0].length]);
+            scan(/www\.[^\s<>"'，。、]+/g, '链接', (m, at) => [m[0], at, at + m[0].length]);
+            scan(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '邮箱', (m, at) => [m[0], at, at + m[0].length]);
+            scan(/(?:^|[\s（(【"''])((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:\/[^\s<>"'，。、]*)?)/g, '链接', (m, at) => {
+                const value = m[1];
+                const s = at + m[0].indexOf(value);
+                return [value, s, s + value.length];
+            });
+            // 验证码：4–8 位连续数字，且前后 16 字内出现验证码 / 校验码 /
+            // 动态码 / code / verification / otp（不分大小写）。
+            const codeWord = /验证码|校验码|动态码|verification|otp|\bcode\b/i;
+            scan(/\d{4,8}/g, '验证码', (m, at) => {
+                const before = source.slice(Math.max(0, at - 16), at);
+                const after = source.slice(at + m[0].length, at + m[0].length + 8);
+                if (!codeWord.test(before) && !codeWord.test(after)) return null;
+                return [m[0], at, at + m[0].length];
+            });
+            // 数字：其余数字串（手机号、金额含千分位/小数点、其他编号）。
+            scan(/\d[\d,]*(?:\.\d+)?/g, '数字', (m, at) => [m[0], at, at + m[0].length]);
+            // 单词：连续英文/数字字母 token（长度 ≥2，已占位的不重复）。
+            scan(/[A-Za-z][A-Za-z0-9_-]{1,}/g, '单词', (m, at) => [m[0], at, at + m[0].length]);
+            // 文字：剩余正文按句/行切段（换行与 。！？；.!? 为界），去空白
+            // 后 ≥2 字；每段最多 3 段。
+            let textCount = 0;
+            let cursor = 0;
+            for (const part of source.split(/(?<=[。！？；.!?\n])\s*/u)) {
+                if (textCount >= 3) break;
+                const value = part.trim();
+                if (value.length < 2) continue;
+                const at = source.indexOf(part, cursor);
+                if (at < 0) continue;
+                cursor = at + part.length;
+                if (overlaps(at, at + part.length)) continue;
+                add('文字', value, at, at + part.length);
+                textCount += 1;
+            }
+            found.sort((a, b) => a.start - b.start);
+            return found.slice(0, 8).map(({ kind, value }) => ({ kind, value }));
         }
 
-        openClipGroupMenu(item, anchor) {
-            const menu = document.getElementById('itemMenu');
-            this.closeItemMenu();
-            const choices = [''].concat(this.clipboardGroups || []);
-            choices.forEach(name => {
-                const button = document.createElement('button');
-                button.textContent = name || t("未分组");
-                button.addEventListener('click', () => {
-                    this.closeItemMenu();
-                    if (typeof Native.setClipboardGroup === 'function') {
-                        this.call(() => Native.setClipboardGroup(item.id, name, this.token));
-                    }
-                });
-                menu.append(button);
+        /** 剪贴板放大选择视图（3.74.10）：phraseCard 同款浮层卡片，
+         *  比条目本身大、好点。入口两种——条目右侧「展开」按钮与长按
+         *  条目；点条目本身仍整条上屏。卡里点一枚 chip 只贴该片段，
+         *  点「全文」贴整条，贴完关面板。 */
+        clipSplitOpen() {
+            const card = document.getElementById('clipSplitCard');
+            return !!card && card.classList.contains('open');
+        }
+
+        openClipSplit(item) {
+            const card = document.getElementById('clipSplitCard');
+            const textEl = document.getElementById('clipSplitText');
+            const chipsEl = document.getElementById('clipSplitChips');
+            if (!card || !textEl || !chipsEl || !item) return;
+            const pieces = this.clipPieces(item.text);
+            if (!pieces.length) return;
+            this.clipSplitItem = item;
+            textEl.textContent = item.text;
+            chipsEl.replaceChildren();
+            const full = document.createElement('button');
+            full.type = 'button';
+            full.className = 'clip-split-chip clip-split-full';
+            full.textContent = t("全文");
+            full.addEventListener('click', () => this.pasteClipPiece(item.text));
+            chipsEl.append(full);
+            pieces.forEach(piece => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'clip-split-chip';
+                const label = document.createElement('span');
+                label.className = 'clip-split-kind';
+                label.textContent = t(piece.kind);
+                const value = document.createElement('span');
+                value.className = 'clip-split-value';
+                value.textContent = piece.value;
+                chip.append(label, value);
+                chip.addEventListener('click', () => this.pasteClipPiece(piece.value));
+                chipsEl.append(chip);
             });
-            menu.classList.add('open');
-            const rect = anchor.getBoundingClientRect();
-            menu.style.left = Math.max(4, rect.left) + 'px';
-            menu.style.top = Math.max(4, rect.top - 8) + 'px';
+            card.hidden = false;
+            card.classList.add('open');
+            this.syncOverlay();
+        }
+
+        closeClipSplit() {
+            this.clipSplitItem = null;
+            const card = document.getElementById('clipSplitCard');
+            if (!card) return;
+            card.classList.remove('open');
+            card.hidden = true;
+        }
+
+        /** 片段/全文的上屏与整条一致：编辑卡开着时填进「常用内容」
+         *  输入框而不是上屏；贴完关面板（连带收起拆分视图）。 */
+        pasteClipPiece(value) {
+            if (this.phraseCardOpen()) {
+                this.fillPhraseCardFromPanel(value);
+                return;
+            }
+            this.call(() => {
+                if (typeof Native.pasteText === 'function') {
+                    Native.pasteText(value, this.token);
+                } else {
+                    Native.commitText(value, this.token);
+                }
+            });
+            this.closePanel();
         }
 
         /** 导入备份后原生把 localStorage 级设置推回来（userdata.md §1.4）。
@@ -12907,6 +13095,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.powerSaving === 'boolean') {
                 this.powerSaving = payload.powerSaving;
                 document.body.classList.toggle('power-saving', this.powerSaving);
+            }
+            // 拼音纠错开关（3.74.10，默认开）：关时清掉已算出的纠错候选。
+            if (typeof payload.pinyinCorrection === 'boolean') {
+                this.pinyinCorrection = payload.pinyinCorrection;
+                if (!this.pinyinCorrection) {
+                    this.correctionFor = '';
+                    this.correctionCandidates = [];
+                }
             }
             this.applyGlass(payload);
             this.applyLandscapeChrome();
@@ -14112,6 +14308,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // tile route through it too).
         cycleTheme: () => keyboard.cycleTheme(),
         pinyinPieces: raw => keyboard.pinyinPieces(raw),
+        // 拼音纠错（3.74.10）：测试钩子，直接调变体生成。
+        pinyinCorrectionVariants: raw => keyboard.pinyinCorrectionVariants(raw),
+        // 智能拆分（3.74.10）：测试钩子，直接调拆分器。
+        clipPieces: text => keyboard.clipPieces(text),
+        // 自适应高度（3.74.10）：测试钩子，直接读 chrome 预算。
+        layoutChrome: () => keyboard.layoutChrome(),
         // Suite/preview hook: re-evaluate the theme→image mapping after
         // switching html theme classes directly (applyTheme does this in
         // real flows).

@@ -788,6 +788,12 @@
           <option value="2" data-i18n="input.feel.hapticStrong">强</option>
         </select>
       </div>
+      <!-- 全局震动跟随系统（3.74.10）：开 = 强度用系统默认，弱/中/强
+           选择置灰；关 = 手动三档。 -->
+      <label class="row switch-row" for="keyHapticFollowSystem">
+        <span class="row-label"><span data-i18n="input.feel.keyHapticFollowSystem">强度跟随系统</span><small data-i18n="input.feel.keyHapticFollowSystemHint">开 = 强度用系统默认，弱/中/强选择置灰；关 = 手动弱/中/强三档。</small></span>
+        <input type="checkbox" id="keyHapticFollowSystem" class="toggle">
+      </label>
       <p id="feelNote" class="hint block"></p>
     </section>
 
@@ -873,6 +879,17 @@
       </div>
       <input type="range" id="landscapeCeil" min="40" max="100" step="5" value="60"
              class="slider" aria-label="横屏高度上限" data-i18n-aria="input.landscape.ceil" data-keywords="横屏 高度 上限 百分比">
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.landscape.height">横屏键盘高度</span>
+          <small data-i18n="input.landscape.heightHint">横屏键盘的高度；键盘上拖拽调节与此处等效。横竖屏分开记忆。</small>
+        </span>
+        <span class="slider-with-action">
+          <output id="kbHeightLandscapeOut" for="kbHeightLandscape" class="range-out"></output>
+          <input type="range" id="kbHeightLandscape" class="slider" aria-label="横屏键盘高度" data-i18n-aria="input.landscape.height" data-keywords="横屏 键盘 高度 landscape">
+          <button type="button" id="kbHeightLandscapeReset" class="ghost-btn" data-i18n="input.landscape.heightReset">恢复默认</button>
+        </span>
+      </div>
       <div class="row">
         <label class="row-label" for="landscapeOpacity"><span data-i18n="input.landscape.opacity">整体不透明度</span><small data-i18n="input.landscape.opacityHint">横屏时键盘整层（含背景）的透明程度，调低可看到被键盘盖住的内容。</small></label>
         <output id="landscapeOpacityOut" for="landscapeOpacity" class="range-out">100%</output>
@@ -1033,6 +1050,23 @@
         <button class="btn" id="btnManageUserWords" type="button" data-i18n="dict.userwords.manage">管理词条</button>
         <span class="save-note" id="userWordsCount" role="status" aria-live="polite"></span>
       </div>
+    </section>
+
+    <!-- 拼音纠错 + 习惯自动词库（3.74.10）：两个开关 + 自动收入的词列表。 -->
+    <section class="card" id="sec-dict-lexicon" aria-labelledby="dictLexiconTitle">
+      <div class="section-heading"><h2 id="dictLexiconTitle" data-keywords="拼音纠错 打错 纠错 习惯 自动词库" data-i18n="dict.lexicon.title">纠错与习惯词库</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <label class="row switch-row" for="pinyinCorrection">
+        <span class="row-label"><span data-i18n="dict.lexicon.correction">拼音纠错</span><small data-i18n="dict.lexicon.correctionHint">默认开启；打错拼音也能出候选（按编辑距离纠一格），纠错候选带「纠」标、排在候选后面，点选直接上屏</small></span>
+        <input type="checkbox" id="pinyinCorrection" data-keywords="拼音纠错 打错 纠错 correction typo" class="toggle">
+      </label>
+      <label class="row switch-row" for="habitLexicon">
+        <span class="row-label"><span data-i18n="dict.lexicon.habit">习惯自动词库</span><small data-i18n="dict.lexicon.habitHint">默认开启；常打的词满 3 次自动收入自造词，只存在本机。关掉后不再自动收入，已收入的词保留</small></span>
+        <input type="checkbox" id="habitLexicon" data-keywords="习惯 自动词库 habit auto learn" class="toggle">
+      </label>
+      <div class="section-heading"><h2 id="autoWordsTitle" data-i18n="dict.lexicon.autoWords">自动收入的词</h2></div>
+      <ul id="autoWordList" class="phrase-list"></ul>
+      <p id="autoWordEmpty" class="hint block" data-i18n="dict.lexicon.autoWordsEmpty" hidden>还没有自动收入的词，多打几次常用词就会出现在这里。</p>
+      <span class="save-note" id="autoWordsNote" role="status" aria-live="polite"></span>
     </section>
   </main>
 </div>

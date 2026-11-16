@@ -337,7 +337,14 @@ class RimeTextEngine(
 
     private fun commitHarvest(): String? {
         val committed = NativeSmoke.rimeCommit(session)
-        return committed.takeIf { it.isNotEmpty() }
+        val word = committed.takeIf { it.isNotEmpty() } ?: return null
+        // 习惯自动词库（3.74.10，design §2）：上屏词满阈值自动收入自造词；
+        // 写后发广播走与手动「收入自造词」相同的重载路。计数失败绝不能
+        // 影响本次提交（runCatching 兜住，词照常上屏）。
+        if (runCatching { HabitLexicon.recordCommit(appContext, word) }.getOrDefault(false)) {
+            runCatching { HabitLexicon.broadcastChanged(appContext) }
+        }
+        return word
     }
 
     private fun parseState(page: JSONObject? = null): EngineState {
@@ -440,6 +447,30 @@ class RimeTextEngine(
             }
             android.util.Log.i("FeelimeEngine", "rime global init done in ${android.os.SystemClock.elapsedRealtime() - startedAt}ms")
             globallyInitialized = true
+        }
+
+        /** 拼音纠错查询（3.74.10）：用一次性 scratch session 查某串拼音的候选。
+         *  不碰 live session；与 live 引擎共用 gate 串行化 librime 调用。
+         *  调用方保证 schemaId 与 live 引擎一致（全拼：fuzzy 变体或严格
+         *  schema），pinyin 只含小写字母。返回至多 limit 条候选文本。 */
+        fun queryCandidates(context: Context, schemaId: String, pinyin: String, limit: Int): List<String> {
+            if (pinyin.isEmpty() || limit <= 0) return emptyList()
+            synchronized(gate) {
+                ensureGlobalInit(context)
+                val session = NativeSmoke.rimeCreateSession(schemaId)
+                if (session == 0L) return emptyList()
+                try {
+                    for (ch in pinyin) {
+                        NativeSmoke.rimeProcessKey(session, ch.code, 0)
+                    }
+                    val json = JSONObject(NativeSmoke.rimeContextAtPage(session, 0, -1))
+                    if (json.optInt("code", -1) != 0) return emptyList()
+                    return json.optString("candidates").lineSequence()
+                        .filter { it.isNotEmpty() }.take(limit).toList()
+                } finally {
+                    NativeSmoke.rimeDestroySession(session)
+                }
+            }
         }
 
         /** custom_phrase 词表变更后整引擎重载。stabledb（custom_phrase

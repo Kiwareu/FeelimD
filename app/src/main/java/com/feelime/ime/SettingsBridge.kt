@@ -185,6 +185,16 @@ fun readKeyHapticStrength(context: Context): Int =
         .getInt(PREF_KEY_HAPTIC_STRENGTH, 1)
         .coerceIn(0, 2)
 
+/** 全局震动跟随系统（3.74.10）：开 = 强度用系统默认振幅 + 中档时长
+ *  10ms（实际力度由系统决定），手动弱/中/强三档被置灰；关 = 手动三档。
+ *  默认关。键盘自己的按键振动总开关仍是总开关（见 playKeyHaptic 注释：
+ *  自播 Vibrator 通道，不走会被系统总开关静默的 performHapticFeedback）。 */
+const val PREF_KEY_HAPTIC_FOLLOW_SYSTEM = "key_haptic_follow_system"
+
+fun readKeyHapticFollowSystem(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_KEY_HAPTIC_FOLLOW_SYSTEM, false)
+
 /** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。
  *  #50 起由 space_hold_tap（虚拟定制键）接管，此布尔仅作读侧迁移源
  *  与旧键盘 JS（热更）的推送兼容。 */
@@ -348,10 +358,61 @@ fun readLandscapeSafeArea(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_LANDSCAPE_SAFE_AREA, true)
 
-fun readLandscapeCeilPct(context: Context): Int =
-    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_LANDSCAPE_CEIL_PCT, 60)
-        .let { if (it in LANDSCAPE_CEIL_RANGE) it else 60 }
+/** 真屏高（3.74.10）：设置页上下文的 displayMetrics 是应用窗口高，
+ *  横屏上限/高度边界必须用真屏（与 FeelimeService.realHeightPixels
+ *  同口径，见其 round-8 注释）。 */
+fun realScreenHeightPixels(context: Context): Int {
+    val metrics = context.resources.displayMetrics
+    if (android.os.Build.VERSION.SDK_INT >= 30) {
+        val wm = context.getSystemService(android.view.WindowManager::class.java)
+        val h = wm?.maximumWindowMetrics?.bounds?.height() ?: 0
+        if (h > 0) return h
+    } else {
+        val real = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        (context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager)
+            ?.defaultDisplay?.getRealMetrics(real)
+        if (real.heightPixels > 0) return real.heightPixels
+    }
+    return metrics.heightPixels
+}
+
+/** 横屏上限默认百分比（3.74.10）：不再一刀切 60%。按真屏高自适应——
+ *  至少容下横屏 chrome（≈141css，含最大拼音档）+ 4 行 × 30css 可用
+ *  键高；矮屏自动抬上限（封顶 85%），高屏保持 60% 下限。只影响未
+ *  手动调过上限的用户（已存值优先）。 */
+fun defaultLandscapeCeilPct(context: Context): Int {
+    val density = context.resources.displayMetrics.density
+    if (density <= 0) return 60
+    val realCss = realScreenHeightPixels(context) / density
+    if (realCss <= 0) return 60
+    val needCss = 141 + 4 * 30
+    return kotlin.math.ceil(needCss * 100.0 / realCss).toInt().coerceIn(60, 85)
+}
+
+fun readLandscapeCeilPct(context: Context): Int {
+    val stored = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_LANDSCAPE_CEIL_PCT, -1)
+    if (stored in LANDSCAPE_CEIL_RANGE) return stored
+    return defaultLandscapeCeilPct(context)
+}
+
+/** 自适应默认键盘内容高度（3.74.10，CSS px；与 FeelimeService 的
+ *  defaultContentHeightPx 同源，设置页滑块默认值共用它）。
+ *  竖屏 = chrome 估算（≈150css）+ 4 行 × 44css，封顶真屏 45%；
+ *  横屏 = 横屏上限（上限默认已自适应，保证 4 行可用键高）。 */
+fun defaultKeyboardHeightCss(context: Context, landscape: Boolean): Int {
+    val density = context.resources.displayMetrics.density
+    if (density <= 0) return 272
+    val real = realScreenHeightPixels(context)
+    return if (landscape) {
+        val reserve = (32 * density).toInt()
+        val ceil = minOf(real * readLandscapeCeilPct(context) / 100, real - reserve)
+        (ceil / density).toInt()
+    } else {
+        minOf(150 + 4 * 44, (real * 45 / 100 / density).toInt())
+    }
+}
 
 /** #H 物理键盘形态档（design hardware-keyboard.md §7）：candidates
  *  （仅候选条，默认）/ full（完整键盘，即既有恒显行为）/ follow（跟随
@@ -413,6 +474,23 @@ fun readPowerSaving(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_POWER_SAVING, false)
 
+/** 拼音纠错（3.74.10，默认开）：打错拼音也能出候选（编辑距离 1 展开，
+ *  纠错候选以 fix: overlay 进同一池，点选直接上屏）。真相源：本文件。 */
+const val PREF_PINYIN_CORRECTION = "pinyin_correction"
+
+fun readPinyinCorrection(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_PINYIN_CORRECTION, true)
+
+/** 习惯自动词库（3.74.10，默认开）：常打的词满 3 次自动收入自造词
+ *  （custom_phrase user 段），只存本机；与 AssocHabit 联想排序分开。
+ *  真相源：本文件；计数与已收入记录见 HabitLexicon。 */
+const val PREF_HABIT_LEXICON = "habit_lexicon"
+
+fun readHabitLexicon(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_HABIT_LEXICON, true)
+
 /** #89：默认 false——组词中切换保持 1.4.5 及之前行为，开启才拦误触。 */
 fun readCnEnComposingGuard(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
@@ -440,14 +518,34 @@ fun readKbHeightPortrait(context: Context): Int {
     return Math.round(physical / density)
 }
 
+/** 键盘高度（横屏存值；与竖屏分开记忆，0=默认=横屏上限）。 */
+const val KB_HEIGHT_LANDSCAPE_KEY = "keyboard_height_landscape"
+
+fun readKbHeightLandscape(context: Context): Int {
+    val physical = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(KB_HEIGHT_LANDSCAPE_KEY, 0)
+    if (physical <= 0) return 0
+    val density = context.resources.displayMetrics.density
+    return Math.round(physical / density)
+}
+
+/** 横屏高度滑块边界（CSS px，与 FeelimeService.setKeyboardHeight 的
+ *  clamp 同源：min 170（横屏内容下限），max 横屏上限 CSS px）。 */
+fun readKbHeightLandscapeBounds(context: Context): Pair<Int, Int> {
+    val min = 170
+    val max = defaultKeyboardHeightCss(context, true)
+    return Pair(min, maxOf(min, max))
+}
+
 /** 竖屏高度滑块边界（CSS px，与 FeelimeService.setKeyboardHeight 的
  *  clamp 同源：min 226（round-6 起竖屏内容下限，含手写 chrome+96；
  *  旧值 210 低于 native 钳制，滑杆 210~225 会被暗改到 226——滑杆
  *  读数与键盘实际高度对不上），max 竖屏可用高度 45%）。 */
 fun readKbHeightBounds(context: Context): Pair<Int, Int> {
-    val metrics = context.resources.displayMetrics
     val min = 226
-    val max = ((metrics.heightPixels * 45 / 100) / metrics.density).toInt()
+    // round-8：竖屏 45% 必须用真屏（应用窗口高会把上限压低，滑杆调高
+    // 又被 native 钳回去，见 FeelimeService.setKeyboardHeight 注释）。
+    val max = ((realScreenHeightPixels(context) * 45 / 100) / context.resources.displayMetrics.density).toInt()
     return Pair(min, maxOf(min, max))
 }
 
@@ -975,6 +1073,7 @@ class SettingsBridge(
             .put("voiceOnSpace", readVoiceOnSpace(context))
             .put("keySoundVolume", readKeySoundVolume(context))
             .put("keyHapticStrength", readKeyHapticStrength(context))
+            .put("keyHapticFollowSystem", readKeyHapticFollowSystem(context))
             // 设备能力：无幅度马达的机型强度档按时长近似（hint 说明）。
             .put("keyHapticAmplitude", hapticAmplitudeSupported())
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
@@ -1001,6 +1100,11 @@ class SettingsBridge(
                 com.feelime.ime.engine.CustomPhraseStore.load(context).user.forEach { (text, code) ->
                     put(JSONObject().put("text", text).put("code", code))
                 }
+            })
+            // 习惯自动词库（3.74.10）：自动收入的词（字符串数组；与手动
+            // 自造词分开记，设置页可查看/删除）。
+            .put("autoWords", JSONArray().apply {
+                com.feelime.ime.engine.HabitLexicon.autoAddedWords(context).forEach { put(it) }
             })
             .put("associationOn", readAssociation(context))
             .put("backspaceAssocOn", readBackspaceAssoc(context))
@@ -1041,6 +1145,8 @@ class SettingsBridge(
             .put("panelOpacity", readPanelOpacity(context))
             .put("glassSkin", readGlassSkin(context))
             .put("powerSaving", readPowerSaving(context))
+            .put("pinyinCorrection", readPinyinCorrection(context))
+            .put("habitLexicon", readHabitLexicon(context))
             .put("landscapeSafeArea", if (readLandscapeSafeArea(context)) 1 else 0)
             .put("landscapeCeil", readLandscapeCeilPct(context))
             .put("hwkbForm", readHwkbForm(context))
@@ -1068,10 +1174,16 @@ class SettingsBridge(
             .put("themeL", readThemeL(context))
             .put("keyL", readKeyL(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
+            .put("kbHeightDefault", defaultKeyboardHeightCss(context, false))
+            .put("kbHeightLandscape", readKbHeightLandscape(context))
+            .put("kbHeightLandscapeDefault", defaultKeyboardHeightCss(context, true))
             .apply {
                 val (min, max) = readKbHeightBounds(context)
                 put("kbHeightMin", min)
                 put("kbHeightMax", max)
+                val (lmin, lmax) = readKbHeightLandscapeBounds(context)
+                put("kbHeightLandscapeMin", lmin)
+                put("kbHeightLandscapeMax", lmax)
             }
             .put("toolbarLayout", readToolbarLayout(context))
             .put("appVersion", BuildConfig.VERSION_NAME)
@@ -1465,6 +1577,18 @@ class SettingsBridge(
     fun setKeyHapticStrength(strength: Int, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY_HAPTIC_STRENGTH, strength.coerceIn(0, 2)).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 全局震动跟随系统（3.74.10）：开 = 强度用系统默认振幅，手动三档
+     *  被置灰（设置页）；关 = 手动三档。 */
+    @JavascriptInterface
+    fun setKeyHapticFollowSystem(follow: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_KEY_HAPTIC_FOLLOW_SYSTEM, follow).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -2221,6 +2345,31 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 横屏键盘高度（3.74.10）：与 setKbHeight 同口径，写
+     *  KB_HEIGHT_LANDSCAPE_KEY；px<=0 清除=回横屏默认（上限）。
+     *  service 侧统一重读 override（与竖屏同机制）。 */
+    @JavascriptInterface
+    fun setKbHeightLandscape(px: Int, token: String) = guarded(token) {
+        val (min, max) = readKbHeightLandscapeBounds(context)
+        val density = context.resources.displayMetrics.density
+        val value = when {
+            px <= 0 -> 0
+            else -> px.coerceIn(min, max)
+        }
+        val prefs = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        if (value == 0) {
+            prefs.edit().remove(KB_HEIGHT_LANDSCAPE_KEY).commit()
+        } else {
+            prefs.edit().putInt(KB_HEIGHT_LANDSCAPE_KEY, Math.round(value * density)).commit()
+        }
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+        pushState()
+    }
+
     /** 「无」：删除该组背景图（回到纯色背景）。 */
     @JavascriptInterface
     fun clearBgImage(variant: String, token: String) = guarded(token) {
@@ -2485,6 +2634,20 @@ class SettingsBridge(
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
         )
+        pushState()
+    }
+
+    /** 习惯自动词库（3.74.10）：删除一条自动收入的词（自造词 user 段
+     *  与已收入记录同时清掉；删后若再打满阈值可重新收入）。 */
+    @JavascriptInterface
+    fun removeAutoWord(word: String, token: String) = guarded(token) {
+        val text = word.trim()
+        if (text.isEmpty() || text.length > 8) return@guarded
+        if (com.feelime.ime.engine.HabitLexicon.removeAutoWord(context, text)) {
+            context.sendBroadcast(
+                Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+            )
+        }
         pushState()
     }
 
@@ -3467,6 +3630,28 @@ class SettingsBridge(
     fun setPowerSaving(enabled: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_POWER_SAVING, enabled).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 拼音纠错开关（3.74.10）：拨动即存；键盘经 hello 重推生效。 */
+    @JavascriptInterface
+    fun setPinyinCorrection(enabled: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_PINYIN_CORRECTION, enabled).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 习惯自动词库开关（3.74.10）：拨动即存；引擎侧下次提交起生效。 */
+    @JavascriptInterface
+    fun setHabitLexicon(enabled: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_HABIT_LEXICON, enabled).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

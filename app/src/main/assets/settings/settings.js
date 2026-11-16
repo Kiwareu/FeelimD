@@ -191,6 +191,14 @@ const I18N = {
         "dict.userwords.enable": "手动维护的常用词",
         "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，或长按候选点「收入自造词」。也可以导入 rime 词库。适合名字和行话。只存在本机，最多 200 条。",
         "dict.userwords.manage": "管理词条",
+        "dict.lexicon.title": "纠错与习惯词库",
+        "dict.lexicon.correction": "拼音纠错",
+        "dict.lexicon.correctionHint": "默认开启；打错拼音也能出候选（按编辑距离纠一格），纠错候选带「纠」标、排在候选后面，点选直接上屏",
+        "dict.lexicon.habit": "习惯自动词库",
+        "dict.lexicon.habitHint": "默认开启；常打的词满 3 次自动收入自造词，只存在本机。关掉后不再自动收入，已收入的词保留",
+        "dict.lexicon.autoWords": "自动收入的词",
+        "dict.lexicon.autoWordsEmpty": "还没有自动收入的词，多打几次常用词就会出现在这里。",
+        "dict.lexicon.autoWordsDeleted": "已删除",
         "page.userwords": "自造词",
         "page.fuzzy": "模糊音",
         "page.keyboards": "键盘选择",
@@ -802,6 +810,9 @@ const I18N = {
         "input.landscape.safeAreaHint": "键盘背景铺满含挖孔的整条短边，但按键区避开挖孔侧；关闭后按键也铺满。",
         "input.landscape.ceil": "高度上限",
         "input.landscape.ceilHint": "横屏键盘最高可占屏幕高度的百分比（40%–100%）。",
+        "input.landscape.height": "横屏键盘高度",
+        "input.landscape.heightHint": "横屏键盘的高度；键盘上拖拽调节与此处等效。横竖屏分开记忆。",
+        "input.landscape.heightReset": "恢复默认",
         "input.landscape.opacity": "整体不透明度",
         "input.landscape.opacityHint": "横屏时键盘整层（含背景）的透明程度，调低可看到被键盘盖住的内容。",
         "input.feel.padPortrait": "底部留白 · 竖屏",
@@ -958,6 +969,8 @@ const I18N = {
         "input.feel.keySoundVolumeHint": "哔声、系统键击音与自定义音效共用。",
         "input.feel.keyHapticStrength": "振动强度",
         "input.feel.keyHapticStrengthHint": "本机马达不支持强弱调节时按轻重的时长近似。",
+        "input.feel.keyHapticFollowSystem": "强度跟随系统",
+        "input.feel.keyHapticFollowSystemHint": "开 = 强度用系统默认，弱/中/强选择置灰；关 = 手动弱/中/强三档。",
         "input.feel.hapticLight": "弱", "input.feel.hapticMedium": "中", "input.feel.hapticStrong": "强",
         "input.feel.keySoundHint": "按键时轻响一声，跟随系统音量，静音时不响。",
         "input.feel.keySoundStyle": "按键音效",
@@ -1097,6 +1110,14 @@ const I18N = {
         "dict.userwords.enable": "Hand-maintained words",
         "dict.userwords.hint": "Add word + pinyin pairs, or long-press a candidate and choose Save to my words. Rime dictionaries can be imported on this page. On this phone only, up to 200 entries.",
         "dict.userwords.manage": "Manage words",
+        "dict.lexicon.title": "Correction & habit lexicon",
+        "dict.lexicon.correction": "Pinyin typo correction",
+        "dict.lexicon.correctionHint": "On by default. Mis-typed pinyin still offers candidates (one edit away); corrected candidates carry a “纠” mark, sit after the normal ones, and commit on tap.",
+        "dict.lexicon.habit": "Habit auto-lexicon",
+        "dict.lexicon.habitHint": "On by default. Words you type often are saved to your words after 3 uses, on this phone only. Turning it off stops new saves; saved words stay.",
+        "dict.lexicon.autoWords": "Auto-saved words",
+        "dict.lexicon.autoWordsEmpty": "No auto-saved words yet. Type a common word a few times and it will show up here.",
+        "dict.lexicon.autoWordsDeleted": "Deleted",
         "page.userwords": "User words",
         "page.fuzzy": "Fuzzy input",
         "page.keyboards": "Keyboard selection",
@@ -1706,6 +1727,9 @@ const I18N = {
         "input.landscape.safeAreaHint": "The keyboard background fills the full short edge including the cutout, while the keys avoid it; off lets keys fill it too.",
         "input.landscape.ceil": "Height ceiling",
         "input.landscape.ceilHint": "Maximum share of the screen height the landscape keyboard may take (40%–100%).",
+        "input.landscape.height": "Landscape keyboard height",
+        "input.landscape.heightHint": "Landscape keyboard height; dragging on the keyboard stays equivalent. Portrait and landscape are remembered separately.",
+        "input.landscape.heightReset": "Reset",
         "input.landscape.opacity": "Overall opacity",
         "input.landscape.opacityHint": "Opacity of the whole landscape keyboard (background included); lower it to see the content underneath.",
         "input.feel.padPortrait": "Bottom padding · Portrait",
@@ -1855,6 +1879,8 @@ const I18N = {
         "input.feel.keySoundVolumeHint": "Shared by the beep, system keypress and custom sounds.",
         "input.feel.keyHapticStrength": "Haptic strength",
         "input.feel.keyHapticStrengthHint": "Approximated by duration when the motor lacks amplitude control.",
+        "input.feel.keyHapticFollowSystem": "Follow system strength",
+        "input.feel.keyHapticFollowSystemHint": "On = system default strength, the weak/medium/strong selector is greyed out; off = manual weak/medium/strong.",
         "input.feel.hapticLight": "Light", "input.feel.hapticMedium": "Medium", "input.feel.hapticStrong": "Strong",
         "input.feel.keySound": "Key sound",
         "input.feel.keySoundHint": "A soft click on each key press; follows system volume, silent in mute mode.",
@@ -2600,6 +2626,7 @@ function render(state) {
     renderKeyboards(state);
     renderCustomPhrases(state);
     renderUserWords(state);
+    renderLexicon(state);
     renderDictBase(state);
     renderFlypy(state);
     renderUpdate(state);
@@ -2628,6 +2655,23 @@ function renderLandscape(state) {
     if (op && Number.isFinite(opVal) && opVal >= 10 && opVal <= 100
         && document.activeElement !== op) op.value = String(opVal);
     if (opOut) opOut.textContent = Math.round(Number(op && op.value)) + "%";
+    // 横屏键盘高度（3.74.10）：与竖屏滑块同口径，横竖屏分开记忆；
+    // 0 = 默认（横屏上限 CSS px）。
+    const kbh = $("kbHeightLandscape");
+    if (kbh) {
+        const min = Number(state.kbHeightLandscapeMin ?? 170);
+        const max = Number(state.kbHeightLandscapeMax ?? 300);
+        const def = Number(state.kbHeightLandscapeDefault ?? max);
+        kbh.min = String(min);
+        kbh.max = String(max);
+        kbh.step = "5";
+        const saved = Number(state.kbHeightLandscape ?? 0);
+        if (document.activeElement !== kbh) {
+            kbh.value = String(saved >= min && saved <= max ? saved : def);
+        }
+        kbh.dataset.default = String(def);
+        rangeOut("kbHeightLandscape", kbh.value + " px");
+    }
 }
 
 /** 键盘手感（mode-fallback §3/§4）：底部留白 + 长按/滑动/光标微调。
@@ -2920,13 +2964,14 @@ function renderFeel(state) {
     if (kbHeight) {
         const min = Number(state.kbHeightMin ?? 226);
         const max = Number(state.kbHeightMax ?? 400);
+        const def = Number(state.kbHeightDefault ?? 272);
         kbHeight.min = String(min);
         kbHeight.max = String(max);
         kbHeight.step = "5";
-        // 0 = 默认（键盘内置 272css）；滑块位停在默认值上。
+        // 0 = 默认（键盘内置自适应默认 CSS px）；滑块位停在默认值上。
         const saved = Number(state.kbHeightPortrait ?? 0);
-        kbHeight.value = String(saved >= min ? saved : 272);
-        kbHeight.dataset.default = "272";
+        kbHeight.value = String(saved >= min ? saved : def);
+        kbHeight.dataset.default = String(def);
         rangeOut("kbHeight", kbHeight.value + " px");
     }
     // 背景图两组回显：source = none/builtin/custom（custom 选项按需挂载）。
@@ -2961,6 +3006,12 @@ function renderFeel(state) {
     if (vol && document.activeElement !== vol) vol.value = String(state.keySoundVolume ?? 60);
     if (vol) rangeOut("keySoundVolume", vol.value + "%");
     setSelect("keyHapticStrength", String(state.keyHapticStrength ?? 1), ["0", "1", "2"]);
+    // 全局震动跟随系统（3.74.10）：开 = 强度用系统默认，弱/中/强
+    // 选择器置灰禁用；关 = 手动三档。
+    const followHaptic = state.keyHapticFollowSystem === true;
+    setToggle("keyHapticFollowSystem", followHaptic);
+    const strengthSel = $("keyHapticStrength");
+    if (strengthSel) strengthSel.disabled = followHaptic;
     // #30-2 音效风格回读：custom 需文件在（native 已保证不悬空），文件行
     // 仅在选了 custom 或已有文件时露出。
     {
@@ -4302,6 +4353,42 @@ function saveUserWordsToBridge() {
         ? t("userwords.count", [userWordItems.length]) : "";
 }
 
+/* --- 纠错与习惯词库（3.74.10）：两个开关 + 自动收入的词列表。
+ * state.pinyinCorrection / state.habitLexicon（默认开，缺字段也当开）；
+ * state.autoWords = [词, ...]，删一条即调 removeAutoWord。 */
+function renderLexicon(state) {
+    if (document.activeElement !== $("pinyinCorrection")) {
+        $("pinyinCorrection").checked = state.pinyinCorrection !== false;
+    }
+    if (document.activeElement !== $("habitLexicon")) {
+        $("habitLexicon").checked = state.habitLexicon !== false;
+    }
+    const words = Array.isArray(state.autoWords) ? state.autoWords : [];
+    const list = $("autoWordList");
+    list.textContent = "";
+    words.forEach(word => {
+        const text = String(word || "");
+        if (!text) return;
+        const row = document.createElement("li");
+        row.className = "phrase-row";
+        const label = document.createElement("span");
+        label.className = "phrase-text";
+        label.textContent = text;
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "phrase-del";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("dict.lexicon.autoWordsDeleted"));
+        del.addEventListener("click", () => {
+            call("removeAutoWord", text);
+            setNote("autoWordsNote", t("dict.lexicon.autoWordsDeleted"));
+        });
+        row.append(label, del);
+        list.append(row);
+    });
+    $("autoWordEmpty").hidden = words.length > 0;
+}
+
 $("btnManageUserWords").addEventListener("click", () => showPage("userwords"));
 $("btnCancelUserWordEdit").addEventListener("click", resetUserWordForm);
 $("btnSaveUserWord").addEventListener("click", () => {
@@ -4580,6 +4667,23 @@ $("kbHeightReset").addEventListener("click", () => {
     rangeOut("kbHeight", slider.value + " px");
     call("setKbHeight", 0);
 });
+// 横屏键盘高度（3.74.10）：与竖屏滑块同口径，分开记忆。
+let kbHeightLandscapeDirty = false;
+$("kbHeightLandscape").addEventListener("input", event => {
+    kbHeightLandscapeDirty = true;
+    rangeOut("kbHeightLandscape", event.target.value + " px");
+});
+$("kbHeightLandscape").addEventListener("change", event => {
+    if (!kbHeightLandscapeDirty) return;
+    kbHeightLandscapeDirty = false;
+    call("setKbHeightLandscape", parseInt(event.target.value, 10));
+});
+$("kbHeightLandscapeReset").addEventListener("click", () => {
+    const slider = $("kbHeightLandscape");
+    slider.value = slider.dataset.default || String(slider.max || 300);
+    rangeOut("kbHeightLandscape", slider.value + " px");
+    call("setKbHeightLandscape", 0);
+});
 // 背景图两组（亮/暗）：「选择图片…」打开文件选择器，选完压到 720px 宽
 // JPEG 走桥；「无 / 内置」直接桥调用。选中自定义图后 select 挂「自定义」
 // 回显；pick 项本身永不作为状态（取消选择时回退原值）。
@@ -4665,6 +4769,8 @@ $("modelConsentConfirm").addEventListener("click", () => {
 let asrHotwordsSubmitted = null;
 $("asrIdleUnload").addEventListener("change", event => call("setAsrIdleUnload", event.target.checked));
 $("powerSaving").addEventListener("change", event => call("setPowerSaving", event.target.checked));
+$("pinyinCorrection").addEventListener("change", event => call("setPinyinCorrection", event.target.checked));
+$("habitLexicon").addEventListener("change", event => call("setHabitLexicon", event.target.checked));
 $("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
 // toggle 拨动即生效（与 #39-2 同案：此前只随「保存识别设置」提交，拨了
 // 不点保存=从未落盘，重进被回读洗回旧值——1.4.3 验收实录）。走窄接口
@@ -4754,6 +4860,13 @@ $("keySoundVolume").addEventListener("input", event => {
         () => call("setKeySoundVolume", Number(event.target.value)), 250);
 });
 $("keyHapticStrength").addEventListener("change", event => call("setKeyHapticStrength", Number(event.target.value)));
+// 全局震动跟随系统（3.74.10）：切换即写桥，并立即置灰/放开强度选择器。
+$("keyHapticFollowSystem").addEventListener("change", event => {
+    const follow = event.target.checked;
+    const strengthSel = $("keyHapticStrength");
+    if (strengthSel) strengthSel.disabled = follow;
+    call("setKeyHapticFollowSystem", follow);
+});
 
 // #30-2 音效风格：custom 但文件还没选过时先走选文件（native 拒绝无文件的
 // custom，state 回推会把 select 弹回实际生效值）。

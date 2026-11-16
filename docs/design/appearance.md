@@ -123,18 +123,44 @@
   hello 下发的玻璃值。
 - 深浅主题验收截图：preview 页（`?powerSaving=1` 直达省电态）+ 设备截图存档。
 
-### 7.4 工具箱行（keyboard.md §2.1，3.74.9）
+### 7.4 工具箱行（keyboard.md §2.1，3.74.9；3.74.10 统一节奏）
 
-- 独立行 `#toolboxRow`（40px，上下边距竖屏 2/10px、横屏 4/4px），与候
-  选条同款玻璃底（`hsl(var(--bg-hue) … / calc(0.7 + var(--panel-alpha)
-  * 0.26))` + `inset 0 1px 0 var(--glass-sheen)`），工具按钮复用候选
-  条的 `.tool` 语言（按压态、`.state-on`、编辑态 × 徽标），不引新 token。
+- 独立行 `#toolboxRow`，与候选条共享高度/圆角/底色/阴影/间距（竖屏
+  40px、横屏 34px，竖屏边距 2/6px、横屏 4/4px），同款玻璃底
+  （`hsl(var(--bg-hue) … / calc(0.7 + var(--panel-alpha) * 0.26))` +
+  `inset 0 1px 0 var(--glass-sheen)`），工具按钮复用候选条的 `.tool`
+  语言（按压态、`.state-on`、编辑态 × 徽标），不引新 token；拼音条与
+  候选字对齐，候选区与键区像一体而不是两截。
 - F logo 固定行首；spacer 把左右两组撑开；编辑态 × 徽标、拖拽排序、
   溢出隐藏与旧候选条工具栏同一套接线，落点矩形取工具箱行本身。
 - 深浅主题验收截图：preview 页 + 设备截图存档。
+
+### 7.5 剪贴板拆分选择视图（keyboard.md §3.2，3.74.10）
+
+- 放大卡片 `#clipSplitCard` = phraseCard 同款浮层语言（圆角 28px 玻璃
+  底、居中、min(348px, 100%−16px)，z-index 37），原文 12px `--muted`
+  （max-height 72px 可滚），chips 横向换行、gap 8px、min-height 44px、
+  `--pill` 底、类型小标 11px `--accent-text`；「全文」chip 用 accent 底
+  打头。条目右侧 ⌄「展开」钮 = 28px 圆 `--pill` 底，不占正文区。
+- 深浅主题验收截图：preview 页 + 设备截图存档。
+
+### 7.6 快捷设置横屏紧凑（keyboard.md §6.1，3.74.10）
+
+- 横屏 `.qs-page` padding 2px 8px 4px；tile gap/padding 收紧、图标
+  20px、名称 11px，tile 内容（图标 + 名称 + 状态行）在横屏矮行内完整
+  可见，状态行（开/关/跟随系统）不被裁。竖屏不受影响。
+- 深浅主题验收截图：preview 页（`?act=qs&mode=landscape`）+ 设备截图存档。
 
 ## 8. 完整设置页
 
 设置页（`assets/settings/`）与键盘同源 token、同主题机制；卡片圆角、
 按钮、分组标题遵守同一套规则；`--accent-text`/`--input-placeholder`
 等文字 token 在浅色主题下的取值以 keyboard.md §1.1 为准。
+
+- **横屏网格自适应（3.74.10）**：`.skin-grid` 在 ≥700px 宽视口按
+  `repeat(auto-fit, minmax(150px, 1fr))` 自适应列数，卡片不横向溢出、
+  开关完整可见；窄屏保持 4 列，竖屏不受影响。
+- **横屏高度滑块（3.74.10）**：横屏页「横屏键盘高度」滑块复用竖屏滑块
+  的 `.slider-with-action` 语言（output + slider + 「恢复默认」ghost 钮）。
+- **跟随系统行（3.74.10）**：手感组「强度跟随系统」开关复用标准
+  `.switch-row`；开时弱/中/强选择器置灰禁用（disabled 态），不引新样式。

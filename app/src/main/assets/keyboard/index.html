@@ -129,6 +129,20 @@
             </div>
         </div>
     </section>
+    <!-- 剪贴板拆分放大视图（3.74.10）：phraseCard 同款浮层卡片。
+         条目右侧「展开」按钮或长按条目打开；点 chip 只贴该片段，
+         点「全文」贴整条。 -->
+    <section id="clipSplitCard" hidden>
+        <div class="pc-head">
+            <button id="clipSplitClose" class="pc-close" aria-label="关闭" data-i18n-aria-label="关闭">×</button>
+            <span id="clipSplitTitle" class="pc-title" data-i18n="选择要粘贴的片段">选择要粘贴的片段</span>
+            <span class="pc-head-pad" aria-hidden="true"></span>
+        </div>
+        <div class="pc-card">
+            <div id="clipSplitText" class="clip-split-text" aria-hidden="true"></div>
+            <div id="clipSplitChips" class="clip-split-chips"></div>
+        </div>
+    </section>
  <!-- Height adjust card (floats above the keyboard view).
          Fine steps via the -/+ buttons (applied live), coarse via the drag
          strip (preview only - the height lands on release/保存). -->

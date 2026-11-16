@@ -2464,10 +2464,11 @@ test('long-press popup drags to a different cell with real displacement', {since
     const q = world.key('q');
     const e = world.key('e');
     // 非零位移换格：fake 几何下 'e' 弹层格子心在 x=28/62/96,y=24、卡片
-    // 矩形 [142,94,186,138]（3.74.9：工具箱行插入使 #keyPopup 兄弟索引
-    // +1，卡片右移 34px）；锚(E)=62,24，B 从 (100,20) 拖到 (185,90) →
-    // 虚拟光标 (147,94) 入卡、最近格=末格 'e'。origin 若钉在首指 (20,20)
-    // 上，虚拟光标 (227,94) 出卡 → 取消零提交——正好钉死 origin 归属。
+    // 矩形 [176,94,220,138]（3.74.10：clipSplitCard 插入使 #keyPopup
+    // 兄弟索引 +1，卡片右移 34px；3.74.9 同款：工具箱行插入亦 +1）；
+    // 锚(E)=62,24，B 从 (100,20) 拖到 (236,112) → 虚拟光标 (198,116)
+    // 入卡、最近格=末格 'e'。origin 若钉在首指 (20,20) 上，虚拟光标
+    // (278,116) 出卡 → 取消零提交——正好钉死 origin 归属。
     world.dispatch(q, 'touchstart', 20, 20,
         { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
     world.dispatch(e, 'touchstart', 100, 20,
@@ -2475,11 +2476,11 @@ test('long-press popup drags to a different cell with real displacement', {since
           touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
     world.clock.advance(360);
     assert(world.$('keyPopup').classList.contains('open'), 'popup open');
-    world.dispatch(e, 'touchmove', 185, 90,
-        { changedTouches: [touchPoint(2, 185, 90)],
-          touches: [touchPoint(1, 20, 20), touchPoint(2, 185, 90)] });
-    world.dispatch(e, 'touchend', 185, 90,
-        { changedTouches: [touchPoint(2, 185, 90)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(e, 'touchmove', 236, 112,
+        { changedTouches: [touchPoint(2, 236, 112)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 236, 112)] });
+    world.dispatch(e, 'touchend', 236, 112,
+        { changedTouches: [touchPoint(2, 236, 112)], touches: [touchPoint(1, 20, 20)] });
     const keys = world.native.of('key');
     equal(keys.length, 1, 'one commit from popup (A still holds)');
     equal(keys[0].args[0], 'e', 'nonzero drag lands the last cell, origin at the pressing finger');
@@ -3332,23 +3333,25 @@ test('panel head carries no toolbar icons; a single X closes (#39-4)', {since: '
     world.tap(world.$('panelClose'));
 });
 
-// 剪贴板/常用语搜索（2026-11-16 用户要求）：输入即过滤，支持分组叠加、
-// 常用语 tab、清空恢复、无结果提示；切换 tab / 关面板清空查询。
-test('clipboard search filters items, combines with the group filter, clears on tab switch (3.74.8)', {since: '3.74.8'}, () => {
+// 剪贴板/常用语搜索（2026-11-16 用户要求；3.74.10 去分组后只按正文
+// 子串过滤）：输入即过滤，支持常用语 tab、清空恢复、无结果提示；
+// 切换 tab / 关面板清空查询；分组筛选栏已移除。
+test('clipboard search filters items by text only, clears on tab switch (3.74.8, 3.74.10)', {since: '3.74.10'}, () => {
     const world = fresh();
     world.hello({});
     world.clipboard([
-        { id: '1', time: 1, text: '快递单号 123456', group: '购物' },
-        { id: '2', time: 2, text: '会议纪要', group: '' },
-        { id: '3', time: 3, text: '快递地址 北京市', group: '购物' },
-        { id: '4', time: 4, text: 'Hello World', group: '' },
-    ], ['购物']);
+        { id: '1', time: 1, text: '快递单号 123456' },
+        { id: '2', time: 2, text: '会议纪要' },
+        { id: '3', time: 3, text: '快递地址 北京市' },
+        { id: '4', time: 4, text: 'Hello World' },
+    ]);
     world.tap(world.$('clipboardButton'));
     const rows = () => [...world.document.querySelectorAll('.panel-item')];
     const input = () => world.document.getElementById('panelSearchInput');
     const searchRow = () => world.document.getElementById('panelSearch');
-    // 搜索行在剪贴板 tab 显示。
+    // 搜索行在剪贴板 tab 显示；分组筛选栏已不存在。
     assert(!searchRow().hidden, 'search row shows on the clipboard tab');
+    equal(world.document.querySelectorAll('.clip-chip').length, 0, 'no group filter chips remain');
     equal(rows().length, 4, 'four clipboard items listed');
     // 输「快递」→ 只剩两条含「快递」的。
     input().value = '快递';
@@ -3367,15 +3370,6 @@ test('clipboard search filters items, combines with the group filter, clears on 
     // × 清空 → 全部回来。
     world.tap(world.document.getElementById('panelSearchClear'));
     equal(rows().length, 4, 'clear restores all items');
-    // 搜索 + 分组叠加：先搜「快递」，再点「购物」分组 → 仍 2 条；
-    // 点「未分组」→ 0 条（两条快递都在购物组）。
-    input().value = '快递';
-    world.dispatch(input(), 'input');
-    const chips = [...world.document.querySelectorAll('.clip-chip')];
-    world.tap(chips.find(c => c.textContent === '购物'));
-    equal(rows().length, 2, 'search + group filter combine (AND)');
-    world.tap(chips.find(c => c.textContent === '未分组'));
-    equal(rows().length, 0, 'search within the ungrouped set finds nothing');
     // 切换到常用语 tab → 查询清空、搜索行仍显示。
     world.tap(world.document.querySelector('[data-panel-tab="favorites"]'));
     equal(input().value, '', 'search clears on tab switch');
@@ -4451,6 +4445,158 @@ test('favorite codes join the candidate pool; picks commit the phrase directly',
     world.tap(world.$('spaceKey'));
     const commits = world.native.of('commitText');
     equal(commits[commits.length - 1].args[0], '祝福', 'space picks the favorite head');
+});
+
+test('pinyin correction: typo input offers corrected candidates at the pool tail', {since: '3.74.10'}, () => {
+    const world = fresh();
+    world.native.correctionMap = { nihao: ['你好', '你号'] };
+    // 'nihoa' is a transposition typo of 'nihao': it segments ragged, so the
+    // correction runs; the engine slice is thin (a prefix candidate only).
+    world.engineState({ mode: 'pinyin', revision: 20, composing: 'nihoa', rawInput: 'nihoa',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    const bar = [...world.$('candidates').querySelectorAll('.candidate')];
+    const texts = bar.map(b => b.textContent);
+    equal(JSON.stringify(texts), JSON.stringify(['你', '你好', '你号']), 'corrected candidates sit after the engine head');
+    const fixButton = bar.find(b => b.textContent === '你好');
+    assert(fixButton.className.includes('fix'), 'correction button marked fix');
+    // Picking it commits literally (clear + commit), never the engine channel.
+    fixButton.click();
+    equal(world.native.of('clearComposing').length, 1, 'composition cleared');
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '你好', 'correction committed literally');
+    equal(world.native.of('chooseCandidate').filter(c => String(c.args[1]).startsWith('fix:')).length,
+        0, 'engine channel never sees fix: ids');
+    // The bridge was asked for the corrected pinyin, not the typo.
+    assert(world.native.of('queryPinyinCandidates').some(c => c.args[0] === 'nihao'),
+        'bridge queried the corrected pinyin');
+});
+
+test('pinyin correction: clean input and correction-off stay quiet', {since: '3.74.10'}, () => {
+    const world = fresh();
+    world.native.correctionMap = { nihao: ['你好'] };
+    // Clean segmentation ('nihao' -> ni + hao) with engine candidates: no fix.
+    world.engineState({ mode: 'pinyin', revision: 21, composing: 'nihao', rawInput: 'nihao',
+        candidates: [{ id: 'c1', text: '你好' }], hasNextPage: false });
+    equal(world.native.of('queryPinyinCandidates').length, 0, 'clean input never queries');
+    let bar = [...world.$('candidates').querySelectorAll('.candidate')].map(b => b.textContent);
+    equal(JSON.stringify(bar), JSON.stringify(['你好']), 'no correction appended to clean input');
+    // Correction switched off: even a typo stays quiet.
+    const world2 = fresh({ pinyinCorrection: false });
+    world2.native.correctionMap = { nihao: ['你好'] };
+    world2.engineState({ mode: 'pinyin', revision: 22, composing: 'nihoa', rawInput: 'nihoa',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    equal(world2.native.of('queryPinyinCandidates').length, 0, 'correction off never queries');
+    bar = [...world2.$('candidates').querySelectorAll('.candidate')].map(b => b.textContent);
+    equal(JSON.stringify(bar), JSON.stringify(['你']), 'correction off appends nothing');
+});
+
+test('pinyin correction variants: transposition recovers the intended pinyin', {since: '3.74.10'}, () => {
+    const world = fresh();
+    // Mode must be full pinyin for pinyinPieces to segment (it returns []
+    // in any other mode).
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'n', rawInput: 'n',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    const kb = world.context.window.Feelime;
+    const variants = kb.pinyinCorrectionVariants('nihoa');
+    assert(variants.includes('nihao'), 'transposition nihoa -> nihao, got ' + JSON.stringify(variants));
+    assert(variants.length <= 3, 'at most three variants');
+    // A clean string yields no variants that change it.
+    equal(JSON.stringify(kb.pinyinCorrectionVariants('nihao').filter(v => v === 'nihao')), '[]', 'clean input is not its own variant');
+});
+
+test('clipPieces splits links, codes, digits, words and text by priority (3.74.10)', {since: '3.74.10'}, () => {
+    const world = fresh();
+    const kb = world.context.window.Feelime;
+    const pieces = kb.clipPieces('今天天气不错。验证码是 123456，访问 www.example.com，金额 1,299.50 元，hello world');
+    const kinds = pieces.map(p => p.kind);
+    assert(kinds.includes('验证码'), 'code near keyword: ' + JSON.stringify(pieces));
+    assert(kinds.includes('链接'), 'www link');
+    assert(kinds.includes('数字'), 'amount digits');
+    assert(kinds.includes('单词'), 'latin words');
+    assert(kinds.includes('文字'), 'sentence text');
+    equal(pieces.find(p => p.kind === '验证码').value, '123456', 'code value');
+    assert(pieces.find(p => p.kind === '链接').value.includes('example.com'), 'link value');
+    equal(pieces.find(p => p.kind === '数字').value, '1,299.50', 'amount value');
+    // Email claims its span first, so the domain is not also a bare link.
+    const mail = kb.clipPieces('联系 a@b.com 了解');
+    equal(mail.filter(p => p.kind === '邮箱').length, 1, 'one email piece');
+    equal(mail.filter(p => p.kind === '链接').length, 0, 'email domain is not double-counted as a link');
+    // A bare domain is a link; a bare link alone yields nothing (whole text).
+    equal(kb.clipPieces('打开 example.com 看看').find(p => p.kind === '链接').value, 'example.com', 'bare domain link');
+    equal(kb.clipPieces('https://example.com/x').length, 0, 'piece equal to whole text is skipped');
+    // Cap and dedupe.
+    const many = Array.from({ length: 12 }, (_, i) => String(1000 + i)).join(' ');
+    assert(kb.clipPieces(many).length <= 8, 'at most 8 pieces');
+    equal(kb.clipPieces('1234 1234').filter(p => p.value === '1234').length, 1, 'deduped by kind+value');
+    // A code without a nearby keyword is just digits.
+    equal(kb.clipPieces('单号 123456').find(p => p.value === '123456').kind, '数字', 'digits without a code keyword stay digits');
+});
+
+test('clipboard split view: row tap pastes whole, expand/long-press open the card, chip pastes its piece (3.74.10)', {since: '3.74.10'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.clipboard([{ id: 'c1', time: 1, text: '验证码是 123456，访问 www.example.com' }]);
+    world.tap(world.$('clipboardButton'));
+    const row = world.document.querySelectorAll('.panel-item')[0];
+    // 展开按钮在条目右侧；点条目本身仍贴全文（老习惯不变）。
+    const expand = row.querySelector('.clip-expand-btn');
+    assert(expand, 'expand button on the row');
+    world.tap(row);
+    equal(world.native.of('pasteText').length, 1, 'row tap pastes');
+    equal(world.native.of('pasteText')[0].args[0], '验证码是 123456，访问 www.example.com', 'row tap pastes the whole text');
+    assert(world.$('panelLayer').hidden, 'panel closes after the paste');
+    // 点展开按钮 → 放大视图，chips + 全文。
+    world.tap(world.$('clipboardButton'));
+    const row2 = world.document.querySelectorAll('.panel-item')[0];
+    world.tap(row2.querySelector('.clip-expand-btn'));
+    assert(!world.$('clipSplitCard').hidden, 'split card opens from the expand button');
+    const chips = [...world.document.querySelectorAll('.clip-split-chip')];
+    assert(chips.some(c => c.textContent.includes('全文')), 'full-text chip present');
+    assert(chips.some(c => c.textContent.includes('123456')), 'code chip present');
+    // 点验证码 chip → 只贴该片段，关面板。
+    world.tap(chips.find(c => c.textContent.includes('123456')));
+    equal(world.native.of('pasteText').length, 2, 'chip tap pastes once more');
+    equal(world.native.of('pasteText')[1].args[0], '123456', 'chip pastes only its piece');
+    assert(world.$('panelLayer').hidden, 'panel closes after chip paste');
+    // 长按条目同样打开放大视图。
+    world.tap(world.$('clipboardButton'));
+    const row3 = world.document.querySelectorAll('.panel-item')[0];
+    world.dispatch(row3, 'touchstart', 20, 20, { touches: [{ clientX: 20, clientY: 20 }] });
+    world.clock.advance(400);
+    assert(!world.$('clipSplitCard').hidden, 'long-press opens the split card');
+    world.tap(world.$('panelClose'));
+    // 超长条目没有展开按钮。
+    world.clipboard([{ id: 'big', time: 2, text: 'x'.repeat(100001) }]);
+    world.tap(world.$('clipboardButton'));
+    const bigRow = world.document.querySelectorAll('.panel-item')[0];
+    equal(bigRow.querySelector('.clip-expand-btn'), null, 'over-long row has no expand button');
+});
+
+test('layoutChrome budgets portrait 136+band / landscape 118+band (3.74.10)', {since: '3.74.10'}, () => {
+    const world = fresh();
+    const kb = world.context.window.Feelime;
+    world.hello({ orientation: 'portrait' });
+    equal(kb.layoutChrome(), 140, 'portrait chrome 136 + default band 4');
+    world.hello({ orientation: 'landscape' });
+    equal(kb.layoutChrome(), 122, 'landscape chrome 118 + default band 4');
+    // 拼音字号档加大时增量跟上。
+    world.hello({ orientation: 'portrait', preeditFont: 2 });
+    equal(kb.layoutChrome(), 147, 'portrait chrome grows with the preedit font level');
+});
+
+test('global haptics: candidate pick and toolbox tap vibrate once each (3.74.10)', {since: '3.74.10'}, () => {
+    const world = fresh();
+    world.hello({});
+    // 候选点选：先有组合候选。
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    const before = world.native.of('keyFeedback').length;
+    const btn = world.$('candidates').querySelectorAll('.candidate')[0];
+    world.tap(btn);
+    equal(world.native.of('keyFeedback').length, before + 1, 'candidate tap vibrates once');
+    // 工具箱按钮点按：剪贴板按钮（委托到工具箱行）。
+    const beforeTool = world.native.of('keyFeedback').length;
+    world.tap(world.$('clipboardButton'));
+    equal(world.native.of('keyFeedback').length, beforeTool + 1, 'toolbox tap vibrates once');
 });
 
 test('rank slots: exact favorites splice into their 1-based candidate slot', {since: '3.25.0'}, () => {
@@ -7901,17 +8047,20 @@ test('remove and clear clipboard hit the bridge with hex ids', () => {
     equal(world.native.of('clearClipboard').length, 1, 'clearClipboard called');
 });
 
-test('a mixed clip can paste just the link', {since: '3.74.2'}, () => {
+test('a mixed clip can paste just the link (3.74.10 split card)', {since: '3.74.10'}, () => {
     const world = fresh();
     world.clipboard([
         { id: 'a1', time: 1, text: '订单号 13800138000 详见 https://example.com/a 谢谢' },
-        { id: 'b2', time: 2, text: '另一条', group: '工作' },
-    ], ['工作']);
+        { id: 'b2', time: 2, text: '另一条' },
+    ]);
     assert(!world.$('clipboardButton').querySelector('.clip-count'), 'toolbar has no count badge');
     world.tap(world.$('clipboardButton'));
     assert(/2/.test(world.$('clipTotal').textContent), 'panel shows the clip total');
     assert(!world.$('clipTotal').hidden, 'total is visible inside the panel');
-    const link = [...world.document.querySelectorAll('.clip-extract')]
+    // 3.74.10：旧的条目下 inline 提取 chip 已由放大选择视图取代。
+    const row = world.document.querySelectorAll('.panel-item')[0];
+    world.tap(row.querySelector('.clip-expand-btn'));
+    const link = [...world.document.querySelectorAll('.clip-split-chip')]
         .find(node => /example\.com/.test(node.textContent));
     assert(link, 'link chip is offered');
     world.tap(link);
@@ -8530,8 +8679,8 @@ test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.
     // the thumb opened pinned at an end (landscape: below min, hard left).
     // The range must come from the native hello, mirroring setKeyboardHeight.
     const world = fresh();
-    // 3.74.9：内容下限随 chrome 涨到 276（144+4+128），272 fallback 会被
-    // 钳到下限、滑块钉在左端——把视图抬到 310，落在 [276, 340] 中段。
+    // 3.74.10：内容下限随 chrome 降到 268（136+4+128），272 fallback 会被
+    // 钳到下限、滑块钉在左端——把视图抬到 310，落在 [268, 340] 中段。
     world.$('softKeyboard').clientHeight = 310;
     world.hello({ heightCeil: 340, heightFloor: 210, floatBand: 200 });
     world.tap(world.$('setupButton'));
@@ -8539,7 +8688,7 @@ test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.
     equal(world.document.getElementById('heightValue').textContent, '310px',
         'preview opens at the current height');
     const left = parseInt(world.document.getElementById('heightThumb').style.left, 10);
-    // 310 inside [276, 340]: frac 0.53 of the (200-14) track - mid-track,
+    // 310 inside [268, 340]: frac 0.58 of the (200-14) track - mid-track,
     // neither end pinned
     assert(left > 60 && left < 130, `thumb starts mid-track, not pinned (left=${left})`);
     // A ceiling AT the content floor (landscape half-screen budgets) must say
@@ -8558,7 +8707,7 @@ test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.
 
 test('unchanged height saves send stable content height', {since: '3.22.1'}, () => {
     const world = new KeyboardWorld().build();
-    // 3.74.9：内容下限 276，旧 304-32=272 会被钳到下限——抬到 320，
+    // 3.74.10：内容下限 268，旧 304-32=272 会被钳到下限——抬到 320，
     // 内容 288 仍在下限之上，卡片读的就是内容高。
     world.$('softKeyboard').clientHeight = 320;
     world.hello({ orientation: 'portrait', safeBottom: 32, heightFloor: 210, heightCeil: 320 });

@@ -299,10 +299,8 @@ let panelFav = [
 function pushPanelData(callback, payload) {
     const win = frame.contentWindow;
     if (!win || !win.Feelime || !win.Feelime[callback]) return;
-    const body = callback === 'onClipboard'
-        ? { groups: ['工作'], ...payload }
-        : payload;
-    setTimeout(() => win.Feelime[callback](body), 120);
+    // 3.74.10：剪贴板分组已移除，onClipboard 不再带 groups。
+    setTimeout(() => win.Feelime[callback](payload), 120);
 }
 function hostRender(raw) {
     const el = frame.contentDocument && frame.contentDocument.getElementById('hostEditor');
@@ -398,6 +396,11 @@ function makeBridge() {
             hostCommit(cands[0] || '');
             rawInput = '';
             pushEngineState('', false);
+        },
+        // 拼音纠错（3.74.10）：预览桩直接复用假引擎的候选生成。
+        queryPinyinCandidates(pinyin) {
+            log('queryPinyinCandidates', `<b>${esc(pinyin)}</b> <span class="dim">→ 纠错候选</span>`);
+            return JSON.stringify(fakeCandidates(pinyin).slice(0, 5));
         },
         deleteHighlightedCandidate() {
             // 模拟 librime 删自造词 —— 假引擎里首个候选必删成功。

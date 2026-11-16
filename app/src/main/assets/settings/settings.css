@@ -343,6 +343,11 @@ h3 { margin: 0; font-size: 14px; font-weight: 650; }
     gap: 8px;
     width: 100%;
 }
+/* 横屏宽视口（3.74.10）：皮肤网格按宽度自适应列数——窄屏 4 列不变，
+ *  宽屏自动多列，卡片不再被裁；竖屏不受影响。 */
+@media (min-width: 700px) {
+    .skin-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
 .skin-card {
     display: flex;
     flex-direction: column;

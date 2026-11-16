@@ -277,6 +277,14 @@ const I18N = {
     "dict.userwords.enable": "\u624B\u52A8\u7EF4\u62A4\u7684\u5E38\u7528\u8BCD",
     "dict.userwords.hint": "\u9010\u6761\u6DFB\u52A0\u300C\u8BCD + \u5168\u62FC\u8F93\u5165\u7801\u300D\uFF0C\u6216\u957F\u6309\u5019\u9009\u70B9\u300C\u6536\u5165\u81EA\u9020\u8BCD\u300D\u3002\u4E5F\u53EF\u4EE5\u5BFC\u5165 rime \u8BCD\u5E93\u3002\u9002\u5408\u540D\u5B57\u548C\u884C\u8BDD\u3002\u53EA\u5B58\u5728\u672C\u673A\uFF0C\u6700\u591A 200 \u6761\u3002",
     "dict.userwords.manage": "\u7BA1\u7406\u8BCD\u6761",
+    "dict.lexicon.title": "\u7EA0\u9519\u4E0E\u4E60\u60EF\u8BCD\u5E93",
+    "dict.lexicon.correction": "\u62FC\u97F3\u7EA0\u9519",
+    "dict.lexicon.correctionHint": "\u9ED8\u8BA4\u5F00\u542F\uFF1B\u6253\u9519\u62FC\u97F3\u4E5F\u80FD\u51FA\u5019\u9009\uFF08\u6309\u7F16\u8F91\u8DDD\u79BB\u7EA0\u4E00\u683C\uFF09\uFF0C\u7EA0\u9519\u5019\u9009\u5E26\u300C\u7EA0\u300D\u6807\u3001\u6392\u5728\u5019\u9009\u540E\u9762\uFF0C\u70B9\u9009\u76F4\u63A5\u4E0A\u5C4F",
+    "dict.lexicon.habit": "\u4E60\u60EF\u81EA\u52A8\u8BCD\u5E93",
+    "dict.lexicon.habitHint": "\u9ED8\u8BA4\u5F00\u542F\uFF1B\u5E38\u6253\u7684\u8BCD\u6EE1 3 \u6B21\u81EA\u52A8\u6536\u5165\u81EA\u9020\u8BCD\uFF0C\u53EA\u5B58\u5728\u672C\u673A\u3002\u5173\u6389\u540E\u4E0D\u518D\u81EA\u52A8\u6536\u5165\uFF0C\u5DF2\u6536\u5165\u7684\u8BCD\u4FDD\u7559",
+    "dict.lexicon.autoWords": "\u81EA\u52A8\u6536\u5165\u7684\u8BCD",
+    "dict.lexicon.autoWordsEmpty": "\u8FD8\u6CA1\u6709\u81EA\u52A8\u6536\u5165\u7684\u8BCD\uFF0C\u591A\u6253\u51E0\u6B21\u5E38\u7528\u8BCD\u5C31\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002",
+    "dict.lexicon.autoWordsDeleted": "\u5DF2\u5220\u9664",
     "page.userwords": "\u81EA\u9020\u8BCD",
     "page.fuzzy": "\u6A21\u7CCA\u97F3",
     "page.keyboards": "\u952E\u76D8\u9009\u62E9",
@@ -888,6 +896,9 @@ const I18N = {
     "input.landscape.safeAreaHint": "\u952E\u76D8\u80CC\u666F\u94FA\u6EE1\u542B\u6316\u5B54\u7684\u6574\u6761\u77ED\u8FB9\uFF0C\u4F46\u6309\u952E\u533A\u907F\u5F00\u6316\u5B54\u4FA7\uFF1B\u5173\u95ED\u540E\u6309\u952E\u4E5F\u94FA\u6EE1\u3002",
     "input.landscape.ceil": "\u9AD8\u5EA6\u4E0A\u9650",
     "input.landscape.ceilHint": "\u6A2A\u5C4F\u952E\u76D8\u6700\u9AD8\u53EF\u5360\u5C4F\u5E55\u9AD8\u5EA6\u7684\u767E\u5206\u6BD4\uFF0840%\u2013100%\uFF09\u3002",
+    "input.landscape.height": "\u6A2A\u5C4F\u952E\u76D8\u9AD8\u5EA6",
+    "input.landscape.heightHint": "\u6A2A\u5C4F\u952E\u76D8\u7684\u9AD8\u5EA6\uFF1B\u952E\u76D8\u4E0A\u62D6\u62FD\u8C03\u8282\u4E0E\u6B64\u5904\u7B49\u6548\u3002\u6A2A\u7AD6\u5C4F\u5206\u5F00\u8BB0\u5FC6\u3002",
+    "input.landscape.heightReset": "\u6062\u590D\u9ED8\u8BA4",
     "input.landscape.opacity": "\u6574\u4F53\u4E0D\u900F\u660E\u5EA6",
     "input.landscape.opacityHint": "\u6A2A\u5C4F\u65F6\u952E\u76D8\u6574\u5C42\uFF08\u542B\u80CC\u666F\uFF09\u7684\u900F\u660E\u7A0B\u5EA6\uFF0C\u8C03\u4F4E\u53EF\u770B\u5230\u88AB\u952E\u76D8\u76D6\u4F4F\u7684\u5185\u5BB9\u3002",
     "input.feel.padPortrait": "\u5E95\u90E8\u7559\u767D \xB7 \u7AD6\u5C4F",
@@ -1044,6 +1055,8 @@ const I18N = {
     "input.feel.keySoundVolumeHint": "\u54D4\u58F0\u3001\u7CFB\u7EDF\u952E\u51FB\u97F3\u4E0E\u81EA\u5B9A\u4E49\u97F3\u6548\u5171\u7528\u3002",
     "input.feel.keyHapticStrength": "\u632F\u52A8\u5F3A\u5EA6",
     "input.feel.keyHapticStrengthHint": "\u672C\u673A\u9A6C\u8FBE\u4E0D\u652F\u6301\u5F3A\u5F31\u8C03\u8282\u65F6\u6309\u8F7B\u91CD\u7684\u65F6\u957F\u8FD1\u4F3C\u3002",
+    "input.feel.keyHapticFollowSystem": "\u5F3A\u5EA6\u8DDF\u968F\u7CFB\u7EDF",
+    "input.feel.keyHapticFollowSystemHint": "\u5F00 = \u5F3A\u5EA6\u7528\u7CFB\u7EDF\u9ED8\u8BA4\uFF0C\u5F31/\u4E2D/\u5F3A\u9009\u62E9\u7F6E\u7070\uFF1B\u5173 = \u624B\u52A8\u5F31/\u4E2D/\u5F3A\u4E09\u6863\u3002",
     "input.feel.hapticLight": "\u5F31",
     "input.feel.hapticMedium": "\u4E2D",
     "input.feel.hapticStrong": "\u5F3A",
@@ -1185,6 +1198,14 @@ const I18N = {
     "dict.userwords.enable": "Hand-maintained words",
     "dict.userwords.hint": "Add word + pinyin pairs, or long-press a candidate and choose Save to my words. Rime dictionaries can be imported on this page. On this phone only, up to 200 entries.",
     "dict.userwords.manage": "Manage words",
+    "dict.lexicon.title": "Correction & habit lexicon",
+    "dict.lexicon.correction": "Pinyin typo correction",
+    "dict.lexicon.correctionHint": "On by default. Mis-typed pinyin still offers candidates (one edit away); corrected candidates carry a \u201C\u7EA0\u201D mark, sit after the normal ones, and commit on tap.",
+    "dict.lexicon.habit": "Habit auto-lexicon",
+    "dict.lexicon.habitHint": "On by default. Words you type often are saved to your words after 3 uses, on this phone only. Turning it off stops new saves; saved words stay.",
+    "dict.lexicon.autoWords": "Auto-saved words",
+    "dict.lexicon.autoWordsEmpty": "No auto-saved words yet. Type a common word a few times and it will show up here.",
+    "dict.lexicon.autoWordsDeleted": "Deleted",
     "page.userwords": "User words",
     "page.fuzzy": "Fuzzy input",
     "page.keyboards": "Keyboard selection",
@@ -1794,6 +1815,9 @@ const I18N = {
     "input.landscape.safeAreaHint": "The keyboard background fills the full short edge including the cutout, while the keys avoid it; off lets keys fill it too.",
     "input.landscape.ceil": "Height ceiling",
     "input.landscape.ceilHint": "Maximum share of the screen height the landscape keyboard may take (40%\u2013100%).",
+    "input.landscape.height": "Landscape keyboard height",
+    "input.landscape.heightHint": "Landscape keyboard height; dragging on the keyboard stays equivalent. Portrait and landscape are remembered separately.",
+    "input.landscape.heightReset": "Reset",
     "input.landscape.opacity": "Overall opacity",
     "input.landscape.opacityHint": "Opacity of the whole landscape keyboard (background included); lower it to see the content underneath.",
     "input.feel.padPortrait": "Bottom padding \xB7 Portrait",
@@ -1943,6 +1967,8 @@ const I18N = {
     "input.feel.keySoundVolumeHint": "Shared by the beep, system keypress and custom sounds.",
     "input.feel.keyHapticStrength": "Haptic strength",
     "input.feel.keyHapticStrengthHint": "Approximated by duration when the motor lacks amplitude control.",
+    "input.feel.keyHapticFollowSystem": "Follow system strength",
+    "input.feel.keyHapticFollowSystemHint": "On = system default strength, the weak/medium/strong selector is greyed out; off = manual weak/medium/strong.",
     "input.feel.hapticLight": "Light",
     "input.feel.hapticMedium": "Medium",
     "input.feel.hapticStrong": "Strong",
@@ -2580,6 +2606,7 @@ function render(state) {
   renderKeyboards(state);
   renderCustomPhrases(state);
   renderUserWords(state);
+  renderLexicon(state);
   renderDictBase(state);
   renderFlypy(state);
   renderUpdate(state);
@@ -2587,6 +2614,7 @@ function render(state) {
 }
 __name(render, "render");
 function renderLandscape(state) {
+  var _a, _b, _c, _d;
   const safe = $("landscapeSafeArea");
   if (safe && document.activeElement !== safe) safe.checked = state.landscapeSafeArea !== 0;
   const hwkb = $("hwkbForm");
@@ -2603,10 +2631,25 @@ function renderLandscape(state) {
   const opVal = Number(state.landscapeOpacity);
   if (op && Number.isFinite(opVal) && opVal >= 10 && opVal <= 100 && document.activeElement !== op) op.value = String(opVal);
   if (opOut) opOut.textContent = Math.round(Number(op && op.value)) + "%";
+  const kbh = $("kbHeightLandscape");
+  if (kbh) {
+    const min = Number((_a = state.kbHeightLandscapeMin) != null ? _a : 170);
+    const max = Number((_b = state.kbHeightLandscapeMax) != null ? _b : 300);
+    const def = Number((_c = state.kbHeightLandscapeDefault) != null ? _c : max);
+    kbh.min = String(min);
+    kbh.max = String(max);
+    kbh.step = "5";
+    const saved = Number((_d = state.kbHeightLandscape) != null ? _d : 0);
+    if (document.activeElement !== kbh) {
+      kbh.value = String(saved >= min && saved <= max ? saved : def);
+    }
+    kbh.dataset.default = String(def);
+    rangeOut("kbHeightLandscape", kbh.value + " px");
+  }
 }
 __name(renderLandscape, "renderLandscape");
 function renderFeel(state) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
   const setSelect = /* @__PURE__ */ __name((id, value, allowed) => {
     const node = $(id);
     if (!node) return;
@@ -2859,12 +2902,13 @@ function renderFeel(state) {
   if (kbHeight) {
     const min = Number((_l = state.kbHeightMin) != null ? _l : 226);
     const max = Number((_m = state.kbHeightMax) != null ? _m : 400);
+    const def = Number((_n = state.kbHeightDefault) != null ? _n : 272);
     kbHeight.min = String(min);
     kbHeight.max = String(max);
     kbHeight.step = "5";
-    const saved = Number((_n = state.kbHeightPortrait) != null ? _n : 0);
-    kbHeight.value = String(saved >= min ? saved : 272);
-    kbHeight.dataset.default = "272";
+    const saved = Number((_o = state.kbHeightPortrait) != null ? _o : 0);
+    kbHeight.value = String(saved >= min ? saved : def);
+    kbHeight.dataset.default = String(def);
     rangeOut("kbHeight", kbHeight.value + " px");
   }
   [["bgImageLight", "bgImageLightSource"], ["bgImageDark", "bgImageDarkSource"]].forEach(([id, key]) => {
@@ -2881,23 +2925,27 @@ function renderFeel(state) {
     if (opt && src !== "custom") opt.remove();
     sel.value = src === "custom" ? "custom" : src;
   });
-  setSelect("holdMs", (_o = state.holdMs) != null ? _o : 350, ["200", "300", "350", "450", "600"]);
+  setSelect("holdMs", (_p = state.holdMs) != null ? _p : 350, ["200", "300", "350", "450", "600"]);
   setSelect("kbLayout", state.kbLayout === "14" ? "14" : "26", ["26", "14"]);
-  setSelect("scrubSpeed", (_p = state.scrubSpeed) != null ? _p : 3, ["1", "2", "3", "4", "5"]);
+  setSelect("scrubSpeed", (_q = state.scrubSpeed) != null ? _q : 3, ["1", "2", "3", "4", "5"]);
   const flickSwap = $("flickSwap");
   if (flickSwap) flickSwap.checked = state.flickSwap === true;
   const doubleShiftLock = $("doubleShiftLock");
   if (doubleShiftLock) doubleShiftLock.checked = state.doubleShiftLock === true;
-  setSelect("popupSnap", (_q = state.popupSnap) != null ? _q : 1, ["0", "1", "2"]);
+  setSelect("popupSnap", (_r = state.popupSnap) != null ? _r : 1, ["0", "1", "2"]);
   const setToggle = /* @__PURE__ */ __name((id, value) => {
     const node = $(id);
     if (node && document.activeElement !== node) node.checked = !!value;
   }, "setToggle");
   setToggle("keySound", state.keySound);
   const vol = $("keySoundVolume");
-  if (vol && document.activeElement !== vol) vol.value = String((_r = state.keySoundVolume) != null ? _r : 60);
+  if (vol && document.activeElement !== vol) vol.value = String((_s = state.keySoundVolume) != null ? _s : 60);
   if (vol) rangeOut("keySoundVolume", vol.value + "%");
-  setSelect("keyHapticStrength", String((_s = state.keyHapticStrength) != null ? _s : 1), ["0", "1", "2"]);
+  setSelect("keyHapticStrength", String((_t = state.keyHapticStrength) != null ? _t : 1), ["0", "1", "2"]);
+  const followHaptic = state.keyHapticFollowSystem === true;
+  setToggle("keyHapticFollowSystem", followHaptic);
+  const strengthSel = $("keyHapticStrength");
+  if (strengthSel) strengthSel.disabled = followHaptic;
   {
     const style = state.keySoundStyle || "default";
     const sel = $("keySoundStyle");
@@ -4109,6 +4157,39 @@ function saveUserWordsToBridge() {
   if (count) count.textContent = userWordItems.length ? t("userwords.count", [userWordItems.length]) : "";
 }
 __name(saveUserWordsToBridge, "saveUserWordsToBridge");
+function renderLexicon(state) {
+  if (document.activeElement !== $("pinyinCorrection")) {
+    $("pinyinCorrection").checked = state.pinyinCorrection !== false;
+  }
+  if (document.activeElement !== $("habitLexicon")) {
+    $("habitLexicon").checked = state.habitLexicon !== false;
+  }
+  const words = Array.isArray(state.autoWords) ? state.autoWords : [];
+  const list = $("autoWordList");
+  list.textContent = "";
+  words.forEach((word) => {
+    const text = String(word || "");
+    if (!text) return;
+    const row = document.createElement("li");
+    row.className = "phrase-row";
+    const label = document.createElement("span");
+    label.className = "phrase-text";
+    label.textContent = text;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "phrase-del";
+    del.textContent = "\u2715";
+    del.setAttribute("aria-label", t("dict.lexicon.autoWordsDeleted"));
+    del.addEventListener("click", () => {
+      call("removeAutoWord", text);
+      setNote("autoWordsNote", t("dict.lexicon.autoWordsDeleted"));
+    });
+    row.append(label, del);
+    list.append(row);
+  });
+  $("autoWordEmpty").hidden = words.length > 0;
+}
+__name(renderLexicon, "renderLexicon");
 $("btnManageUserWords").addEventListener("click", () => showPage("userwords"));
 $("btnCancelUserWordEdit").addEventListener("click", resetUserWordForm);
 $("btnSaveUserWord").addEventListener("click", () => {
@@ -4356,6 +4437,22 @@ $("kbHeightReset").addEventListener("click", () => {
   rangeOut("kbHeight", slider.value + " px");
   call("setKbHeight", 0);
 });
+let kbHeightLandscapeDirty = false;
+$("kbHeightLandscape").addEventListener("input", (event) => {
+  kbHeightLandscapeDirty = true;
+  rangeOut("kbHeightLandscape", event.target.value + " px");
+});
+$("kbHeightLandscape").addEventListener("change", (event) => {
+  if (!kbHeightLandscapeDirty) return;
+  kbHeightLandscapeDirty = false;
+  call("setKbHeightLandscape", parseInt(event.target.value, 10));
+});
+$("kbHeightLandscapeReset").addEventListener("click", () => {
+  const slider = $("kbHeightLandscape");
+  slider.value = slider.dataset.default || String(slider.max || 300);
+  rangeOut("kbHeightLandscape", slider.value + " px");
+  call("setKbHeightLandscape", 0);
+});
 const bgPickGeneration = { light: 0, dark: 0 };
 [["bgImageLight", "light"], ["bgImageDark", "dark"]].forEach(([id, variant]) => {
   const sel = $(id);
@@ -4444,6 +4541,8 @@ $("modelConsentConfirm").addEventListener("click", () => {
 let asrHotwordsSubmitted = null;
 $("asrIdleUnload").addEventListener("change", (event) => call("setAsrIdleUnload", event.target.checked));
 $("powerSaving").addEventListener("change", (event) => call("setPowerSaving", event.target.checked));
+$("pinyinCorrection").addEventListener("change", (event) => call("setPinyinCorrection", event.target.checked));
+$("habitLexicon").addEventListener("change", (event) => call("setHabitLexicon", event.target.checked));
 $("hotwords").addEventListener("input", () => {
   asrHotwordsDirty = true;
 });
@@ -4515,6 +4614,12 @@ $("keySoundVolume").addEventListener("input", (event) => {
   );
 });
 $("keyHapticStrength").addEventListener("change", (event) => call("setKeyHapticStrength", Number(event.target.value)));
+$("keyHapticFollowSystem").addEventListener("change", (event) => {
+  const follow = event.target.checked;
+  const strengthSel = $("keyHapticStrength");
+  if (strengthSel) strengthSel.disabled = follow;
+  call("setKeyHapticFollowSystem", follow);
+});
 $("keySoundStyle").addEventListener("change", (event) => {
   if (event.target.value === "custom") call("openKeySoundDocument");
   else call("setKeySoundStyle", event.target.value);

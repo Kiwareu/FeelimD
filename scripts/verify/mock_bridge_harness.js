@@ -937,6 +937,13 @@ class MockNative {
     chooseCandidate(revision, id, token) {
         this._record('chooseCandidate', [revision, id, token]);
     }
+    // 拼音纠错（3.74.10）：同步返回该变体拼音的候选 JSON。测试用
+    // correctionMap 注入映射（{变体拼音: [候选...]}），未配即空。
+    queryPinyinCandidates(pinyin, token) {
+        this._record('queryPinyinCandidates', [pinyin, token]);
+        const map = this.correctionMap || {};
+        return JSON.stringify(map[pinyin] || []);
+    }
     pageNext(revision, token) {
         this._record('pageNext', [revision, token]);
     }
@@ -1209,8 +1216,9 @@ class KeyboardWorld {
     }
 
     // ---- panel payload injectors (FeelimeService pushes these after a get*)
-    clipboard(items, groups) {
-        this.context.window.Feelime.onClipboard({ items, groups: groups || [] });
+    clipboard(items) {
+        // 3.74.10：剪贴板分组已移除，onClipboard 不再带 groups。
+        this.context.window.Feelime.onClipboard({ items });
     }
 
     favorites(items) {

@@ -250,16 +250,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u6682\u65E0\u5019\u9009": "No candidates",
     "\u526A\u8D34\u677F\u53EA\u7559\u5728\u8FD9\u53F0\u624B\u673A\u4E0A\uFF0C\u4E0D\u4E0A\u4F20\u3001\u4E0D\u8FDB\u4E91\u5907\u4EFD\u3002\u6761\u6570\u4E0D\u53E6\u8BBE\u4E0A\u9650\uFF1B\u5168\u90E8\u6B63\u6587\u5927\u7EA6 32MB\uFF0C\u518D\u5927\u5C31\u5B58\u4E0D\u4E0B\u3002": "Clipboard stays on this phone. It is not uploaded and is not in cloud backup. There is no fixed item cap; about 32MB of text total is the on-device ceiling.",
     "\u6761": "clips",
-    "\u5168\u90E8": "All",
-    "\u672A\u5206\u7EC4": "Ungrouped",
-    "\uFF0B\u5206\u7EC4": "\uFF0B Group",
-    "\u5206\u7EC4\u540D": "Group name",
     "\u52A0\u5165": "Add",
-    "\u79FB\u5230\u5206\u7EC4": "Move to group",
     "\u94FE\u63A5": "Link",
     "\u90AE\u7BB1": "Email",
-    "\u53F7\u7801": "Number",
+    "\u9A8C\u8BC1\u7801": "Code",
     "\u6570\u5B57": "Digits",
+    "\u5355\u8BCD": "Word",
+    "\u6587\u5B57": "Text",
+    "\u5C55\u5F00": "Expand",
+    "\u5168\u6587": "Full text",
+    "\u9009\u62E9\u8981\u7C98\u8D34\u7684\u7247\u6BB5": "Choose a piece to paste",
     "\u6536\u5165\u81EA\u9020\u8BCD": "Save to my words",
     "\u5DF2\u6536\u5165\u81EA\u9020\u8BCD": "Saved to my words",
     "\u6682\u65E0\u5E38\u7528\u8BED\uFF0C\u70B9\u53F3\u4E0A\u89D2\u300C\uFF0B\u6DFB\u52A0\u300D": "No saved phrases. Tap Add to create one.",
@@ -382,7 +382,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.74.9";
+  const KEYBOARD_VERSION = "3.74.10";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1765,8 +1765,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.itemMenuOpen = null;
       this.panelEditItem = null;
       this.clipboardItems = [];
-      this.clipboardGroups = [];
-      this.clipGroupFilter = "all";
+      this.clipSplitItem = null;
       this.clipSearch = "";
       this.favoriteItems = [];
       this.popup = null;
@@ -1813,6 +1812,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.holdMs = 350;
       this.flickSwap = false;
       this.powerSaving = false;
+      this.pinyinCorrection = true;
+      this.correctionFor = "";
+      this.correctionCandidates = [];
       this.doubleShiftLock = true;
       this.popupSnap = 1;
       this.bottomPad = 0;
@@ -2190,6 +2192,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.getElementById("phraseCardSave").addEventListener("click", () => this.savePanelEditor());
       document.getElementById("phraseCardCancel").addEventListener("click", () => this.closePanelEditor());
       document.getElementById("phraseCardClose").addEventListener("click", () => this.closePanelEditor());
+      document.getElementById("clipSplitClose").addEventListener("click", () => this.closeClipSplit());
       const nudgeRank = /* @__PURE__ */ __name((step) => {
         const value = document.getElementById("phraseCardRankValue");
         const next = Math.min(Math.max((parseInt(value.textContent, 10) || 1) + step, 1), 99);
@@ -2244,6 +2247,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (imeSwitch) imeSwitch.addEventListener("click", () => this.call(() => Native.switchInputMethod(this.token)));
       const ctrlToolBtn = document.getElementById("ctrlTool");
       if (ctrlToolBtn) ctrlToolBtn.addEventListener("click", () => this.setControlView(!this.ctrlView));
+      ["candidateBar", "toolboxRow"].forEach((id) => {
+        const bar = document.getElementById(id);
+        if (bar) bar.addEventListener("click", (event) => {
+          if (event.target && event.target.closest && event.target.closest(".tool")) this.nativeKeyFeedback();
+        });
+      });
       this.bindCtrlLayer();
       document.getElementById("comboClose").addEventListener("click", () => {
         this.closeComboGrid();
@@ -2467,7 +2476,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * touchable while closed, so any popup living there must flip the
      * native touch region (see FeelimeService.onComputeInsets). */
     syncOverlay() {
-      const open = this.comboGrid !== null || document.getElementById("modeMenu").classList.contains("open") || document.getElementById("itemMenu").classList.contains("open") || document.getElementById("phraseCard").classList.contains("open") || // The height card lives in the band too - without
+      const open = this.comboGrid !== null || document.getElementById("modeMenu").classList.contains("open") || document.getElementById("itemMenu").classList.contains("open") || document.getElementById("phraseCard").classList.contains("open") || // 剪贴板拆分放大视图（3.74.10）：同样是 band 区浮层卡片，
+      // 不登记 native 就收不到点按。
+      document.getElementById("clipSplitCard").classList.contains("open") || // The height card lives in the band too - without
       // this line every real touch on it fell through to the host
       // app (±/strip/cancel all dead under a finger; synthetic
       // clicks bypassed hit-testing, so every suite stayed green).
@@ -6597,7 +6608,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * #8): the rows shrink by 4/8/11 against the old 14px base. */
     layoutChrome() {
       const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
-      return (this.landscape ? 130 : 144) + bandExtra;
+      return (this.landscape ? 118 : 136) + bandExtra;
     }
     /** Read the native view's total height back as content height. The
      * fallback keeps the preview usable before its layout has measured. */
@@ -9038,6 +9049,85 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (this.expanded) this.renderExpanded();
       }
     }
+    /** 拼音纠错（3.74.10，design §1）：输入串按音节切分后若含非法音节
+     *  （切不开的单字母残段）或引擎候选为空，对整串做编辑距离 1 展开，
+     *  经桥查候选后以 fix: overlay 追加进池。按 raw 缓存：同一输入
+     *  只查一次；池重算时直接复用。返回纠错候选数组（可能为空）。 */
+    refreshPinyinCorrection() {
+      const raw = String(this.lastRawInput || "").replace(/[^a-z]/gi, "").toLowerCase();
+      if (this.mode !== "pinyin" || this.pinyinCorrection !== true || raw.length < 2 || raw.length > 12 || typeof Native.queryPinyinCandidates !== "function") {
+        this.correctionFor = raw;
+        this.correctionCandidates = [];
+        return [];
+      }
+      if (raw === this.correctionFor) return this.correctionCandidates;
+      this.correctionFor = raw;
+      this.correctionCandidates = [];
+      const pieces = this.pinyinPieces(raw);
+      const clean = pieces.length > 0 && pieces.every((piece) => FULL_PINYIN_SYLLABLES_SET.has(piece));
+      const engineEmpty = !(this.expandCandidates || []).some((candidate) => !String(candidate.id).startsWith("fav:") && !String(candidate.id).startsWith("dyn:") && !String(candidate.id).startsWith("alt:") && !String(candidate.id).startsWith("fix:"));
+      if (clean && !engineEmpty) return [];
+      const variants = this.pinyinCorrectionVariants(raw);
+      const seen = /* @__PURE__ */ new Set();
+      variants.forEach((variant) => {
+        let found = [];
+        try {
+          found = JSON.parse(Native.queryPinyinCandidates(variant, this.token) || "[]");
+        } catch (e) {
+          found = [];
+        }
+        if (!Array.isArray(found)) return;
+        found.slice(0, 3).forEach((text, index) => {
+          const word = String(text || "");
+          if (!word || seen.has(word)) return;
+          seen.add(word);
+          this.correctionCandidates.push({
+            id: `fix:${variant}:${index}`,
+            text: word,
+            fix: true,
+            variant
+          });
+        });
+      });
+      return this.correctionCandidates.slice(0, 6);
+    }
+    /** 编辑距离 1 变体：换位 > 删 > 改 > 增，只保留能干净切成合法音节
+     *  的变体（与原串不同）。返回至多 3 个变体拼音串；够 3 个即停，
+     *  不再展开更贵的改/增。 */
+    pinyinCorrectionVariants(raw) {
+      const out = [];
+      const seen = /* @__PURE__ */ new Set([raw]);
+      const letters = "abcdefghijklmnopqrstuvwxyz";
+      const clean = /* @__PURE__ */ __name((variant) => {
+        const pieces = this.pinyinPieces(variant);
+        return pieces.length > 0 && pieces.every((piece) => FULL_PINYIN_SYLLABLES_SET.has(piece));
+      }, "clean");
+      const add = /* @__PURE__ */ __name((variant) => {
+        if (!variant || seen.has(variant)) return;
+        seen.add(variant);
+        if (clean(variant)) out.push(variant);
+      }, "add");
+      for (let i = 0; i + 1 < raw.length; i++) {
+        add(raw.slice(0, i) + raw[i + 1] + raw[i] + raw.slice(i + 2));
+      }
+      for (let i = 0; i < raw.length; i++) {
+        add(raw.slice(0, i) + raw.slice(i + 1));
+      }
+      if (out.length >= 3) return out.slice(0, 3);
+      for (let i = 0; i < raw.length; i++) {
+        for (const c of letters) {
+          if (c !== raw[i]) add(raw.slice(0, i) + c + raw.slice(i + 1));
+        }
+        if (out.length >= 3) return out.slice(0, 3);
+      }
+      for (let i = 0; i <= raw.length; i++) {
+        for (const c of letters) {
+          add(raw.slice(0, i) + c + raw.slice(i));
+        }
+        if (out.length >= 3) return out.slice(0, 3);
+      }
+      return out.slice(0, 3);
+    }
     /** 常用语注入 (design §7.4): favorites whose input code
      * prefixes the raw keys join the shared pool. Exact code matches take
      * their configured 1-based rank slot (default 1 = the pool
@@ -9059,7 +9149,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * Only accented glyphs are taken - alts also carry digits/'-' which
      * must not surf in the word bar. */
     injectFavoriteCandidates() {
-      const rawEngine = this.expandCandidates.filter((candidate) => !String(candidate.id).startsWith("fav:") && !String(candidate.id).startsWith("dyn:") && !String(candidate.id).startsWith("alt:"));
+      const rawEngine = this.expandCandidates.filter((candidate) => !String(candidate.id).startsWith("fav:") && !String(candidate.id).startsWith("dyn:") && !String(candidate.id).startsWith("alt:") && !String(candidate.id).startsWith("fix:"));
       const ranks = this.symbolRanks || {};
       const freqOn = this.symbolFreqSort === true;
       const rankAllTexts = this.rankAllTexts || /* @__PURE__ */ new Set();
@@ -9139,6 +9229,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         prevRank = item.rank;
         prevIndex = at;
       });
+      this.refreshPinyinCorrection().forEach((item) => pool.push(item));
       this.expandCandidates = pool;
       const signatures = this.englishOrderedPool(pool).map((candidate) => candidate.id + "\0" + candidate.text);
       const previous = this.symbolicPrefixIds || [];
@@ -9166,6 +9257,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         return;
       }
       if (candidate && String(candidate.id).startsWith("fav:")) {
+        this.call(() => Native.clearComposing(this.token));
+        this.call(() => Native.commitText(candidate.text, this.token));
+        return;
+      }
+      if (candidate && String(candidate.id).startsWith("fix:")) {
         this.call(() => Native.clearComposing(this.token));
         this.call(() => Native.commitText(candidate.text, this.token));
         return;
@@ -9396,7 +9492,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       visible.forEach((candidate, index) => {
         if (index < this.expandRendered) return;
         const button = document.createElement("button");
-        button.className = index === 0 ? "expand-candidate first" : "expand-candidate";
+        button.className = (index === 0 ? "expand-candidate first" : "expand-candidate") + (candidate.fix ? " fix" : "");
         button.textContent = candidate.text;
         let longPressed = false;
         button.addEventListener("click", () => {
@@ -9404,6 +9500,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             longPressed = false;
             return;
           }
+          this.nativeKeyFeedback();
           this.choosePoolCandidate(candidate);
         });
         this.bindCandidateLongPress(button, candidate, () => {
@@ -9519,7 +9616,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const button = document.createElement("button");
           button.className = candidate.assoc ? "candidate assoc" : index === 0 ? "candidate first" : "candidate";
           button.textContent = candidate.text;
-          button.addEventListener("click", () => candidate.assoc ? this.commitAssocWord(candidate.text) : this.commitInkCandidate(candidate));
+          button.addEventListener("click", () => {
+            this.nativeKeyFeedback();
+            candidate.assoc ? this.commitAssocWord(candidate.text) : this.commitInkCandidate(candidate);
+          });
           button.addEventListener("mousedown", (event) => event.preventDefault());
           inkBar.append(button);
         });
@@ -9550,7 +9650,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const button = document.createElement("button");
           button.className = "candidate assoc";
           button.textContent = word;
-          button.addEventListener("click", () => this.commitAssocWord(word));
+          button.addEventListener("click", () => {
+            this.nativeKeyFeedback();
+            this.commitAssocWord(word);
+          });
           button.addEventListener("mousedown", (event) => event.preventDefault());
           bar.append(button);
         });
@@ -9561,7 +9664,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (appendOnly && index < existing.length) return;
         const button = document.createElement("button");
         const latin = ["pinyin", "double-pinyin", "t9"].includes(this.mode) && typeof labels[index] === "string" && labels[index].length >= 2 && /^[A-Za-z][A-Za-z0-9]*$/.test(labels[index]);
-        button.className = "candidate" + (index === 0 ? " first" : "") + (latin ? " en-mix" : "");
+        button.className = "candidate" + (index === 0 ? " first" : "") + (latin ? " en-mix" : "") + (candidate.fix ? " fix" : "");
         button.textContent = labels[index];
         button._poolCandidate = candidate;
         let longPressed = false;
@@ -9570,6 +9673,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             longPressed = false;
             return;
           }
+          this.nativeKeyFeedback();
           this.choosePoolCandidate(candidate);
         });
         this.bindCandidateLongPress(button, candidate, () => {
@@ -9888,6 +9992,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     closePanel() {
       this.armPanelClear(false);
+      this.closeClipSplit();
       if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
       this.panelOpen = false;
       this.clearPanelSearch();
@@ -9951,55 +10056,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       list.replaceChildren();
       const layer = document.getElementById("panelLayer");
       let items = this.panelTab === "clipboard" ? this.clipboardItems : this.favoriteItems;
-      if (this.panelTab === "clipboard") {
-        const bar = document.createElement("div");
-        bar.className = "clip-groups";
-        const filters = [["all", t("\u5168\u90E8")], ["", t("\u672A\u5206\u7EC4")]].concat((this.clipboardGroups || []).map((name) => [name, name]));
-        filters.forEach(([id, label]) => {
-          const chip = document.createElement("button");
-          chip.type = "button";
-          chip.className = "clip-chip" + (this.clipGroupFilter === id ? " on" : "");
-          chip.textContent = label;
-          chip.addEventListener("click", (event) => {
-            event.stopPropagation();
-            this.clipGroupFilter = id;
-            this.renderPanel();
-          });
-          bar.append(chip);
-        });
-        const adder = document.createElement("button");
-        adder.type = "button";
-        adder.className = "clip-chip";
-        adder.textContent = t("\uFF0B\u5206\u7EC4");
-        adder.addEventListener("click", (event) => {
-          event.stopPropagation();
-          if (bar.querySelector(".clip-group-input")) return;
-          const input = document.createElement("input");
-          input.className = "phrase-input clip-group-input";
-          input.maxLength = 16;
-          input.placeholder = t("\u5206\u7EC4\u540D");
-          input.addEventListener("focus", () => this.setPanelInput(true));
-          const commitName = /* @__PURE__ */ __name(() => {
-            const name = input.value.trim();
-            if (name && typeof Native.addClipboardGroup === "function") {
-              this.call(() => Native.addClipboardGroup(name, this.token));
-            }
-            if (!this.phraseCardOpen()) this.setPanelInput(false);
-            input.remove();
-          }, "commitName");
-          input.addEventListener("keydown", (event2) => {
-            if (event2.key === "Enter") commitName();
-          });
-          input.addEventListener("blur", () => setTimeout(commitName, 180));
-          bar.append(input);
-          input.focus();
-        });
-        bar.append(adder);
-        list.append(bar);
-        const filter = this.clipGroupFilter;
-        if (filter === "") items = items.filter((item) => !item.group);
-        else if (filter && filter !== "all") items = items.filter((item) => item.group === filter);
-      }
       const q = (this.clipSearch || "").trim();
       if (q) {
         const needle = q.toLowerCase();
@@ -10049,39 +10105,33 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           body.className = "clip-body";
           body.append(preview2);
           const pieces = this.clipPieces(item.text);
-          if (pieces.length) {
-            const extracts = document.createElement("span");
-            extracts.className = "clip-extracts";
-            pieces.forEach((piece) => {
-              const chip = document.createElement("button");
-              chip.type = "button";
-              chip.className = "clip-extract";
-              chip.textContent = t(piece.kind) + " " + (piece.value.length > 28 ? piece.value.slice(0, 28) + "\u2026" : piece.value);
-              chip.addEventListener("click", (event) => {
-                event.stopPropagation();
-                this.call(() => {
-                  if (typeof Native.pasteText === "function") {
-                    Native.pasteText(piece.value, this.token);
-                  } else {
-                    Native.commitText(piece.value, this.token);
-                  }
-                });
-                this.closePanel();
-              });
-              extracts.append(chip);
+          const canSplit = !tooLong && pieces.length > 0;
+          let longPressed2 = false;
+          if (canSplit) {
+            const expandBtn = document.createElement("button");
+            expandBtn.type = "button";
+            expandBtn.className = "clip-expand-btn";
+            expandBtn.textContent = "\u2304";
+            expandBtn.setAttribute("aria-label", t("\u5C55\u5F00"));
+            expandBtn.addEventListener("click", (event) => {
+              event.stopPropagation();
+              this.openClipSplit(item);
             });
-            body.append(extracts);
+            row.append(body, expandBtn, remove);
+            this.bindItemLongPress(row, () => {
+              longPressed2 = true;
+              this.openClipSplit(item);
+            });
+          } else {
+            row.append(body, remove);
           }
-          const groupBtn = document.createElement("button");
-          groupBtn.type = "button";
-          groupBtn.className = "clip-extract";
-          groupBtn.textContent = item.group || t("\u79FB\u5230\u5206\u7EC4");
-          groupBtn.addEventListener("click", (event) => {
-            event.stopPropagation();
-            this.openClipGroupMenu(item, groupBtn);
+          row.addEventListener("click", () => {
+            if (longPressed2) {
+              longPressed2 = false;
+              return;
+            }
+            commit();
           });
-          row.append(body, groupBtn, remove);
-          row.addEventListener("click", commit);
           list.append(row);
           return;
         }
@@ -10581,12 +10631,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       el.addEventListener("touchcancel", clear, { passive: true });
     }
     onClipboard(payload) {
-      this.clipboardGroups = Array.isArray(payload.groups) ? payload.groups.map(String) : [];
       this.clipboardItems = (payload.items || []).map((item) => ({
         id: String(item.id),
         text: String(item.text),
-        time: Number(item.time) || 0,
-        group: String(item.group || "")
+        time: Number(item.time) || 0
       }));
       if (this.panelOpen && this.panelTab === "clipboard") this.renderPanel();
     }
@@ -10594,45 +10642,142 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const text = payload && payload.text;
       if (text) this.showToast(String(text));
     }
-    /** 从一段混杂文本里拆出链接、邮箱、号码和连续中文。整段本身不算。 */
+    /** 智能拆分（3.74.10）：对单条剪贴板正文做纯本机拆分，按优先级
+     *  提取片段——链接（http(s)://、www.、域名形态）、邮箱、验证码
+     *  （4–8 位数字，尤指「验证码 / code / 校验码」附近的）、数字
+     *  （手机号、金额等其余数字串）、单词（连续英文/数字字母 token），
+     *  其余正文按句/行保留为「文字」段。单次扫描按 span 占位，低
+     *  优先级不重复已占片段；整段本身不算；最多 8 枚。 */
     clipPieces(text) {
       const source = String(text || "");
+      const trimmed = source.trim();
+      if (!trimmed) return [];
       const found = [];
-      const seen = /* @__PURE__ */ new Set();
-      const add = /* @__PURE__ */ __name((kind, value) => {
-        const clean = String(value || "").trim().replace(/[),.;，。、]+$/u, "");
-        if (clean.length < 2 || seen.has(kind + "\n" + clean)) return;
-        if (clean === source.trim()) return;
-        seen.add(kind + "\n" + clean);
-        found.push({ kind, value: clean });
+      const claimed = [];
+      const overlaps = /* @__PURE__ */ __name((s, e) => claimed.some(([a, b]) => s < b && a < e), "overlaps");
+      const claim = /* @__PURE__ */ __name((s, e) => {
+        claimed.push([s, e]);
+      }, "claim");
+      const cleanTail = /* @__PURE__ */ __name((value) => String(value || "").trim().replace(/[),.;，。、]+$/u, ""), "cleanTail");
+      const add = /* @__PURE__ */ __name((kind, value, start, end) => {
+        const clean = cleanTail(value);
+        if (clean.length < 2) return;
+        if (clean === trimmed) {
+          claim(start, end);
+          return;
+        }
+        if (found.some((p) => p.kind === kind && p.value === clean)) return;
+        found.push({ kind, value: clean, start, end });
+        claim(start, end);
       }, "add");
-      for (const match of source.matchAll(/https?:\/\/[^\s<>"'，。]+/g)) add("\u94FE\u63A5", match[0]);
-      for (const match of source.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)) add("\u90AE\u7BB1", match[0]);
-      for (const match of source.matchAll(/1[3-9]\d{9}/g)) add("\u53F7\u7801", match[0]);
-      for (const match of source.matchAll(/\d{4,}/g)) add("\u6570\u5B57", match[0]);
-      const han = source.match(/[\u4e00-\u9fff]{2,}/g) || [];
-      han.slice(0, 3).forEach((part) => add("\u4E2D\u6587", part));
-      return found.slice(0, 6);
-    }
-    openClipGroupMenu(item, anchor) {
-      const menu = document.getElementById("itemMenu");
-      this.closeItemMenu();
-      const choices = [""].concat(this.clipboardGroups || []);
-      choices.forEach((name) => {
-        const button = document.createElement("button");
-        button.textContent = name || t("\u672A\u5206\u7EC4");
-        button.addEventListener("click", () => {
-          this.closeItemMenu();
-          if (typeof Native.setClipboardGroup === "function") {
-            this.call(() => Native.setClipboardGroup(item.id, name, this.token));
-          }
-        });
-        menu.append(button);
+      const scan = /* @__PURE__ */ __name((re, kind, pick) => {
+        for (const match of source.matchAll(re)) {
+          const raw = match[0];
+          const at = match.index || 0;
+          const part = pick ? pick(match, at) : null;
+          if (!part) continue;
+          const [value, s, e] = part;
+          if (overlaps(s, e)) continue;
+          add(kind, value, s, e);
+        }
+      }, "scan");
+      scan(/https?:\/\/[^\s<>"'，。、]+/g, "\u94FE\u63A5", (m, at) => [m[0], at, at + m[0].length]);
+      scan(/www\.[^\s<>"'，。、]+/g, "\u94FE\u63A5", (m, at) => [m[0], at, at + m[0].length]);
+      scan(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "\u90AE\u7BB1", (m, at) => [m[0], at, at + m[0].length]);
+      scan(/(?:^|[\s（(【"''])((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:\/[^\s<>"'，。、]*)?)/g, "\u94FE\u63A5", (m, at) => {
+        const value = m[1];
+        const s = at + m[0].indexOf(value);
+        return [value, s, s + value.length];
       });
-      menu.classList.add("open");
-      const rect = anchor.getBoundingClientRect();
-      menu.style.left = Math.max(4, rect.left) + "px";
-      menu.style.top = Math.max(4, rect.top - 8) + "px";
+      const codeWord = /验证码|校验码|动态码|verification|otp|\bcode\b/i;
+      scan(/\d{4,8}/g, "\u9A8C\u8BC1\u7801", (m, at) => {
+        const before = source.slice(Math.max(0, at - 16), at);
+        const after = source.slice(at + m[0].length, at + m[0].length + 8);
+        if (!codeWord.test(before) && !codeWord.test(after)) return null;
+        return [m[0], at, at + m[0].length];
+      });
+      scan(/\d[\d,]*(?:\.\d+)?/g, "\u6570\u5B57", (m, at) => [m[0], at, at + m[0].length]);
+      scan(/[A-Za-z][A-Za-z0-9_-]{1,}/g, "\u5355\u8BCD", (m, at) => [m[0], at, at + m[0].length]);
+      let textCount = 0;
+      let cursor = 0;
+      for (const part of source.split(/(?<=[。！？；.!?\n])\s*/u)) {
+        if (textCount >= 3) break;
+        const value = part.trim();
+        if (value.length < 2) continue;
+        const at = source.indexOf(part, cursor);
+        if (at < 0) continue;
+        cursor = at + part.length;
+        if (overlaps(at, at + part.length)) continue;
+        add("\u6587\u5B57", value, at, at + part.length);
+        textCount += 1;
+      }
+      found.sort((a, b) => a.start - b.start);
+      return found.slice(0, 8).map(({ kind, value }) => ({ kind, value }));
+    }
+    /** 剪贴板放大选择视图（3.74.10）：phraseCard 同款浮层卡片，
+     *  比条目本身大、好点。入口两种——条目右侧「展开」按钮与长按
+     *  条目；点条目本身仍整条上屏。卡里点一枚 chip 只贴该片段，
+     *  点「全文」贴整条，贴完关面板。 */
+    clipSplitOpen() {
+      const card = document.getElementById("clipSplitCard");
+      return !!card && card.classList.contains("open");
+    }
+    openClipSplit(item) {
+      const card = document.getElementById("clipSplitCard");
+      const textEl = document.getElementById("clipSplitText");
+      const chipsEl = document.getElementById("clipSplitChips");
+      if (!card || !textEl || !chipsEl || !item) return;
+      const pieces = this.clipPieces(item.text);
+      if (!pieces.length) return;
+      this.clipSplitItem = item;
+      textEl.textContent = item.text;
+      chipsEl.replaceChildren();
+      const full = document.createElement("button");
+      full.type = "button";
+      full.className = "clip-split-chip clip-split-full";
+      full.textContent = t("\u5168\u6587");
+      full.addEventListener("click", () => this.pasteClipPiece(item.text));
+      chipsEl.append(full);
+      pieces.forEach((piece) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "clip-split-chip";
+        const label = document.createElement("span");
+        label.className = "clip-split-kind";
+        label.textContent = t(piece.kind);
+        const value = document.createElement("span");
+        value.className = "clip-split-value";
+        value.textContent = piece.value;
+        chip.append(label, value);
+        chip.addEventListener("click", () => this.pasteClipPiece(piece.value));
+        chipsEl.append(chip);
+      });
+      card.hidden = false;
+      card.classList.add("open");
+      this.syncOverlay();
+    }
+    closeClipSplit() {
+      this.clipSplitItem = null;
+      const card = document.getElementById("clipSplitCard");
+      if (!card) return;
+      card.classList.remove("open");
+      card.hidden = true;
+    }
+    /** 片段/全文的上屏与整条一致：编辑卡开着时填进「常用内容」
+     *  输入框而不是上屏；贴完关面板（连带收起拆分视图）。 */
+    pasteClipPiece(value) {
+      if (this.phraseCardOpen()) {
+        this.fillPhraseCardFromPanel(value);
+        return;
+      }
+      this.call(() => {
+        if (typeof Native.pasteText === "function") {
+          Native.pasteText(value, this.token);
+        } else {
+          Native.commitText(value, this.token);
+        }
+      });
+      this.closePanel();
     }
     /** 导入备份后原生把 localStorage 级设置推回来（userdata.md §1.4）。
      * 白名单外的键一律忽略；主题当场生效，语言变化重走一次渲染。 */
@@ -10803,6 +10948,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (typeof payload.powerSaving === "boolean") {
         this.powerSaving = payload.powerSaving;
         document.body.classList.toggle("power-saving", this.powerSaving);
+      }
+      if (typeof payload.pinyinCorrection === "boolean") {
+        this.pinyinCorrection = payload.pinyinCorrection;
+        if (!this.pinyinCorrection) {
+          this.correctionFor = "";
+          this.correctionCandidates = [];
+        }
       }
       this.applyGlass(payload);
       this.applyLandscapeChrome();
@@ -11703,6 +11855,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     // tile route through it too).
     cycleTheme: /* @__PURE__ */ __name(() => keyboard.cycleTheme(), "cycleTheme"),
     pinyinPieces: /* @__PURE__ */ __name((raw) => keyboard.pinyinPieces(raw), "pinyinPieces"),
+    // 拼音纠错（3.74.10）：测试钩子，直接调变体生成。
+    pinyinCorrectionVariants: /* @__PURE__ */ __name((raw) => keyboard.pinyinCorrectionVariants(raw), "pinyinCorrectionVariants"),
+    // 智能拆分（3.74.10）：测试钩子，直接调拆分器。
+    clipPieces: /* @__PURE__ */ __name((text) => keyboard.clipPieces(text), "clipPieces"),
+    // 自适应高度（3.74.10）：测试钩子，直接读 chrome 预算。
+    layoutChrome: /* @__PURE__ */ __name(() => keyboard.layoutChrome(), "layoutChrome"),
     // Suite/preview hook: re-evaluate the theme→image mapping after
     // switching html theme classes directly (applyTheme does this in
     // real flows).

@@ -124,6 +124,7 @@ class MockSettingsNative {
     setSpaceHoldTap(...a) { this._rec("setSpaceHoldTap", a); }
     setKeySoundVolume(...a) { this._rec('setKeySoundVolume', a); }
     setKeyHapticStrength(...a) { this._rec('setKeyHapticStrength', a); }
+    setKeyHapticFollowSystem(...a) { this._rec('setKeyHapticFollowSystem', a); }
     // /R8: page reporting (BACK returns home first) + about-page
     // one-tap copy.
     reportPage(...a) { this._rec('reportPage', a); }
@@ -155,6 +156,7 @@ class MockSettingsNative {
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setDoubleShiftLock(...a) { this._rec('setDoubleShiftLock', a); }
     setKbHeight(...a) { this._rec('setKbHeight', a); }
+    setKbHeightLandscape(...a) { this._rec('setKbHeightLandscape', a); }
     previewKeyboard(...a) { this._rec('previewKeyboard', a); }
     setBgImage(...a) { this._rec('setBgImage', a); }
     clearBgImage(...a) { this._rec('clearBgImage', a); }
@@ -2533,6 +2535,46 @@ test('keyboard height slider commits setKbHeight; reset writes 0; preview follow
     opacitySlider.listeners.find(l => l.type === 'input').handler({ target: { value: '35' } });
     equal(world.native.calls.filter(c => c.method === 'setKeyOpacity').length, 0,
         'dragging alone does not commit');
+});
+
+test('landscape height slider renders from state, commits setKbHeightLandscape; reset writes 0 (3.74.10)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, kbHeightLandscape: 0, kbHeightLandscapeMin: 170, kbHeightLandscapeMax: 262, kbHeightLandscapeDefault: 262 });
+    equal(world.$('kbHeightLandscape').value, '262', '0 (default) shows the landscape ceiling');
+    equal(world.$('kbHeightLandscape').min, '170', 'landscape slider min');
+    equal(world.$('kbHeightLandscape').max, '262', 'landscape slider max from the ceiling');
+
+    world.push({ ...BASE_STATE, kbHeightLandscape: 220, kbHeightLandscapeMin: 170, kbHeightLandscapeMax: 262, kbHeightLandscapeDefault: 262 });
+    equal(world.$('kbHeightLandscape').value, '220', 'saved landscape height fills the slider');
+
+    const slider = world.$('kbHeightLandscape');
+    slider.listeners.find(l => l.type === 'input').handler({ target: { value: '240' } });
+    slider.listeners.find(l => l.type === 'change').handler({ target: { value: '240' } });
+    equal(world.lastCall('setKbHeightLandscape').args, [240, world.token], 'release commits px + token');
+
+    world.$('kbHeightLandscapeReset').listeners.find(l => l.type === 'click').handler({});
+    equal(world.lastCall('setKbHeightLandscape').args[0], 0, 'reset writes 0 (= remove pref)');
+});
+
+test('portrait height slider default follows the adaptive default from state (3.74.10)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, kbHeightPortrait: 0, kbHeightMin: 226, kbHeightMax: 400, kbHeightDefault: 326 });
+    equal(world.$('kbHeight').value, '326', '0 (default) shows the adaptive default from state');
+});
+
+test('haptic follow-system greys out the strength selector and commits (3.74.10)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, keyHapticStrength: 2, keyHapticFollowSystem: true });
+    equal(world.$('keyHapticFollowSystem').checked, true, 'follow toggle from state');
+    equal(world.$('keyHapticStrength').disabled, true, 'strength selector disabled while following system');
+    world.push({ ...BASE_STATE, keyHapticStrength: 2, keyHapticFollowSystem: false });
+    equal(world.$('keyHapticFollowSystem').checked, false, 'follow off from state');
+    equal(world.$('keyHapticStrength').disabled, false, 'strength selector enabled for manual levels');
+    // 切换开关即写桥并立即置灰。
+    const toggle = world.$('keyHapticFollowSystem');
+    toggle.listeners.find(l => l.type === 'change').handler({ target: { checked: true } });
+    equal(world.lastCall('setKeyHapticFollowSystem').args, [true, world.token], 'toggle commits follow + token');
+    equal(world.$('keyHapticStrength').disabled, true, 'selector greys out immediately on toggle');
 });
 
 test('appearance no longer auto-pops the keyboard; skin page does (2026-10-13 裁定)', () => {

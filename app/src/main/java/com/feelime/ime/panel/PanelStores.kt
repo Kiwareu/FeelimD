@@ -166,40 +166,6 @@ class ClipboardStore(private val context: Context) {
         PanelCodec.parse(readItemsRaw())
     }
 
-    fun groupNames(): List<String> = synchronized(prefs) { readGroupNames() }
-
-    fun groupMap(): Map<String, String> = synchronized(prefs) { readGroupMap() }
-
-    /** 空 group = 移出分组。名字必须已在分组列表里。 */
-    fun setItemGroup(id: String, group: String) {
-        mainHandler.post {
-            synchronized(prefs) {
-                val name = group.trim()
-                if (name.isNotEmpty() && name !in readGroupNames()) return@post
-                val map = readGroupMap()
-                if (name.isEmpty()) map.remove(id) else map[id] = name
-                val live = PanelCodec.parse(readItemsRaw()).map { it.id }.toSet()
-                map.keys.retainAll(live)
-                writeGroupMap(map)
-            }
-            onChanged?.invoke()
-        }
-    }
-
-    fun addGroup(name: String): Boolean {
-        val clean = name.trim().replace("\n", "").replace("\t", "")
-        if (clean.isEmpty() || clean.length > 16) return false
-        synchronized(prefs) {
-            val names = readGroupNames().toMutableList()
-            if (clean in names) return true
-            if (names.size >= 24) return false
-            names.add(clean)
-            prefs.edit().putString(GROUP_NAMES, names.joinToString("\n")).commit()
-        }
-        onChanged?.invoke()
-        return true
-    }
-
     /** Mutations are serialized onto the main thread WITH the listener/focus
      *  capture paths (the panel bridge posts to main; the service used to
      *  call these from a background executor): clear()/remove() ordering
@@ -219,10 +185,6 @@ class ClipboardStore(private val context: Context) {
         }
         if (removed != null) {
             suppress.invalidateCapture()
-            synchronized(prefs) {
-                val map = readGroupMap()
-                if (map.remove(removed.id) != null) writeGroupMap(map)
-            }
         }
         // Removing the entry that IS the current system clip would be undone
         // at the next editor focus (captureCurrent) — suppress it too.
@@ -293,26 +255,6 @@ class ClipboardStore(private val context: Context) {
         if (prefs.contains(KEY)) prefs.edit().remove(KEY).apply()
     }
 
-    private fun readGroupNames(): List<String> =
-        prefs.getString(GROUP_NAMES, "").orEmpty().lineSequence()
-            .map { it.trim() }.filter { it.isNotEmpty() }.distinct().toList()
-
-    private fun readGroupMap(): MutableMap<String, String> {
-        val map = LinkedHashMap<String, String>()
-        prefs.getString(GROUP_MAP, "").orEmpty().lineSequence().forEach { line ->
-            val split = line.indexOf('\t')
-            if (split > 0) map[line.substring(0, split)] = line.substring(split + 1)
-        }
-        return map
-    }
-
-    private fun writeGroupMap(map: Map<String, String>) {
-        prefs.edit().putString(
-            GROUP_MAP,
-            map.entries.joinToString("\n") { "${it.key}\t${it.value}" },
-        ).commit()
-    }
-
     private fun clipboard(context: Context): ClipboardManager? =
         context.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
 
@@ -323,8 +265,6 @@ class ClipboardStore(private val context: Context) {
         // 大约 32MB，本机文件还能稳妥读写的量。单条超过这个预算整条不收。
         const val TEXT_BUDGET_BYTES = 32 * 1024 * 1024
         const val MAX_ITEMS = Int.MAX_VALUE
-        const val GROUP_MAP = "group_map"
-        const val GROUP_NAMES = "group_names"
     }
 }
 

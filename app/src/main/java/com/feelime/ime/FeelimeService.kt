@@ -333,9 +333,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private var rejectedCalls = 0L
     private var servedRevision = ""
     private val callTimes = ArrayDeque<Long>()
- // Runtime keyboard height (PHYSICAL px; 0 = the 272dp
-    // default). The user drags the keyboard's top edge in quick settings;
-    // the value persists per orientation in feelime_keyboard prefs.
+ // Runtime keyboard height (PHYSICAL px; 0 = the adaptive default from
+    // defaultContentHeightPx). The user drags the keyboard's top edge in
+    // quick settings; the value persists per orientation in
+    // feelime_keyboard prefs.
     private var keyboardHeightOverride = 0
  // A: drag-time setKeyboardHeight calls coalesce into one pref
     // commit (see setKeyboardHeight).
@@ -1102,7 +1103,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         servedRevision = active.revision
         assetStore = KeyboardAssetStore(active.dir)
         keyboardHeightOverride = storedKeyboardHeight()
-        val keyboardHeight = dp(272)
+        val keyboardHeight = defaultContentHeightPx()
  // The WebView is transparent - the float band above the
         // keyboard shows the app through it, and the keyboard area paints
         // its own themed background in CSS.
@@ -1359,7 +1360,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // 余量收缩，地板 0——用户把高度拉满的代价是弹层带变窄，而不是
         // 布局爆掉。竖屏 45% 上限恒有余量，此收紧永远不触发。余量同样
         // 扣系统预留 dp(32)（见 landscapeCeilPx：ColorOS 的窗口硬钳）。
-        val room = (realHeightPixels() - dp(32) - contentHeightPx(dp(272))).coerceAtLeast(0)
+        val room = (realHeightPixels() - dp(32) - contentHeightPx(defaultContentHeightPx())).coerceAtLeast(0)
         return minOf(dp(200), budget / 100, room)
     }
 
@@ -1417,6 +1418,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             realHeightPixels() * com.feelime.ime.readLandscapeCeilPct(this) / 100,
             realHeightPixels() - dp(32),
         )
+
+    /** 默认内容高度（3.74.10）：不再一刀切 272dp，按真屏尺寸自适应。
+     *  竖屏 = chrome 估算（≈150css）+ 4 行 × 44css，封顶真屏 45%；
+     *  横屏 = 横屏上限（上限默认已自适应，保证 4 行可用键高）。
+     *  只影响未手动调过高度的用户（已存高度优先走 override）。 */
+    private fun defaultContentHeightPx(): Int {
+        val landscape =
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        return if (landscape) landscapeCeilPx()
+        else minOf(dp(150 + 4 * 44), (realHeightPixels() * 45) / 100)
+    }
 
     /** #39：横屏挖孔侧安全区（css px；竖屏或无挖孔=0）。窗口 SHORT_EDGES
      *  铺进挖孔区后，键盘页用这组值给键区让位（背景仍铺满）。
@@ -2714,8 +2726,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("safeBottom", (safeBottomSnapshot() / resources.displayMetrics.density).toInt())
  // The transparent popup band above the keyboard.
             .put("floatBand", (floatBandPx() / resources.displayMetrics.density).toInt())
-            .put("heightDefault", (minOf(dp(272), if (landscape) landscapeCeilPx()
-                else (realHeightPixels() * 45) / 100) /
+            .put("heightDefault", (defaultContentHeightPx() /
                 resources.displayMetrics.density).toInt())
             // 高度真相源（round-6）：native pref 是唯一事实，hello 下发
             // 当前方向的已存高度（css px）——JS 的 localStorage 镜像在
@@ -2811,6 +2822,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("glassRadius", readGlassRadius(this))
             .put("panelOpacity", readPanelOpacity(this))
             .put("powerSaving", readPowerSaving(this))
+            .put("pinyinCorrection", readPinyinCorrection(this))
+            .put("habitLexicon", readHabitLexicon(this))
             .put("glassSkin", readGlassSkin(this))
             .put("keyBubble", readKeyBubble(this))
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
@@ -2850,6 +2863,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             // 开/关状态要跟原生偏好走（设置页改动同样经这里回读）。
             .put("keySound", readKeySoundEnabled(this))
             .put("keyHaptic", readKeyHapticEnabled(this))
+            // 全局震动（3.74.10）：强度跟随系统与否进 hello，JS 回显与
+            // 快捷设置开关同源。
+            .put("keyHapticFollowSystem", readKeyHapticFollowSystem(this))
             // 语音就绪震动（公众号 NULL，默认关）：JS 在 loading→listening
             // 转换时回敲本桥。
             .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(this))
@@ -2895,16 +2911,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // must not be renderable on screen while a sensitive editor is focused.
         val sensitive = isSensitiveEditor()
         val items = if (sensitive) emptyList() else clipboardStore.items()
+        // 3.74.10：剪贴板分组已移除，不再下发 groups / group。
         val payload = JSONObject().put(
             "items",
             JSONArray().apply {
-                val groups = clipboardStore.groupMap()
                 items.forEach { item ->
                     put(JSONObject().put("id", item.id).put("time", item.time)
-                        .put("text", item.text).put("group", groups[item.id] ?: ""))
+                        .put("text", item.text))
                 }
             },
-        ).put("groups", JSONArray(clipboardStore.groupNames()))
+        )
             .put("count", items.size)
         evaluate("window.Feelime && window.Feelime.onClipboard && window.Feelime.onClipboard($payload)")
     }
@@ -3677,6 +3693,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 // 「按键振动」时发生。预定义 EFFECT_CLICK 在部分国产 ROM
                 // 上没反应，所以用很短的 one-shot。弱/中/强 = 8/10/14ms，
                 // 有振幅时再把力度压低，避免一声重震。
+                // 跟随系统（3.74.10）：系统默认振幅 + 中档时长 10ms，
+                // 实际力度由系统决定；手动三档才用下面的时长/振幅表。
+                if (readKeyHapticFollowSystem(this@FeelimeService)) {
+                    vibrator.vibrate(
+                        VibrationEffect.createOneShot(10L, VibrationEffect.DEFAULT_AMPLITUDE),
+                    )
+                    return
+                }
                 val strength = readKeyHapticStrength(this@FeelimeService)
                 val ms = longArrayOf(8L, 10L, 14L)[strength]
                 if (vibrator.hasAmplitudeControl()) {
@@ -4222,6 +4246,22 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 return@guarded
             }
             coordinator.choose(revision, candidateId)
+        }
+
+        /** 拼音纠错（3.74.10）：JS 算出变体拼音串，这里用 scratch session
+         *  同步查候选并以 JSON 数组返回。只在全拼模式下有意义；其余模式
+         *  或非法输入返回空数组。guardedStore 同步返回值，不走 throttle。
+         *  与 live 引擎共用 RimeTextEngine 的 gate，不抢 librime。 */
+        @JavascriptInterface
+        fun queryPinyinCandidates(pinyin: String, token: String): String = guardedStore(token) {
+            if (pinyin.isEmpty() || pinyin.length > 64 || pinyin.any { it !in 'a'..'z' }) return@guardedStore "[]"
+            if (coordinator.currentMode != com.feelime.ime.engine.InputMode.PINYIN) return@guardedStore "[]"
+            val schemaId = com.feelime.ime.engine.EngineDataStore.fuzzySchemaId(applicationContext)
+                ?: com.feelime.ime.engine.FuzzyPinyin.STRICT_SCHEMA_ID
+            val found = runCatching {
+                com.feelime.ime.engine.RimeTextEngine.queryCandidates(applicationContext, schemaId, pinyin, 5)
+            }.getOrDefault(emptyList())
+            org.json.JSONArray(found).toString()
         }
 
         /** #H 硬键盘选词通道（choosePoolCandidate 的 hw 分支）：同构
@@ -4847,25 +4887,6 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         @JavascriptInterface
         fun clearClipboard(token: String) = guarded(token, limited = true) {
             clipboardStore.clear()
-            main.post { pushClipboard() }
-        }
-
-        @JavascriptInterface
-        fun addClipboardGroup(name: String, token: String) = guarded(token, limited = true) {
-            if (!clipboardStore.addGroup(name)) {
-                rejectedCalls += 1
-                return@guarded
-            }
-            main.post { pushClipboard() }
-        }
-
-        @JavascriptInterface
-        fun setClipboardGroup(id: String, group: String, token: String) = guarded(token, limited = true) {
-            if (!isPanelId(id) || group.length > 16) {
-                rejectedCalls += 1
-                return@guarded
-            }
-            clipboardStore.setItemGroup(id, group)
             main.post { pushClipboard() }
         }
 

@@ -366,8 +366,8 @@ body.landscape #engineStatus { min-height: 40px; }
  * 2 -> 14) so the pinyin preedit line (0-14px) no longer overlaps the
  * candidates; layoutChrome() reserves 130px for the landscape chrome
  * (3.74.9: +48 工具箱行). */
-body.landscape #candidateBar { height: 40px; margin-top: var(--preedit-band, 18px); margin-bottom: 4px; }
-body.landscape #toolboxRow { height: 40px; margin-top: 4px; margin-bottom: 4px; }
+body.landscape #candidateBar { height: 34px; margin-top: var(--preedit-band, 18px); margin-bottom: 4px; }
+body.landscape #toolboxRow { height: 34px; margin-top: 4px; margin-bottom: 4px; }
 body.landscape #candidateBar .tool,
 body.landscape #toolboxRow .tool,
 body.landscape #settingsPageBar .tool { width: 30px; height: 30px; }
@@ -721,35 +721,19 @@ body[data-preedit-font="large"] { --preedit-font-scale: 1.2; --preedit-band: 22p
 body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 25px; }
 
 /* ===== Candidate / tool bar ===== */
-#candidateBar {
+#candidateBar,
+#toolboxRow {
     flex: none;
-    /* 40px - bigger pills and a wider candidate strip. */
+    /* 3.74.10：候选栏与工具箱行统一节奏——同高、同圆角、同底色、
+     * 同间距（上下 2px、行间 6px），拼音条与候选字对齐后整段与
+     * 键区像一体，而不是两截。竖屏 40px；横屏 34px（见下）。 */
     height: 40px;
     display: flex;
     align-items: center;
     /* Wider tool spacing - 5px caused mis-taps. */
     gap: 8px;
     /* Ride lower, clear of the pinyin line above. */
-    margin-top: 2px;
-    margin-bottom: 10px;
-    padding: 0 4px;
-    border-radius: calc(var(--radius-key) + 6px);
-    background: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) var(--bar-l, 50%) / calc(0.7 + var(--panel-alpha) * 0.26));
-    box-shadow: inset 0 1px 0 var(--glass-sheen);
-}
-/* ===== Toolbox row (3.74.9) =====
- * 工具箱行：工具从候选栏移入的独立行，打字时常驻；与候选栏同材质
- * （同背景/圆角/内阴影），左右两组由弹性间隔分开，setupButton 固定
- * 首位。高度计入 layoutChrome（竖屏 52 / 横屏 48，见 JS）。 */
-#toolboxRow {
-    flex: none;
-    /* 40px - 与候选条同高。 */
-    height: 40px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 2px;
-    margin-bottom: 10px;
+    margin: 2px 0 6px;
     padding: 0 4px;
     border-radius: calc(var(--radius-key) + 6px);
     background: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) var(--bar-l, 50%) / calc(0.7 + var(--panel-alpha) * 0.26));
@@ -757,7 +741,23 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
 }
 /* 左右组之间的弹性间隔：左组贴左、右组贴右，挤满时自然归零。 */
 .toolbox-spacer { flex: 1; min-width: 0; }
-.clip-groups { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 8px; }
+/* 剪贴板条目右侧「展开」按钮（3.74.10）：小 chevron，不占正文区；
+ * 点它或长按条目打开放大拆分视图，点条目本身仍整条上屏。 */
+.clip-expand-btn {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--pill);
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.clip-expand-btn:active { background: var(--pressed); }
 /* 剪贴板/常用语搜索行（2026-11-16）：面板头下方、列表上方常驻；
  * 与候选条同材质（--pill 底），输入框透明占满，× 只在有字时出现。 */
 .panel-search {
@@ -800,19 +800,51 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     justify-content: center;
 }
 .panel-search-clear[hidden] { display: none; }
-.clip-chip, .clip-extract, .clip-group-input {
+.clip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.panel-item { align-items: flex-start; }
+/* ===== 剪贴板拆分放大视图（3.74.10，phraseCard 同款浮层卡片）=====
+ * 卡片比条目本身大、好点：顶部是原文（最多 72px 可滚），下面是
+ * 大号 chips（最小 44px 触控高）；「全文」用 accent 底区分。 */
+#clipSplitCard {
+    display: none;
+    position: fixed;
+    z-index: 37;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(348px, calc(100% - 16px));
+}
+#clipSplitCard.open { display: block; }
+#clipSplitCard[hidden] { display: none; }
+.clip-split-text {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+    max-height: 72px;
+    overflow-y: auto;
+    word-break: break-word;
+    padding: 2px 2px 8px;
+}
+.clip-split-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.clip-split-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: 44px;
+    padding: 8px 12px;
     border: 0;
-    border-radius: 999px;
+    border-radius: 12px;
     background: var(--pill);
     color: var(--text);
-    font-size: 11px;
-    padding: 4px 8px;
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: left;
+    word-break: break-all;
 }
-.clip-chip.on { color: var(--accent-ink); background: var(--accent); }
-.clip-extracts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.clip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.clip-group-input { width: 7em; font: inherit; }
-.panel-item { align-items: flex-start; }
+.clip-split-chip:active { background: var(--pressed); }
+.clip-split-kind { font-size: 11px; font-weight: 650; color: var(--accent-text); }
+.clip-split-full { background: var(--accent); color: var(--accent-ink); justify-content: center; font-weight: 650; }
+.clip-split-full .clip-split-kind { color: inherit; }
 #candidateBar .tool,
 #toolboxRow .tool {
     flex: none;
@@ -958,6 +990,16 @@ body.preedit-frame .candidate.first {
 /* 中英混输：拉丁词候选加一枚小 EN，方便和拼音缩写分开看。 */
 .candidate.en-mix::after {
     content: "EN";
+    margin-left: 5px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: var(--accent-text);
+    opacity: .8;
+}
+/* 拼音纠错（3.74.10）：纠错候选加一枚小「纠」，方便和正常候选分开看。 */
+.candidate.fix::after {
+    content: "纠";
     margin-left: 5px;
     font-size: 9px;
     font-weight: 700;
@@ -2922,6 +2964,16 @@ body.expanded #preeditLine { display: none; }
 }
 .expand-candidate.first { color: var(--accent-text); font-weight: 600; }
 .expand-candidate:active, .expand-candidate.active-touch { background: var(--pressed); }
+/* 拼音纠错（3.74.10）：展开区纠错候选同款小「纠」标记。 */
+.expand-candidate.fix::after {
+    content: "纠";
+    margin-left: 5px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: var(--accent-text);
+    opacity: .8;
+}
 .expand-empty {
     flex: none;
     width: 100%;
@@ -3147,7 +3199,8 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
     font-weight: 650;
     color: var(--text);
 }
-#phraseCard .pc-close {
+#phraseCard .pc-close,
+#clipSplitCard .pc-close {
     width: 28px;
     height: 28px;
     padding: 0;
@@ -3158,7 +3211,8 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
     font-size: 16px;
     line-height: 1;
 }
-#phraseCard .pc-close:active, #phraseCard .pc-close.active-touch { background: var(--pressed); }
+#phraseCard .pc-close:active, #phraseCard .pc-close.active-touch,
+#clipSplitCard .pc-close:active, #clipSplitCard .pc-close.active-touch { background: var(--pressed); }
 .pc-card {
     background: var(--card-bg);
     border-radius: 14px;
@@ -3468,10 +3522,22 @@ html.theme-light .qs-big { background: var(--key); }
 .qs-dots { flex: none; display: flex; justify-content: center; gap: 7px; padding: 6px 0 4px; }
 .qs-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
 .qs-dots span.cur { background: var(--accent); }
+/* ===== 横屏矮行（3.74.10，实机反馈）=====
+ * 横屏键盘总高被压到 216css 左右时，快捷设置每行只剩约 56px；
+ * tile 里图标 24px + 名称 + 状态行要 64px，超出的状态行（开/关）
+ * 被 .qs-pages 的 overflow-y: hidden 从上下裁掉，看着像开关被遮住。
+ * 横屏收紧 tile 内部（图标 20px、字号与间距各减一档），并把页边距
+ * 从 2px 放到 8px，首尾列不再贴屏边。竖屏不动。 */
+body.landscape .qs-page { padding: 2px 8px 4px; }
+body.landscape .qs-wrap { padding-top: 2px; }
+body.landscape .qs-tile { gap: 2px; padding: 2px; }
+body.landscape .qs-tile svg { width: 20px; height: 20px; }
+body.landscape .qs-name { font-size: 11px; }
+body.landscape .qs-dots { padding: 4px 0 2px; }
 
 /* Shared surfaces and controls (docs/design/appearance.md). Distinct tool circles and
  * keycaps retain their roles; all text states use theme-specific colors. */
-#phraseCard, #heightCard {
+#phraseCard, #heightCard, #clipSplitCard {
     padding: 8px;
     border-radius: var(--radius-card);
     background: var(--card-bg);
