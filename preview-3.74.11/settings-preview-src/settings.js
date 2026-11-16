@@ -1,0 +1,7408 @@
+/* Feelime full settings page.
+ *
+ * The bridge remains the source of truth for settings and device state. The
+ * page owns only presentation: tokens, page routing, and this small zh/en
+ * dictionary. User text, URLs, JSON, model titles, and device names are
+ * always rendered as received. */
+"use strict";
+// #90 旧 WebView 探针 flag（同 keyboard.js）：本文件执行到此说明现代
+// 语法可解析，index.html 不加载 settings.legacy.js。
+window.__feelimeES = 1;
+// Chrome 86 才有 replaceChildren；Android 11 出厂 WebView 83 上设置页同样
+// 整页渲染中断（#88 同根因）。guard 版 polyfill 对新 WebView 零影响。
+if (typeof Element !== 'undefined' && !Element.prototype.replaceChildren) {
+    Element.prototype.replaceChildren = function (...nodes) {
+        this.textContent = '';
+        for (const n of nodes) this.append(n);
+    };
+}
+// #90 Android 9 兼容带：fromEntries 是 Chrome 73，旧 WebView 上缺位即
+// 整段功能崩。guard 版 polyfill 零影响新机。
+if (!Object.fromEntries) {
+    Object.fromEntries = function (entries) {
+        const out = {};
+        for (const [k, v] of entries) out[k] = v;
+        return out;
+    };
+}
+if (!Array.prototype.flat) {
+    Array.prototype.flat = function (depth) {
+        const d = depth === undefined ? 1 : Math.floor(depth);
+        const out = [];
+        const walk = (arr, level) => {
+            for (const v of arr) {
+                if (level > 0 && Array.isArray(v)) walk(v, level - 1);
+                else out.push(v);
+            }
+        };
+        walk(this, d);
+        return out;
+    };
+}
+let keySoundVolumeTimer = 0;
+
+const BRIDGE = window.Native || { ready() {} };
+let token = "";
+let lastState = null;
+let uiChoice = "auto";
+let uiLocale = browserLocale();
+let pendingModelConsent = null;
+let lastModelError = null;
+
+const $ = id => document.getElementById(id);
+
+// #106 滑杆数值回显：input 拖动与 state 回显两条路共用；output 元素
+// 缺席（旧 HTML 缓存）时静默跳过。
+const rangeOut = (id, text) => {
+    const out = $(id + "Out");
+    if (out) out.textContent = text;
+};
+
+// 键盘选择（验收 2026-09-24）：与键盘 MODES 一致；默认菜单 = round-6 五项。
+const KEYBOARD_MODES = [
+    ['direct', '英文直出'], ['pinyin', '全拼'], ['double-pinyin', '双拼'],
+    ['t9', '九宫格'], ['stroke', '笔画'], ['flypy', '音形'],
+    ['handwriting', '手写'],
+    ['french', '法语'], ['russian', '俄语'], ['japanese', '日语'],
+];
+const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
+/** 定制按键编辑器的动作类型（#50 三轮起类型选择为下拉）：值为
+ *  mode、标签为 i18n 键（用时 t() 解析，跟随界面语言）。长按空格的
+ *  编辑器在此基础上前插 voice/none 两个特殊类型。 */
+const CK_MODES = [
+    ['text', 'ck.f.mode.text'], ['single', 'ck.f.mode.single'],
+    ['combo', 'ck.f.mode.combo'], ['open', 'ck.f.mode.open'],
+    ['setting', 'ck.f.mode.setting'], ['panel', 'ck.f.mode.panel'],
+    ['advanced', 'ck.f.mode.advanced'],
+    ['op', 'ck.f.mode.op'],
+];
+// 「动作」类型的编辑操作枚举（[edit:x] DSL；执行映射在 keyboard.js
+// runEditStep：原生 editorAction 优先，undo/redo/光标类走组合键）。
+const CK_EDIT_OPS = [
+    ['undo', 'ck.op.undo'], ['redo', 'ck.op.redo'],
+    ['cut', 'ck.op.cut'], ['copy', 'ck.op.copy'],
+    ['paste', 'ck.op.paste'], ['selectAll', 'ck.op.selectAll'],
+    ['clear', 'ck.op.clear'], ['cursorLeft', 'ck.op.cursorLeft'],
+    ['cursorRight', 'ck.op.cursorRight'], ['lineStart', 'ck.op.lineStart'],
+    ['lineEnd', 'ck.op.lineEnd'],
+    // #93 分享选中文字：系统分享面板（与键盘 [edit:share]/工具栏同源）。
+    ['share', 'ck.op.share'],
+];
+// 语言键盘四级页的布局数据（rows/角标与 keyboard.js LAYOUTS 同源摘要：
+// 角标取 alts 的首值；底行固定 [123][，][空格][中/英][⏎]，逗号键可
+// 定制（寻址 '.'，与 dataset.key 一致），其余锁定）。
+const LANG_KB = {
+    /* leftKey：第三行左键形态（复刻 keyboard.js isChineseMode 分支）——
+     * 中文键盘（pinyin/dp）是「分词」，非中文键盘（法俄英）是 Shift
+     * 图标；双拼 sogou/ziguang 方案的 ing 特例不在预览层复刻（方案是
+     * 运行时设置，预览画主形态即可）。 */
+    pinyin: { title: 'ck.lang.pinyin', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'sep',
+        alts: { q: '1', w: '2', e: '3', r: '4', t: '5', y: '6', u: '7', i: '8', o: '9', p: '0',
+            a: '-', s: '/', d: ':', f: ';', g: '(', h: ')', j: '~', k: '"', l: "'",
+            z: '@', x: '_', c: '#', v: '&', b: '?', n: '!', m: '…', '.': ',' } },
+    dp: { title: 'ck.lang.dp', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'sep', share: 'pinyin' },
+    english: { title: 'ck.lang.english', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'shift', share: 'pinyin' },
+    french: { title: 'ck.lang.french', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'shift',
+        alts: { q: '1', w: '2', e: 'é', r: '4', t: '5', y: 'ÿ', u: 'ù', i: 'î', o: 'ô', p: '0',
+            a: 'à', s: '/', d: ':', f: ';', g: '(', h: ')', j: '«', k: '»', l: '’',
+            z: '@', x: '_', c: 'ç', v: '&', b: '?', n: '!', m: '.', '.': ',' } },
+    russian: { title: 'ck.lang.russian', rows: ['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбю'], leftKey: 'shift',
+        alts: { й: '1', ц: '2', у: '3', к: '4', е: '5', н: '6', г: '7', ш: '8', щ: '9', з: '0', х: '-', ъ: '=',
+            ф: '\\', ы: '/', в: ':', а: ';', п: '(', р: ')', о: '~', л: '"', д: "'", ж: '«', э: '»',
+            я: '@', ч: '_', с: '#', м: '&', и: '?', т: '!', ь: '…', б: ',', ю: '.', '.': ',' } },
+};
+
+// #31 键盘色调：与 native THEME_PRESETS / keyboard.css html[data-preset] 同源。
+const THEME_PRESET_LIST = ['classic', 'ocean', 'violet', 'amber', 'sakura', 'teal'];
+const GLASS_SKIN_LIST = [
+    { id: 'liuli', color: '#23c890' },
+    { id: 'ocean', color: '#4da3ff' },
+    { id: 'violet', color: '#a78bfa' },
+    { id: 'amber', color: '#ff9f45' },
+    { id: 'sakura', color: '#ff8fb1' },
+    { id: 'aurora', color: '#2ec8c8' },
+    { id: 'ink', color: '#8aa0b8' },
+    { id: 'frost', color: '#d7e6f2' },
+];
+const THEME_PRESET_COLORS = {
+    classic: '#23c890', ocean: '#4da3ff', violet: '#a78bfa',
+    amber: '#ff9f45', sakura: '#ff8fb1', teal: '#2ec8c8',
+};
+// 预置→hue 映射与 keyboard.css html[data-preset] 同源；键面色板复用同一份。
+const PRESET_HUE = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 344, teal: 180 };
+
+const I18N = {
+    zh: {
+        "title": "Feelime 设置",
+        "hero.tag": "离线中英混合语音输入法",
+        "status.title": "状态",
+        "ime.title": "输入法状态",
+        "ime.enabled": "在系统中启用 Feelime",
+        "ime.default": "设为默认输入法",
+        "ime.enableAction": "去启用",
+        "ime.pickAction": "去切换",
+        "ime.addShortcut": "添加桌面快捷方式",
+        "ime.addTile": "添加快捷设置磁贴",
+        "language.title": "界面语言",
+        "language.badge": "界面",
+        "language.label": "显示语言",
+        "language.hint": "默认跟随系统；只影响 Feelime 界面，不改变输入语言。",
+        "language.note": "输入语言仍由键盘模式决定。",
+        "language.auto": "跟随系统",
+        "language.zh": "中文",
+        "language.en": "English",
+        "nav.groups": "设置分组",
+        "nav.group.daily": "日常",
+        "nav.group.more": "更多",
+        "nav.back": "返回首页",
+        "entry.layout.title": "键盘布局",
+        "entry.layout.subtitle": "全拼 · 双拼 · 九键 · 笔画",
+        "entry.fuzzy.title": "模糊音",
+        "entry.fuzzy.subtitle": "平翘舌 · 前后鼻音 · n/l",
+        "entry.candidates.title": "候选与联想",
+        "entry.candidates.subtitle": "联想 · 中英混输 · 英文词位置",
+        "entry.clip.title": "剪贴板与常用语",
+        "entry.clip.subtitle": "只存在本机 · 常用语与符号词",
+        "entry.feedback.title": "按键音效与振动",
+        "entry.feedback.subtitle": "声音 · 振动 · 气泡",
+        "entry.privacy.title": "隐私与离线",
+        "entry.privacy.subtitle": "按键、语音、壁纸都不上传",
+        "entry.input.title": "键盘与输入",
+        "entry.input.subtitle": "手感 · 双拼方案 · 定制按键",
+        "entry.dict.title": "词库",
+        "entry.dict.subtitle": "导入词库 · 自造词 · 常用语",
+        "entry.voice.title": "语音输入",
+        "entry.voice.subtitle": "离线识别 · 普通话说明 · 标点",
+        "entry.update.title": "键盘热更新",
+        "entry.update.subtitle": "键盘前端文件更新",
+        "entry.backup.title": "备份与恢复",
+        "entry.backup.subtitle": "设置 · 常用语 · 词库",
+        "entry.about.title": "关于",
+        "entry.about.subtitle": "版本信息 · 组件说明",
+        "entry.test.title": "输入测试",
+        "entry.test.subtitle": "唤起键盘试一试",
+        "page.input": "键盘与输入",
+        "page.dict": "词库",
+        "dict.badge": "叠加",
+        "dict.import.title": "导入词库",
+        "dict.import.enable": "词库文件（.dict.yaml / 搜狗 .scel / QQ .qcel / .qpyd / 百度 .bdict / 纯文本 .txt）",
+        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入，上限 5000 条。第三列（1-9 候选位次）默认只对纯符号词生效；要让全部词（汉字/字母/Emoji）都按第三列定位次，在文件头部加一行声明 columns: [text, code, rank]。注意未声明的 rime 词库第三列原本是权重——会被当作位置解释，超过 9 按 9 处理，建议导入前删掉或改写该列。搜狗 .scel、QQ .qcel/.qpyd、百度 .bdict 都直接导；纯文本 .txt 每行一词、可带拼音，无拼音时自动注音。雾凇/万象/白霜词库都是 .dict.yaml，直接导。",
+        "dict.userwords.title": "自造词",
+        "dict.userwords.enable": "手动维护的常用词",
+        "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，或长按候选点「收入自造词」。也可以导入 rime 词库。适合名字和行话。只存在本机，最多 200 条。",
+        "dict.userwords.manage": "管理词条",
+        "dict.lexicon.title": "纠错与习惯词库",
+        "dict.lexicon.correction": "拼音纠错",
+        "dict.lexicon.correctionHint": "默认开启；打错拼音也能出候选（按编辑距离纠一格），纠错候选带「纠」标、排在候选后面，点选直接上屏",
+        "dict.lexicon.habit": "习惯自动词库",
+        "dict.lexicon.habitHint": "默认开启；常打的词满 3 次自动收入自造词，只存在本机；打首字母选定的句第一次就记下来，下次打同样首字母优先出现。关掉后不再自动收入，已收入的词保留",
+        "dict.lexicon.autoWords": "自动收入的词",
+        "dict.lexicon.autoWordsEmpty": "还没有自动收入的词，多打几次常用词就会出现在这里。",
+        "dict.lexicon.autoWordsDeleted": "已删除",
+        "page.userwords": "自造词",
+        "page.fuzzy": "模糊音",
+        "page.keyboards": "键盘选择",
+        "userwords.list.title": "词条",
+        "userwords.list.empty": "还没有词条，在下方添加。",
+        "userwords.form.text": "词条（如 你好世界）",
+        "userwords.form.code": "输入码（留空自动按拼音生成）",
+        "userwords.form.add": "添加",
+        "userwords.form.save": "保存",
+        "userwords.form.cancel": "取消",
+        "userwords.list.note": "输入码留空即自动按拼音生成（多音字会生成全部读音组合，并自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。",
+        "userwords.note.saved": "已保存",
+        "userwords.note.deleted": "已删除",
+        "userwords.err.notReady": "正在读取词表，稍后再试",
+        "userwords.err.duplicate": "这个输入码已存在",
+        "userwords.err.limit": "最多 200 条",
+        "userwords.form.textErr": "词条不能为空",
+        "userwords.form.codeErr": "输入码需为 1-48 位字母",
+        "userwords.count": "共 {0} 条",
+        "nav.backDict": "返回词库",
+        "dict.base.title": "基底词库",
+        "dict.base.badge": "基底",
+        "dict.base.hint": "换装整个词库：选择 zip 整包（雾凇 rime-ice 选整包 zip、万象拼音选去声调的 Lite 版 zip；单个 .dict.yaml 只适合自带词条行的词典，只含 import_tables 引用的伞表主文件单独导入必失败），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
+        "dict.base.pick": "选择词库文件换装",
+        "dict.base.revert": "恢复内置词库",
+        "dict.slot.delete": "删除",
+        "dict.base.builtin": "内置 rime-frost（白霜拼音）",
+        "dict.base.custom": "自定义：{0}",
+        "dict.base.builtinNote": "内置 rime-frost 词库",
+        "dict.base.entries": "{0} 词条",
+        "dict.base.nonPinyin": "抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。",
+        "dict.base.t9Skip": "此词库由旧版本导入：当时的内存保护跳过了九宫格编译（新版本已根治，不再跳过），拼音/双拼不受影响；重新导入该词库即可恢复九宫格。",
+        "dict.base.toned": "此词库的编码带声调（疑似完整版，如万象拼音 Base）：键盘打不出声调符号，很多字将无法命中，请改用去声调的 Lite 版（或换回内置词库）。",
+        "flypy.title": "音形码表",
+        "flypy.badge": "音形",
+        "flypy.hint": "导入形码方案码表（如小鹤音形的 rime 词表 .dict.yaml，或 TAB 分隔的「词、码」纯文本）：两码音 + 两码形，四码唯一顶字上屏。在本机编译为独立的音形模式，不影响拼音词库；可随时移除。",
+        "flypy.pick": "导入音形码表",
+        "flypy.revert": "移除码表",
+        "flypy.none": "未导入（模式菜单暂无音形模式）",
+        "flypy.custom": "已导入：{0}",
+        "flypy.building": "正在处理音形码表…",
+        "dict.base.stageCopy": "正在读取词库文件…",
+        "dict.base.stageActivate": "正在切换词库…",
+        "dict.base.stageAnalyze": "正在分析词表特性…",
+        "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
+        "dict.base.elapsed": "已用时 {0} 秒",
+        "dict.base.readingPct": "读取词表 {0}%（{1}/{2}）",
+        "dict.base.compilingStep": "编译 {0}/{1}，正在编：{2}",
+        "dict.base.compilingFinalize": "编译 {0}/{1}，收尾中",
+        "dict.base.compilingCount": "编译 {0}/{1}",
+        "dict.base.canLeave": "可离开此页",
+        "dict.base.etaSec": "约 {0} 秒后完成",
+        "dict.base.etaMin": "约 {0} 分钟后完成",
+        "dict.base.part.main": "主词表",
+        "dict.base.part.t9": "九宫格",
+        "dict.base.part.dp": "双拼",
+        "dict.base.part.fuzzy": "模糊音",
+        "dict.base.part.flypy": "音形",
+        "dict.base.switching": "当前生效 {0}，正在切换到 {1}：",
+        "page.appearance": "外观",
+        "themeMode.auto": "跟随系统",
+        "themeMode.light": "浅色",
+        "themeMode.dark": "深色",
+        "page.voice": "语音识别",
+        "page.update": "键盘热更新",
+        "page.about": "关于",
+        "page.test": "输入测试",
+        "input.fuzzy.title": "模糊音",
+        "input.fuzzy.manage": "管理模糊音",
+        "input.fuzzy.manageHint": "分不清的音一起打：作用于全拼与九宫格 T9（双拼除外）。",
+        "input.fuzzy.badge": "输入",
+        "input.fuzzy.g.ping": "平翘舌",
+        "input.fuzzy.g.ping.hint": "z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。",
+        "input.fuzzy.g.nl": "声母 n/l",
+        "input.fuzzy.g.nl.hint": "打 nai 也能出「来」，打 lai 也能出「奶」。",
+        "input.fuzzy.g.fh": "声母 f/h",
+        "input.fuzzy.g.fh.hint": "打 fu 也能出「湖」，打 hu 也能出「父」。",
+        "input.fuzzy.g.rl": "声母 r/l",
+        "input.fuzzy.g.rl.hint": "打 re 也能出「乐」，打 le 也能出「热」。",
+        "input.fuzzy.g.nasal": "前后鼻音",
+        "input.fuzzy.g.nasal.hint": "an/ang、en/eng、in/ing：打 zang 也能出「张」，打 zhon 也能出「中」。",
+        "input.assoc.title": "中文联想",
+        "input.assoc.badge": "输入",
+        "input.assoc.enable": "选词后联想下一个词",
+        "input.assoc.hint": "上屏后给出接续词，点一下接着联想。你自己刚打过的接续会排到前面（只记在本机）。全拼、双拼、九键、笔画都可用。",
+        "input.assoc.backspaceClear": "联想时退格清除联想",
+        "input.hwkb.title": "物理键盘",
+        "input.hwkb.badge": "输入",
+        "input.hwkb.form": "连接物理键盘时",
+        "input.hwkb.formHint": "仅候选条：键盘收成一条候选（拼音/双拼等模式）；完整键盘：照常显示；跟随系统：由系统的「连接键盘时显示屏幕键盘」开关决定。",
+        "input.hwkb.candidates": "仅候选条",
+        "input.hwkb.full": "完整键盘",
+        "input.hwkb.follow": "跟随系统",
+        "input.hwkb.hint": "硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。",
+        "input.quickSwitch.policy": "快捷切换（切换键/Ctrl+空格）",
+        "input.quickSwitch.policyHint": "固定配对：始终在你选定的两个键盘间切换；当前键盘↔英文：从英文切回最近使用的键盘。",
+        "input.quickSwitch.follow": "当前键盘↔英文",
+        "input.quickSwitch.fixed": "固定配对",
+        "input.assoc.backspaceClearHint": "联想候选显示时按退格先清联想、恢复工具栏（不删字）；关闭则退格照旧删字。",
+        "input.datetime.title": "日期时间候选",
+        "input.datetime.badge": "输入",
+        "input.datetime.enable": "打 date/time/week 出日期时间",
+        "input.datetime.hint": "候选条直接给当前日期、时间、星期（全拼打 riqi/shijian/xingqi 也出）；不需要可关。",
+        "input.candidates.title": "候选增强",
+        "input.phrases.title": "候选符号词",
+        "input.phrases.badge": "输入",
+        "input.phrases.enable": "附加符号/emoji 候选",
+        "input.phrases.hint": "打 shang 出 ↑、dui 出 ✓ 这类符号词，默认排在候选第 3 位，可在「管理词条」里逐词指定位置；全拼和双拼通用。",
+        "input.phrases.freqSort": "基于词频排序",
+        "input.phrases.freqSortHint": "未指定位置的符号词随使用次数前移（5 次后可升到首位，空格直选）；关闭时一律固定在第 3 位附近。手动指定的位置不受此开关影响。",
+        "input.phrases.manage": "管理词条",
+        "input.phrases.importHint": "rime 词库文件的词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。",
+        "input.phrases.importBtn": "选择文件导入",
+        "input.phrases.clearBtn": "清空导入词",
+        "input.phrases.confirmClear": "确认清空",
+        "input.phrases.importedCount": "已导入 {0} 条",
+        "page.phrases": "候选符号词",
+        "nav.backInput": "返回键盘与输入",
+        "phrases.list.title": "词条",
+        "phrases.list.empty": "还没有词条，在下方添加。",
+        "phrases.list.note": "输入码用全拼（单个音节自动适配双拼按键）；位置 1-9 指定该词固定排在候选第几位，留空默认第 3 位；点词条可修改，✕ 删除。改动即时生效。",
+        "phrases.rank.aria": "固定在第 {0} 位",
+        "phrases.form.text": "词条（如 ↑ 或 你好）",
+        "phrases.form.rank": "候选位置",
+        "phrases.form.code": "输入码（如 shang）",
+        "phrases.form.add": "添加",
+        "phrases.form.save": "保存修改",
+        "phrases.form.cancel": "取消",
+        "phrases.note.saved": "已保存",
+        "phrases.note.deleted": "已删除",
+        "phrases.err.duplicate": "该输入码已有词条",
+        "phrases.err.notReady": "词表还在加载，稍等再试",
+        "phrases.err.limit": "最多 200 条，先删掉一些再添加",
+        "input.double.title": "双拼方案",
+        "input.double.badge": "输入",
+        "input.double.scheme": "方案",
+        "input.double.hint": "键盘切到「双拼」模式后按所选方案出字。",        "input.double.layout": "键盘布局",
+        "input.double.layoutHint": "14 键把相邻两字母合并成宽键帽，按键更大更不易误触。",
+        "input.double.layout26": "26 键",
+        "input.feel.kbLayout": "字母键盘布局",
+        "input.feel.kbLayoutHint": "拼音、双拼、英文键盘通用；14 键把相邻两字母合并成宽键帽，按键更大更不易误触。",
+        "input.double.layout14": "14 键",
+        "input.double.ziranma": "自然码",
+        "input.double.flypy": "小鹤双拼",
+        "input.double.sogou": "搜狗 / 微软双拼",
+        "input.double.ziguang": "紫光双拼",
+        "input.double.note.ziranma": "声母与全拼相同（zh=V、ch=I、sh=U 除外）。零声母（a/e 开头）直接打全拼：啊=aa、爱=ai、安=an、恩=en、二=er。",
+        "input.double.note.flypy": "声母与全拼相同（zh=V、ch=I、sh=U 除外）。零声母（a/e/o 开头）双打首字母，也可打全拼：啊=aa、爱=ai、恩=ef、二=er。",
+        "input.double.note.sogou": "声母与全拼相同（zh=V、ch=I、sh=U 除外）；ing 在「;」键（键盘上即分词键位置），ü 在 Y。零声母固定先打 O：啊=oa、爱=ol、安=oj、恩=of、二=or。搜狗与微软双拼键位完全一致，用微软双拼习惯的选这项即可。",
+        "input.double.note.ziguang": "紫光华宇拼音的双拼键位。zh=U、ch=A、sh=I；ing 在「;」键，ü 在 V（ju/qu/xu 也可用 v 键）。零声母固定先打 O：啊=oa、爱=op、安=or。",
+        "input.double.mapCaption": "韵母键位图（键名下方为该键韵母，右下为双声母）",
+        "input.custom.title": "定制按键",
+        "input.custom.badge": "高级",
+        "input.custom.enabled": "启用符号页定制",
+        "input.custom.jsonLabel": "定制 JSON（{\"version\":1,\"rows\":[[{\"t\":\"键面\",\"tap\":\"点击输出\",\"note\":\"备注\"}]]}）",
+        "input.custom.jsonPlaceholder": "粘贴定制 JSON",
+        "input.custom.note": "保存在本机，键盘下次载入时生效。",
+        "input.custom.manage": "管理定制按键",
+        "input.custom.badjson": "JSON 无效，请检查格式（version/rows）",
+        "page.customkeys": "定制按键",
+        "ck.status.title": "定制按键",
+        "ck.openEditor": "打开编辑器",
+        "ck.openEditor.hint": "点选创建按键，不用写代码",
+        "ck.json.title": "高级",
+        "ck.json.hint": "编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。",
+        "ck.rows.title": "按键：点按修改，长按可移动/删除",
+        "ck.quick.title": "常用键，一键加",
+        "ck.quick.title.hint": "点按键改内容，长按调整位置；点「＋」添加新按键。",
+        "ck.edit.title": "编辑按键",
+        "ck.apply": "确定",
+        "ck.save": "保存",
+        "ck.add": "＋",
+        "ck.f.t": "键面文案",
+        "ck.f.t.hint": "按钮上显示的字",
+        "ck.f.action": "点击输出",
+        "ck.f.mode": "类型",
+        "ck.f.mode.text": "文本",
+        "ck.f.mode.single": "按键",
+        "ck.f.mode.combo": "组合",
+        "ck.f.mode.advanced": "高级",
+        "ck.f.mode.open": "打开",
+        "ck.f.mode.setting": "设置",
+        "ck.f.mode.panel": "面板",
+        "ck.f.kind": "类型",
+        "ck.lang.title": "语言键盘",
+        "ck.t9.title": "键盘符号栏",
+        "ck.t9.entryT9": "T9 九宫格符号栏",
+        "ck.t9.entryStroke": "笔画键盘符号栏",
+        "ck.t9.entryInk": "手写键盘符号栏",
+        "ck.t9.pageTitleT9": "T9 符号栏",
+        "ck.t9.pageTitleStroke": "笔画符号栏",
+        "ck.t9.pageTitleInk": "手写符号栏",
+        "ck.t9.hintT9": "九宫格键盘空闲时左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除；打字中该列临时显示拼音音节，与符号栏互不影响。",
+        "ck.t9.hintStroke": "笔画键盘左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除。",
+        "ck.t9.hintInk": "手写键盘右侧滚动符号列，拖动 ≡ 调整顺序，点 ✕ 删除。",
+        "ck.t9.drag": "拖动排序",
+        "ck.t9.resetConfirm": "恢复此符号栏的默认内容和顺序？",
+        "ck.t9.lastOne": "至少保留一个符号",
+        "ck.t9.resetOne": "恢复默认",
+        "ck.t9.addLabel": "添加符号",
+        "ck.t9.addPlaceholder": "符号",
+        "ck.t9.addBtn": "添加",
+        "ck.t9.limitHint": "最多 24 个符号",
+        "ck.t9.up": "上移",
+        "ck.t9.down": "下移",
+        "ck.t9.remove": "删除",
+        "ck.t9.defaultSummary": "默认",
+        "ck.t9.sameAsDefault": "与默认相同",
+        "ck.lang.pinyin": "全拼键盘",
+        "ck.lang.dp": "双拼键盘",
+        "ck.lang.english": "英文键盘",
+        "ck.lang.french": "法语键盘",
+        "ck.lang.russian": "俄语键盘",
+        "ck.lang.count": "已定制 {count} 键",
+        "ck.lang.default": "默认",
+        "ck.lang.hint1": "点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。",
+        "ck.lang.hint2": "分词 / 退格 / 123 / 中英 / 回车不可定制；空格长按沿用「长按空格动作」（跨键盘统一）。",
+        "ck.lang.reset": "全部恢复",
+        "ck.lang.resetDone": "已恢复默认（记得保存）",
+        "ck.lang.editTitle": "编辑键 {0}",
+        "ck.lang.editKey": "定制键 {0}",
+        "ck.lang.editPunct": "定制逗号键",
+        "ck.lang.lock": "输出字母 {0} · 单击与长按固定",
+        "ck.lang.lockPunct": "输出逗号， · 单击与长按固定",
+        "ck.lang.alt": "角标",
+        "ck.lang.altPlaceholder": "默认：{0}",
+        "ck.lang.altAsUp": "上滑直接输入角标内容",
+        "ck.lang.slotUp": "↗ 上滑",
+        "ck.lang.slotDown": "↘ 下滑",
+        "ck.lang.defUp": "键盘默认 · 大写 {0}",
+        "ck.lang.defDown": "键盘默认 · 角标字符",
+        "ck.lang.shiftKey": "分词",
+        "ck.lang.cnEn": "中/英",
+        "ck.sym.title": "符号键盘",
+        "ck.sym.entry": "「定制」符号页",
+        "ck.sym.hint": "点按修改，长按移动/删除",
+        "ck.sym.pageTitle": "「定制」符号页",
+        "ck.f.mode.def": "键盘默认",
+        "ck.f.mode.none": "关闭",
+        "ck.f.mode.op": "动作",
+        "ck.f.op": "动作",
+        "ck.op.undo": "撤销",
+        "ck.op.redo": "重做",
+        "ck.op.cut": "剪切",
+        "ck.op.copy": "复制",
+        "ck.op.paste": "粘贴",
+        "ck.op.selectAll": "全选",
+    "ck.op.share": "分享选中文字",
+        "ck.op.clear": "清空编辑框",
+        "ck.op.cursorLeft": "光标左移一词",
+        "ck.op.cursorRight": "光标右移一词",
+        "ck.op.lineStart": "到行首",
+        "ck.op.lineEnd": "到行尾",
+        "ck.spaceTitle": "长按空格动作",
+        "ck.space.edit": "编辑动作",
+        "ck.space.hint": "长按空格触发该动作（350ms）；语音输入为按住说话，其余动作触发一次。",
+        "ck.space.face": "空格键面文案",
+        "ck.space.faceHint": "显示在空格键上（如 📋 或「剪贴板」，最多 8 字）",
+        "ck.f.panel.pick": "打开哪个面板",
+        "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
+        "ck.f.mods": "修饰键",
+        "ck.f.key": "按键",
+        "ck.f.open.uri": "链接地址",
+        "ck.f.setting.pick": "要打开的设置项",
+        "ck.f.open.placeholder": "如 doubao:// 或 https://fanyi.baidu.com",
+        "ck.f.open.presets": "常用预设",
+        "ck.f.open.presetPick": "选择常用应用…",
+        "ck.f.open.hint": "支持应用专属链接（需已安装该应用）或网页地址；点击后切到目标应用、键盘收起。不支持 intent:// 等链接；需键盘 3.73.22+（App 1.3.4 后随热更/升级可用）。",
+        "ck.f.dsl": "DSL（如 [esc]ggVGD 或 [open:doubao://]）",
+        "ck.help.aria": "DSL 说明",
+        "ck.help.dsl": "<b>点了这颗键会发生什么，按顺序写下来就行：</b><br>· 要打字，直接写：<code>:w</code>（输入 :w）、<code>me@example.com</code>（输入邮箱）<br>· 按一个键，套上方括号：<code>[esc]</code>（Esc）、<code>[f5]</code>（F5 刷新）、<code>[backspace]</code>（退格）<br>· 组合键：<code>[ctrl+s]</code>（保存）、<code>[alt+f4]</code>（关窗口）<br>· 打开应用/网页：<code>[open:doubao://]</code>（豆包）、<code>[open:https://fanyi.baidu.com]</code>（网页翻译）<br>· 连着来：<code>[esc]ggVGD</code> = Vim 删除全文（Esc，gg 回开头，VG 选到结尾，D 删除）<br>· 可用的键名：esc、tab、enter、space、backspace、del、left、right、up、down、home、end、pgup、pgdn、f1～f12、单字母、数字；组合键的修饰：ctrl、alt、shift、win。",
+        "ck.f.span": "宽度",
+        "ck.f.color": "颜色",
+        "ck.color.default": "默认",
+        "ck.color.custom": "自定义",
+        "ck.color.hex": "色号",
+        "ck.color.hexLabel": "键帽色号",
+        "ck.color.hue": "色调",
+        "ck.color.sat": "饱和度",
+        "ck.f.note": "备注",
+        "ck.f.note.hint": "长按键面时显示",
+        "ck.editBar.hint": "拖动移动，点x删除",
+        "ck.editBar.done": "完成",
+        "ck.common": "常用",
+        "ck.common.hint": "选一颗直接填好，改改就能用",
+        "ck.err.t": "键面不能为空",
+        "ck.err.tap": "点击输出不能为空",
+        "ck.err.open": "链接需为 http(s) 网页地址或应用链接（如 doubao://），且不能含空格",
+        "ck.err.setting": "请选择要打开的设置项",
+        "ck.err.panel": "面板目标无效",
+        "ck.err.tapLong": "点击输出超过 128 字符（链接太长），请换短链接",
+        "ck.note.saved": "已保存，键盘下次载入时生效",
+        "ck.note.deleted": "已删除",
+        "ck.row": "第 {n} 行",
+        "ck.none": "（空行）",
+        "ck.align.aria": "行对齐",
+        "ck.align.left": "左",
+        "ck.align.center": "中",
+        "ck.align.right": "右",
+        "ck.dirty": "有未保存的修改",
+        "ck.back.title": "正在编辑按键",
+        "ck.back.text": "还在编辑模式（拖动移动、点x删除）。放弃编辑还是继续？",
+        "ck.back.go": "放弃编辑",
+        "ck.back.stay": "继续编辑",
+        "ck.del.title": "删除按键",
+        "ck.del.confirm": "确定删除「{t}」吗？",
+        "ck.del.go": "删除",
+        "ck.del.cancel": "取消",
+        "ck.add.aria": "第 {n} 行添加按键",
+        "ck.newTitle": "新建按键",
+        "ck.cancel": "取消",
+        "ck.confirmLeave": "有未保存的修改，离开将丢失。仍要离开吗？",
+        "ck.confirmLeaveTitle": "未保存的修改",
+        "ck.leaveGo": "丢弃并离开",
+        "ck.leaveStay": "留下",
+        "input.keyboards.title": "键盘选择",
+        "input.keyboards.manage": "管理键盘与快捷切换",
+        "input.keyboards.manageHint": "长按菜单列出哪些键盘、快捷切换键在两个键盘间往返。",
+        "input.keyboards.badge": "菜单",
+        "input.keyboards.enable": "长按菜单里列出哪些键盘",
+        "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里，行序即菜单顺序（箭头调整）；不勾的还可以在菜单里临时勾回来。改动即时生效。",
+        "input.keyboards.drag": "拖动排序",
+        "input.keyboards.moveUp": "上移",
+        "input.keyboards.moveDown": "下移",
+        "input.english.enable": "英文词直出",
+        "input.english.hint": "拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。",
+        "input.phrases.wxSlash": "万象 / 键功能引导",
+        "input.phrases.wxSlashHint": "换装万象拼音方案后，开启可在全拼/双拼键盘用 / 进入符号引导（如 /sj 出时间类字符、/rq 出日期类字符，来自内置静态符号表，不是万象方案的动态时间）；音形、九宫、手写、英文键盘不支持，/ 在这些键盘直接上屏；关闭则 / 直接上屏。",
+        "input.keyboards.pairA": "快捷切换 · 第一个",
+        "input.keyboards.pairB": "快捷切换 · 第二个",
+        "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
+        "input.keyboards.saved": "已保存，键盘即时生效",
+        "input.feel.bubbleLinger": "气泡停留时长",
+        "input.feel.bubbleLingerHint": "松手后气泡多停留一会儿再消失，看得清按了什么；0 为立即消失。",
+        "input.feel.toastMs": "提示停留时长",
+        "input.feel.toastMsHint": "键盘上的提示条（如「已撤销本次听写」）显示多久，300-10000 毫秒，默认 1600。",
+        "search.placeholder": "搜索设置：高度、气泡、双拼、词库…",
+        "search.noResults": "没有匹配的设置项",
+        "action.saveCustom": "保存定制",
+        "action.insertTemplate": "插入实用模板",
+        "action.insertTemplateDev": "开发者模板",
+        "action.viewDocs": "查看说明",
+        "voice.models.title": "麦克风与语音模型",
+        "voice.models.badge": "语音",
+        "voice.backend.label": "模型来源",
+        "voice.backend.auto": "安装包优先",
+        "voice.backend.remote": "使用下载模型",
+        "voice.backend.hint": "切换后下次录音生效。选择下载模型后，请在下方补齐所需模型再录音。",
+        "voice.downloadSource.label": "模型下载源",
+        "voice.downloadSource.pick": "点选项即保存；「测速」比较各源延迟",
+        "voice.downloadSource.speedTest": "测速",
+        "voice.downloadSource.testing": "测速中…",
+        "voice.downloadSource.gitee": "Gitee 镜像（默认）",
+        "voice.downloadSource.github": "GitHub 直连",
+        "voice.downloadSource.ghproxy": "GitHub（gh-proxy 加速）",
+        "voice.downloadSource.fastest": "最快 ✓",
+        "voice.downloadSource.unavailable": "不可用",
+        "voice.downloadSource.custom": "自定义源",
+        "voice.downloadSource.customPlaceholder": "例如：https://example.com/download/handwriting/（单个模型的频道目录）",
+        "voice.downloadSource.save": "保存自定义源",
+        "voice.downloadSource.hint": "下载后会校验文件完整性；默认走 Gitee 国内镜像，也可选 GitHub 直连或 gh-proxy 加速。",
+        "voice.holdSpace": "长按空格",
+        "voice.holdSpaceHint": "长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。",
+        "voice.hold.voice": "语音输入",
+        "voice.hold.clipboard": "剪贴板面板",
+        // #65：旧文案「表情/常用面板」承诺了表情，但该面板只有常用语
+        // ——表情改由独立的「表情面板」目标直达（[panel:emoji]）。
+        "voice.hold.favorites": "常用语面板",
+        "voice.hold.emoji": "表情面板",
+        "voice.hold.edit": "快捷编辑面板",
+        "voice.hold.control": "控制键层",
+        "voice.hold.custom": "定制键面板",
+        "voice.hold.none": "关闭",
+        "voice.mic.permission": "麦克风权限",
+        "voice.mic.hint": "语音输入必需，全程本地处理",
+        "voice.mic.action": "去授权",
+        "voice.models.note": "完整安装包已内置全部模型；精简安装包在此按需下载（断点续传，逐文件校验）。",
+        "voice.asr.title": "语音识别设置",
+        "voice.asr.badge": "识别",
+        "voice.asr.stripPeriod": "去掉句尾句号",
+        "voice.asr.idleUnload": "空闲时释放语音模型",
+        "voice.asr.idleUnloadHint": "默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载",
+        "voice.asr.powerSaving": "省电模式",
+        "voice.asr.powerSavingHint": "默认关闭；开启后磨砂和按键动画关闭，语音只用流式识别，模型空闲 1 分钟释放",
+        "voice.asr.stripHint": "问号、叹号保留；关闭后保留模型输出",
+        "voice.asr.numItn": "数字写成阿拉伯数字",
+        "voice.asr.numItnHint": "数量、日期、金额、小数自动转换（三个 → 3个）；默认关闭",
+        "voice.asr.hotwordsLabel": "热词（一行一个，可填中文或英文；识别优先考虑这些词）",
+        "voice.asr.hotwordsWeightHint": "某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20（最多一位小数），不填用默认力度；数字过大可能出现重复词或误识别其他词，调小即可。",
+        "voice.asr.hotwordsPlaceholder": "例如：\n倪妮\n姚程:10 ← 总识别错时加权重\nGPU",
+        "action.saveAsr": "保存识别设置",
+        "update.title": "键盘热更新",
+        "update.badge": "更新",
+        "update.note": "仅替换 HTML/CSS/JS，不涉及引擎、词典与语音模型。",
+        "update.sourceLabel": "更新源地址（metainfo.json）",
+        "update.sourcePlaceholder": "https://example.com/feelime/metainfo.json",
+        "update.autoCheck": "启动时自动检查更新",
+        "update.autoCheckHint": "每天最多检查一次；清空更新源后自动检查停用",
+        "update.urlLabel": "键盘包地址（联网下载）",
+        "update.urlPlaceholder": "https://example.com/feelime-keyboard.zip",
+        "action.checkUpdate": "检查更新",
+        "action.install": "联网下载安装",
+        "action.importLocal": "从本地 ZIP 导入",
+        "action.restore": "恢复内置",
+        "update.localHint": "从本地 ZIP 导入不需要网络，仍会校验签名和兼容性。",
+        "update.unsigned": "⚠ 未签名键盘拥有 IME 权限（仅限调试构建）",
+        "update.sigConfirmed": "⚠ 当前键盘：签名不符（已手动确认导入）",
+        "page.backup": "备份与恢复",
+        "backup.title": "备份与恢复",
+        "backup.badge": "备份",
+        "backup.note": "把设置、常用语、自定义键位与输入词库打包成一个 JSON 文件，方便换机或手工编辑。",
+        "backup.export": "导出数据",
+        "backup.import": "导入数据",
+        "backup.consent.title": "确认覆盖",
+        "backup.consent.badge": "覆盖提示",
+        "backup.consent.message": "导入会覆盖当前的设置、常用语、自定义键位与词库，且无法撤销。确定继续吗？",
+        "backup.consent.cancel": "取消",
+        "webdav.title": "云端备份（WebDAV）",
+        "webdav.note": "备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。",
+        "webdav.urlLabel": "服务器地址",
+        "webdav.dirLabel": "子目录",
+        "webdav.dir": "feelime-backup",
+        "webdav.dirHint": "备份文件存放在服务器地址下的这个子目录里。部分服务商（如坚果云）不支持把文件直接存到根目录，建议保留子目录；留空则存到根目录。",
+        "webdav.providerLabel": "服务商",
+        "webdav.provider.jg": "坚果云",
+        "webdav.provider.inf": "InfiniCLOUD",
+        "webdav.provider.nc": "Nextcloud / 群晖",
+        "webdav.provider.custom": "自定义…",
+        "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
+        "webdav.userLabel": "用户名",
+        "webdav.user": "用户名",
+        "webdav.passLabel": "应用密码",
+        "webdav.pass": "应用密码（不是登录密码）",
+        "webdav.save": "保存并测试",
+        "webdav.backup": "立即备份",
+        "webdav.restoreBtn": "恢复云端备份",
+        "webdav.backupModal.title": "备份到云端",
+        "webdav.backupModal.hint": "将上传一份新备份文件，文件名默认按当前时间生成，可修改。",
+        "webdav.backupModal.nameLabel": "备份文件名",
+        "webdav.backupModal.go": "开始备份",
+        "webdav.backupModal.dup": "⚠ 云端已有同名文件，保存将覆盖它",
+        "webdav.backupModal.dupBtn": "覆盖同名文件",
+        "webdav.backupModal.unknownDup": "未能核对云端是否重名；若重名，上传时会被服务器拦截",
+        "webdav.backupModal.sending": "上传中…",
+        "webdav.backupModal.badName": "文件名需以 feelime-backup- 开头、以 .json 结尾，且不含 /、空格或 +",
+        "webdav.restoreModal.title": "恢复云端备份",
+        "webdav.restoreModal.back": "返回",
+        "webdav.empty": "云端还没有备份。",
+        "webdav.consent.title": "确认恢复",
+        "webdav.consent.message": "恢复会覆盖当前的设置、常用语、自定义键位与词库，且无法撤销。确定继续吗？",
+        "webdav.consent.confirm": "恢复这份备份",
+        "webdav.note.testing": "连接测试中…",
+        "webdav.note.ok": "连接正常",
+        "webdav.note.backupOk": "已备份：{0}",
+        "webdav.note.restoreOk": "已恢复：{0}",
+        "webdav.note.listing": "正在拉取云端列表…",
+        "webdav.note.backing": "正在备份…",
+        "webdav.note.restoring": "正在下载并恢复…",
+        "webdav.err.AUTH": "认证失败：用户名或密码不对",
+        "webdav.err.NOT_FOUND": "地址不存在（检查路径）",
+        "webdav.err.NO_DAV": "该地址不支持 WebDAV",
+        "webdav.err.EMPTY_URL": "先填服务器地址",
+        "webdav.err.NETWORK": "网络连接失败",
+        "webdav.err.TOO_LARGE": "文件超出大小上限",
+        "webdav.err.TOO_LONG": "输入过长",
+        "webdav.err.BAD_NAME": "备份名不合法",
+        "webdav.err.CONFLICT": "云端已有同名文件",
+        "webdav.err.RESTORE_FAILED": "恢复失败：备份内容未通过校验",
+        "webdav.err.INTERNAL": "内部错误",
+        "webdav.err.GENERIC": "操作失败",
+        "webdav.size.kb": "{0} KB",
+        "backup.consent.confirm": "选择文件导入",
+        "backup.done.export": "已导出到所选位置。",
+        "backup.done.import": "导入完成，正在生效。",
+        "backup.failed.export": "导出失败",
+        "backup.failed.import": "导入失败",
+        "backup.error.FORMAT": "文件不是有效的 JSON。",
+        "backup.error.KIND": "这不是 Feelime 备份文件。",
+        "backup.error.VERSION": "备份文件版本较新，请先升级 Feelime。",
+        "backup.error.IO_ERROR": "读取或写入文件失败。",
+        "backup.error.PATH": "备份里包含不安全的路径，已拒绝。",
+        "backup.error.BASE64": "备份中的词库数据损坏。",
+        "kbSig.title": "键盘包签名不符",
+        "kbSig.badge": "安全提示",
+        "kbSig.message": "这个键盘包的签名与官方发布密钥不一致（可能是自改包或第三方包）。仍要导入将以“已确认签名不符”的状态运行，重启后仍生效。",
+        "kbSig.cancel": "取消",
+        "kbSig.confirm": "仍要导入",
+        "about.versionTitle": "版本信息",
+        "about.badge": "信息",
+        "action.copyVersion": "复制版本信息",
+        "action.appStore": "在 Google Play 查看应用",
+        "action.githubRepo": "GitHub 仓库",
+        "action.githubIssues": "问题反馈",
+        "action.githubUpstream": "官方原版仓库",
+        "action.feishuGroup": "加入飞书交流群",
+        "action.checkUpdate": "检查更新",
+        "action.checkUpdatePlay": "去 Google Play 更新",
+        "action.dlThin": "下载精简版",
+        "action.dlFull": "下载完整版",
+        "update.checking": "正在检查更新…",
+        "update.upToDate": "已是最新版本（v{0}）",
+        "update.available": "发现新版本 v{0}（当前 v{1}），建议下载：",
+        "update.failed": "检查更新失败，请稍后再试（或到 GitHub Releases 页查看）",
+        "about.copyHint": "反馈问题时直接粘贴；复制内容标记为敏感，不会进入键盘剪贴板历史。",
+        "about.offlineHint": "全程离线：语音识别与文字候选都不联网。",
+        "about.forkNote": "本仓库按个人使用习惯定制，与官方原版有所不同；检查更新默认走本仓库，官方原版更新请见上方链接。",
+        "about.noticesTitle": "第三方许可与组件说明",
+        "about.legalBadge": "许可",
+        "about.expandNotices": "展开完整说明",
+        "about.openLicenses": "开源许可与致谢",
+        "about.openLicensesHint": "组件清单 · 上游链接 · 完整说明",
+        "page.licenses": "开源许可与致谢",
+        "nav.backAbout": "返回关于",
+        "licenses.self.title": "本应用许可",
+        "licenses.self.note": "Feelime 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。",
+        "licenses.components.title": "致谢组件",
+        "licenses.components.badge": "开源",
+        "licenses.thanks": "Feelime 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。",
+        "licenses.full.title": "完整说明",
+        "licenses.cmp.frost": "中文基底词库（语料词频重统）",
+        "licenses.cmp.librime": "中文输入引擎（内嵌 Boost/OpenCC/marisa-trie 等）",
+        "licenses.cmp.rimedata": "Rime 方案与数据文件",
+        "licenses.cmp.sherpa": "离线语音识别运行时与模型",
+        "licenses.cmp.mozc": "日文引擎（Abseil/Protobuf/zlib 等随附）",
+        "licenses.cmp.hunspell": "拼写检查（法/俄词典随附）",
+        "licenses.cmp.okhttp": "模型下载网络（仅下载时联网）",
+        "licenses.cmp.othersName": "其余内嵌依赖",
+        "licenses.cmp.others": "Commons Compress、yaml-cpp、LevelDB、RapidJSON 等 · 见下方完整说明",
+        "test.title": "试输入一段文字",
+        "test.badge": "测试",
+        "test.placeholder": "点这里唤起 Feelime 试一试",
+        "test.note": "输入内容只留在当前编辑框中。",
+        "model.builtIn": "已随安装包提供",
+        "model.transferSize": "下载 {download}（整包包含额外文件）\n安装后占用 {installed}",
+        "model.installed": "已下载，校验通过",
+        "model.downloading": "下载中 {percent}%",
+        "model.downloadingBytes": "下载中 {percent}%（{done} / {total}）",
+        "model.broken": "文件异常，请重新下载",
+        "model.missing": "未下载（约 {size}）",
+        "model.download": "下载",
+        "model.cancel": "取消",
+        "model.remove": "删除",
+        "model.redownload": "重新下载",
+        "model.import": "导入模型文件",
+        "model.importing": "正在读取模型文件…",
+        "model.importValidating": "正在验证模型文件…",
+        "model.importInstalling": "正在安装已验证模型…",
+        "model.importFormat": "仅支持与内置清单对应的官方模型 tar.bz2 或 zip 归档。",
+        "model.title.streaming": "流式语音识别（中英）",
+        "model.title.final": "整句纠错识别",
+        "model.title.punctuation": "中英标点恢复",
+        "model.consent.title": "确认下载流量",
+        "model.consent.badge": "流量提示",
+        "model.consent.message": "模型“{name}”约 {bytes}，当前网络可能产生流量费用。是否继续？",
+        "model.consent.cancel": "取消",
+        "model.consent.confirm": "继续下载",
+        "update.sourceBuiltIn": "APK 内置",
+        "update.sourceHot": "热更新版本",
+        "update.version": "版本：{value}",
+        "update.hash": "内容校验：{value}…",
+        "update.state": "状态：{value}",
+        "update.lastError": "最近错误：{value}",
+        "update.lastSuccess": "上次成功：{value}",
+        "update.sourceStatus": "更新源：{value}",
+        "update.sourceDefault": "官方默认源",
+        "update.sourceCustom": "用户设置",
+        "update.sourceDisabled": "已停用",
+        "update.states.BUILT_IN": "内置",
+        "update.states.DOWNLOADING": "下载中",
+        "update.states.VERIFYING": "校验中",
+        "update.states.CHECKING_COMPATIBILITY": "检查兼容性",
+        "update.states.READY": "已就绪",
+        "update.states.ACTIVE": "已启用",
+        "update.states.ACTIVATING": "启用中",
+        "update.states.ROLLED_BACK": "已回退",
+        "update.states.FAILED": "失败",
+        "about.appVersion": "App 版本",
+        "about.activeKeyboard": "键盘版本（当前）",
+        "about.builtInKeyboard": "键盘版本（内置）",
+        "about.device": "手机型号",
+        "about.android": "系统版本",
+                "about.androidValue": "Android {release}（API {sdk}）",
+        "about.inputStats": "输入字数",
+        "about.inputStatsValue": "今日 {today} · 累计 {total}",
+        "note.saved": "已保存",
+        "note.copied": "已复制",
+        "custom.none": "未定制",
+        "custom.count": "已定制 {count} 个键",
+        "error.INVALID_CUSTOM_JSON": "定制 JSON 格式不正确。",
+        "error.INVALID_DP_SCHEME": "双拼方案选项无效。",
+                "input.ink.title": "手写输入",
+        "input.ink.badge": "手写",
+        "input.ink.delay": "停顿触发识别",
+        "input.ink.delayHint": "停笔后等这么久就识别上一个字；写得慢选「慢」，抢着识别选「快」。",
+        "input.ink.live": "实时（逐笔识别）",
+        "input.ink.fast": "快（约 300 毫秒）",
+        "input.ink.standard": "标准（约 600 毫秒）",
+        "input.ink.slow": "慢（约 1200 毫秒）",
+        "input.feel.title": "键盘手感",
+        "input.feel.badge": "微调",
+
+        "input.feel.padHint": "键盘下方的空白高度，0 保持贴底（终端场景），补偿全面屏手势条或系统元素。",
+        "page.landscape": "横屏显示",
+        "input.landscape.title": "横屏显示",
+        "input.landscape.badge": "横屏",
+        "entry.landscape.title": "横屏显示",
+        "entry.landscape.subtitle": "挖孔安全区 · 高度上限 · 透明度",
+        "input.landscape.safeArea": "左右留安全区",
+        "input.landscape.safeAreaHint": "键盘背景铺满含挖孔的整条短边，但按键区避开挖孔侧；关闭后按键也铺满。",
+        "input.landscape.ceil": "高度上限",
+        "input.landscape.ceilHint": "横屏键盘最高可占屏幕高度的百分比（40%–100%）。",
+        "input.landscape.height": "横屏键盘高度",
+        "input.landscape.heightHint": "横屏键盘的高度；键盘上拖拽调节与此处等效。横竖屏分开记忆。",
+        "input.landscape.heightReset": "恢复默认",
+        "input.landscape.opacity": "整体不透明度",
+        "input.landscape.opacityHint": "横屏时键盘整层（含背景）的透明程度，调低可看到被键盘盖住的内容。",
+        "input.feel.padPortrait": "底部留白 · 竖屏",
+        "input.feel.padLandscape": "底部留白 · 横屏",
+        "input.feel.padLandscapeHint": "横屏单独保存，互不影响。",
+        "input.feel.candFont": "候选字号",
+        "input.feel.candFontHint": "候选词文字的大小（80%-150%），不改变键盘行高。",
+        "input.feel.keycapFont": "键帽字号",
+        "input.feel.keycapFontHint": "键帽主文字的大小（50-150%），不改变键盘行高；过大时自动收在角标下方。",
+        "input.feel.userFont": "键盘字体",
+        "input.feel.userFontHint": "用导入的字体渲染键盘文字（TTF/OTF）；不随数据备份，换机后需重新导入。",
+        "input.feel.userFontImport": "导入字体…",
+        "input.feel.userFontClear": "恢复系统字体",
+        "input.feel.userFontActive": "当前：{name}",
+        "input.feel.userFontImported": "已导入：{name}",
+        "error.font.IO_ERROR": "字体导入失败：文件读取失败，请重试。",
+        "error.font.TOO_LARGE": "字体导入失败：文件超过 100MB 上限。",
+        "error.font.BAD_MAGIC": "字体导入失败：不是有效的 TTF/OTF 字体文件。",
+        "error.font.BAD_FONT": "字体导入失败：文件无法被系统解析为可用字体。",
+        "fontLarge.title": "字体文件较大",
+        "fontLarge.badge": "提示",
+        "fontLarge.message": "这个字体文件有 {mb} MB，超过 20MB。大字体会增加内存占用和加载时间，配置较低的设备可能出现卡顿。仍要导入吗？",
+        "fontLarge.cancel": "取消",
+        "fontLarge.confirm": "仍要导入",
+        "input.feel.preeditFont": "拼音字号",
+        "input.feel.preeditFontHint": "打字时拼音字母的大小；特大档会占一行更多高度。",
+        "input.feel.preeditBold": "拼音加粗",
+        "input.feel.preeditBoldHint": "打字时的拼音字母用粗体显示，默认关。",
+        "input.feel.oneHand": "单手模式",
+        "input.feel.oneHandHint": "键盘贴左或贴右，空出的侧边条放光标与编辑操作。",
+        "input.feel.oneHandPad": "单手压缩比例",
+        "input.feel.oneHandPadHint": "大屏上把键盘进一步收窄，方便拇指够到全部按键。",
+        "pad.default": "不压缩",
+        "pad.15": "收窄 15%",
+        "pad.25": "收窄 25%",
+        "pad.35": "收窄 35%",
+        "input.feel.sideContent": "侧边条内容",
+        "input.feel.sideContentHint": "单手模式下空出区域的内容。",
+        "input.feel.bgImageLight": "亮色背景",
+        "error.BAD_BG_IMAGE": "图片过大或无法读取，请先缩小图片后重试",
+        "input.feel.bgImageDark": "暗色背景",
+        "input.feel.themeMode": "色彩模式",
+        "input.feel.themePreset": "键盘色调",
+        "input.feel.themePresetHint": "一个色相驱动整套键盘配色（键帽/面板/强调色）；拖滑条自定义，或点预置快捷档。",
+        "input.feel.themeSat": "键盘饱和度",
+        "input.feel.themePreview": "效果预览",
+        "input.feel.themePreviewHint": "色调、饱和度、按键不透明度与背景图在这里实时反映；亮暗各一组。",
+        "preview.light": "亮色",
+        "preview.dark": "暗色",
+        "entry.skin.title": "皮肤",
+        "entry.skin.subtitle": "色调 · 饱和度 · 背景图",
+        "page.skin": "皮肤",
+        "nav.backAppearance": "返回外观",
+        "input.feel.keyHue": "键面色调",
+        "input.feel.keyHueHint": "只调键帽/强调色的色相（背景不动）；点「跟键盘」还原跟随。",
+        "preset.followKey": "跟键盘色",
+        "input.feel.keySat": "键面饱和度",
+        "input.feel.keySatHint": "只调键帽组的色彩浓度；最左=键帽变黑白灰。",
+        "input.english.posLabel": "英文词候选位置",
+        "input.english.posHint": "自动：不打扰拼音的词排第 1 位、与拼音键序重叠的排第 3 位；也可固定。",
+        "input.english.posAuto": "自动",
+        "input.english.pos1": "第 1 位",
+        "input.english.pos3": "第 3 位",
+        "input.english.pos5": "第 5 位",
+        "input.feel.themeSatHint": "拉到最左是黑白灰（明暗模式定黑白基底），往右色彩渐浓。",
+        "input.feel.kbGroup": "键盘",
+        "input.feel.keyGroup": "键面",
+        "input.feel.keyFollow": "跟随键盘",
+        "input.feel.keyFollowHint": "开启时键面的色调/饱和度跟随键盘组；关闭后各自独立。",
+        "input.feel.themeHex": "键盘原色",
+        "input.feel.themeHexHint": "生成背景/面板配色的输入色（不是最终像素色）；键面跟随「键盘」时一起调整。",
+        "input.feel.keyHex": "键面原色",
+        "input.feel.keyHexHint": "生成键帽/强调色的输入色；跟随开启时显示键盘原色，实际效果见下方预览。",
+        "input.feel.hexPlaceholder": "#RRGGBB",
+        "preset.classic": "默认绿",
+        "preset.ocean": "海蓝",
+        "preset.violet": "紫罗兰",
+        "preset.amber": "蜜橙",
+        "preset.sakura": "樱粉",
+        "preset.teal": "青碧",
+        "input.feel.themeModeHint": "跟随系统，或固定浅色/深色。",
+        "input.feel.keyOpacity": "按键不透明度",
+        "input.feel.kbHeight": "键盘高度",
+        "input.feel.kbHeightHint": "竖屏键盘的高度；键盘上拖拽调节与此处等效。",
+        "input.feel.kbHeightReset": "恢复默认",
+        "input.feel.keyOpacityHint": "键帽有多透。默认略透，像玻璃；拉到最右是实心。文字始终实色。",
+        "input.feel.systemBarNote": "地球仪和收起键盘那一行由手机系统设置显示或隐藏，Feelime 不另画一条，也没有开关去关它。系统画出这一条时，键盘会按系统报来的底部空白把按键抬上去，避免挡住系统按钮。",
+        "input.feel.glassTitle": "液态玻璃",
+        "input.feel.glassBadge": "皮肤",
+        "input.feel.glassSkin": "内置皮肤",
+        "input.feel.glassSkinHint": "一套皮肤会同时设定色调、透明度、磨砂和圆角。之后仍可以单独微调，微调后不再算某一套皮肤。",
+        "input.feel.glassBlur": "磨砂强度",
+        "input.feel.glassBlurHint": "背景和壁纸的高斯模糊。0 是清晰，数字越大越像雾面玻璃。",
+        "input.feel.glassRadius": "圆角",
+        "input.feel.glassRadiusHint": "键帽和浮层的圆角。越大越圆。",
+        "input.feel.panelOpacity": "面板透明度",
+        "input.feel.panelOpacityHint": "候选条、菜单和语音卡片有多透。文字保持实色，方便看清。",
+        "input.feel.preeditFrame": "拼音外框",
+        "input.feel.preeditFrameHint": "给正在输入的拼音再套一个随字数收缩的框。默认关，拼音直接写在对应汉字上方。",
+        "skin.liuli": "琉璃青",
+        "skin.ocean": "深海",
+        "skin.violet": "暮紫",
+        "skin.amber": "琥珀",
+        "skin.sakura": "樱雾",
+        "skin.aurora": "极光",
+        "skin.ink": "墨玉",
+        "skin.frost": "霜白",
+        "clip.title": "剪贴板与常用语",
+        "clip.badge": "本机",
+        "clip.note": "键盘工具栏里的剪贴板只保存在这台手机上，不上传，也不进云备份。条数不另设上限，全部正文大约 32MB。复制一段文字后，点键盘上的剪贴板图标就能贴回去。常用语和符号词在下面管理。",
+        "clip.deleteConfirm": "删除前确认",
+        "clip.deleteConfirmHint": "开 = 删剪贴板或常用语时先问一句，点「删除」才删；关 = 直接删，不再问。",
+        "voice.asr.honest": "当前离线模型对较标准的普通话效果最好：语速放稳、环境安静，说完一句再点「说完了」。标点由本机标点模型自动补上（不是喊「逗号」），句尾句号可以在下面关掉。这里不会把声音传到网上，也不能靠换设置凭空提高识别率。",
+        "privacy.title": "隐私与离线",
+        "privacy.badge": "本机",
+        "privacy.note": "按键、候选、语音和壁纸都只留在这台手机上。Feelime 不上传输入内容，也不带统计上报。语音模型是随安装包或你手动下载的离线模型。诊断开关只在你打开之后记录引擎事件，不含你打过的字。",
+        "input.feel.keyBubble": "按键气泡",
+        "input.feel.cnEnComposingGuard": "拼音组词中禁止切换语言",
+        "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
+        "input.feel.preeditScrub": "空格横滑移动拼音光标",
+        "input.feel.preeditScrubHint": "输入拼音时左右滑动空格键，移动拼音串内的光标方便修改错字；没有输入时仍移动正文光标。默认开启，不需要可在本行关掉。目前支持全拼与双拼（#103）。",
+        "input.feel.bottomSymSplit": "底行符号/数字分键",
+        "input.feel.bottomSymSplitHint": "开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。",
+        "voice.readyHaptic": "语音就绪震动",
+        "voice.readyHapticHint": "语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。",
+        "input.feel.keyBubbleHint": "按下按键时在键帽正上方放大显示所按的字符，松手后停留一会儿再消失（默认开启）。",
+        "entry.appearance.title": "外观与皮肤",
+        "entry.appearance.subtitle": "液态玻璃 · 配色 · 壁纸",
+        "input.appearance.title": "外观",
+        "input.appearance.preview": "预览",
+        "input.appearance.previewHint": "键盘不再自动弹出（想实时看配色去「皮肤」页）；点这个输入框可以唤起键盘试打。",
+        "input.appearance.previewPlaceholder": "直接在这里打字试试",
+        "input.appearance.badge": "主题",
+        "input.feel.bgImageHint": "自定义壁纸铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽后只存在本机，不会上传。",
+        "input.feel.bgImageHintDark": "亮暗切换时各自使用对应组的图片。",
+        "自定义": "Custom",
+        "光标控制": "光标控制",
+        "自定义图片": "自定义图片",
+        "左手": "左手",
+        "右手": "右手",
+        "input.feel.hold": "长按触发时长",
+        "input.feel.holdHint": "长按弹出选字、锁定大写、打开模式菜单的等待时间。",
+"input.feel.flickSwap": "上下滑方向互换",
+        "input.feel.flickSwapHint": "默认上滑出数字/符号、下滑出大写；开启后对调（键面小字提示随之下移）。",
+        "input.feel.doubleShiftLock": "双击 Shift 锁定大写",
+        "input.feel.doubleShiftLockHint": "300 毫秒内连点两下 Shift 锁定大写（与长按锁定等效）；关闭后退回点按切换。",
+        "input.feel.scrub": "光标移动速度",
+        "input.feel.scrubHint": "光标拖拽时每个刻度移动的距离。",
+        "input.feel.snap": "滑动选字范围",
+        "input.feel.snapHint": "长按滑选时手指偏离多远取消选择：松=更远也有效，紧=更早取消。",
+        "input.feel.snapLoose": "松",
+        "input.feel.snapStandard": "标准",
+        "input.feel.snapTight": "紧",
+        "input.feel.keySound": "按键声音",
+        "input.feel.keySoundVolume": "按键音量",
+        "input.feel.keySoundVolumeHint": "哔声、系统键击音与自定义音效共用。",
+        "input.feel.keyHapticStrength": "振动强度",
+        "input.feel.keyHapticStrengthHint": "本机马达不支持强弱调节时按轻重的时长近似。",
+        "input.feel.keyHapticFollowSystem": "强度跟随系统",
+        "input.feel.keyHapticFollowSystemHint": "开 = 强度用系统默认，弱/中/强选择置灰；关 = 手动弱/中/强三档。",
+        "input.feel.hapticLight": "弱", "input.feel.hapticMedium": "中", "input.feel.hapticStrong": "强",
+        "input.feel.keySoundHint": "按键时轻响一声，跟随系统音量，静音时不响。",
+        "input.feel.keySoundStyle": "按键音效",
+        "input.feel.keySoundStyleHint": "默认哔声之外的音效；",
+        "input.feel.kssDefault": "默认哔声",
+        "input.feel.kssKeypress": "系统键击音",
+        "input.feel.kssCustom": "自定义音效",
+        "input.feel.keySoundFile": "自定义音效文件",
+        "input.feel.keySoundFileHint": "选一段 2MB 内的短音频（ogg/mp3/wav）；不合适可清除换回默认。",
+        "input.feel.keySoundPick": "选择文件",
+        "input.feel.keySoundClear": "清除",
+        "feel.keySound.current": "当前：",
+        "feel.keySound.none": "未选择",
+        "input.feel.keyHaptic": "按键振动",
+        "diag.title": "诊断记录",
+        "diag.badge": "调试",
+        "diag.toggle": "记录引擎诊断事件",
+        "diag.toggleHint": "复现「按键字母直接上屏」这类故障前打开。只记录引擎与编辑器事件（包名、inputType、降级原因），不含任何输入内容。",
+        "diag.copy": "导出诊断信息",
+        "diag.on": "诊断记录已开启，复现问题后回到这里导出诊断信息。",
+        "diag.exported": "诊断文件已生成，在弹出的分享面板里选微信 / 邮件等方式发送。",
+        "diag.off": "诊断记录未开启。",
+        "input.feel.keyHapticHint": "按键时轻短振动一下，强度跟随机型；系统触感总开关关闭时不震。",
+        "error.INVALID_FEEL_OPTION": "手感参数无效，已还原为原值。",
+        "error.EMPTY_SOURCE": "请先填入更新源地址（metainfo.json）。",
+        "error.EMPTY_URL": "请先填入键盘包地址。",
+        "error.INVALID_SOURCE": "更新源地址无效。",
+        "error.NO_RELEASE": "尚无可用发布。",
+        "error.NO_INSTALLABLE_ASSET": "发布中没有可安装的键盘包。",
+        "error.AMBIGUOUS_ASSET": "发布中的键盘包不唯一。",
+        "error.INVALID_ASSET_URL": "发布资产下载地址无效。",
+        "error.RATE_LIMITED": "GitHub 请求受到限流，请稍后重试。",
+        "error.NETWORK_ERROR": "网络请求失败。",
+        "error.BAD_RESPONSE": "更新源返回了无法识别的内容。",
+        "error.INTERNAL_ERROR": "更新失败，请稍后重试。",
+        "error.URL_NOT_HTTPS": "更新地址必须使用 HTTPS。",
+        "error.URL_USER_INFO": "更新地址不能包含账号或密码。",
+        "error.TIMEOUT": "网络请求超时。",
+        "error.TLS_ERROR": "安全连接失败。",
+        "error.REDIRECT_LIMIT": "重定向次数过多。",
+        "error.REDIRECT_NOT_HTTPS": "重定向地址必须使用 HTTPS。",
+        "error.DOWNLOAD_TOO_LARGE": "下载文件超过大小限制。",
+        "error.ZIP_TOO_LARGE": "键盘包超过大小限制。",
+        "error.NOT_ZIP": "键盘包格式不正确。",
+        "error.SIGNATURE_MISSING": "键盘包缺少签名。",
+        "error.SIGNATURE_BAD": "键盘包签名校验失败。",
+        "error.PAYLOAD_HASH": "键盘文件校验失败。",
+        "error.VERSION_MISMATCH": "键盘版本信息不一致。",
+        "error.COMPAT_MIN_NATIVE_API": "当前版本的 Feelime 不支持此键盘包。",
+        "error.COMPAT_CAPABILITIES": "此键盘包需要未提供的能力。",
+        "error.FRAGMENT_PIN_MISMATCH": "键盘包校验指纹不匹配。",
+        "error.IO_ERROR": "本地文件操作失败。",
+        "error.ENTRY_LIMIT": "键盘包包含过多文件。",
+        "error.DUPLICATE_ENTRY": "键盘包包含重复文件。",
+        "error.PATH_TRAVERSAL": "键盘包包含不安全路径。",
+        "error.PATH_ABSOLUTE": "键盘包包含绝对路径。",
+        "error.PATH_BACKSLASH": "键盘包路径格式不安全。",
+        "error.PATH_NUL": "键盘包路径包含无效字符。",
+        "error.SYMLINK_OR_SPECIAL": "键盘包包含不支持的特殊文件。",
+        "error.UNICODE_CONFLICT": "键盘包文件名存在冲突。",
+        "error.UNKNOWN_ENTRY": "键盘包包含未知文件。",
+        "error.ENVELOPE_MISSING": "键盘包缺少校验元数据。",
+        "error.MANIFEST_INVALID_JSON": "键盘包清单格式无效。",
+        "error.MANIFEST_UNKNOWN_KEY": "键盘包清单包含未知字段。",
+        "error.MANIFEST_MISSING_KEY": "键盘包清单缺少必要字段。",
+        "error.MANIFEST_LISTS_ENVELOPE": "键盘包清单结构无效。",
+        "error.MANIFEST_PAYLOAD_ALLOWLIST": "键盘包包含不允许的内容。",
+        "error.KEY_UNKNOWN": "键盘包签名密钥未知。",
+        "error.PAYLOAD_LENGTH": "键盘文件大小校验失败。",
+        "error.INFLATED_TOO_LARGE": "键盘包解压后超过大小限制。",
+        "error.HOTWORDS_TRUNCATED": "已保存，但有 {count} 行热词超出限制（最多 {max} 行，每行 {chars} 字）。",
+        "error.NO_NETWORK": "当前没有可用的网络连接。",
+        "error.STALE_CONFIRMATION": "下载确认已过期，请重新点击下载。",
+        "error.MODEL_DOWNLOAD_FAILED": "模型下载失败，请稍后重试。",
+        "error.MODEL_IMPORT_FAILED": "模型导入失败，请检查官方归档格式后重试。",
+        "error.MODEL_IMPORT_BUSY": "模型正在处理，请稍候。",
+        "error.MODEL_NETWORK_CHANGED": "网络已变化，下载已暂停；请重新确认后重试。",
+        "error.INVALID_MODEL_SOURCE": "自定义源需要 HTTPS 仓库地址和对应的 tar.bz2 归档地址。",
+    },
+    en: {
+        "title": "Feelime Settings",
+        "hero.tag": "Offline Chinese-English voice input",
+        "status.title": "Status",
+        "ime.title": "Input method status",
+        "ime.enabled": "Enable Feelime in system settings",
+        "ime.default": "Set as the default input method",
+        "ime.enableAction": "Enable",
+        "ime.pickAction": "Switch",
+        "ime.addShortcut": "Add home-screen shortcut",
+        "ime.addTile": "Add Quick Settings tile",
+        "language.title": "Interface language",
+        "language.badge": "UI",
+        "language.label": "Display language",
+        "language.hint": "Follows the system by default; this changes Feelime UI only, not input language.",
+        "language.note": "Input language is still controlled by the keyboard mode.",
+        "language.auto": "Follow system",
+        "language.zh": "中文",
+        "language.en": "English",
+        "nav.groups": "Settings sections",
+        "nav.group.daily": "Everyday",
+        "nav.group.more": "More",
+        "nav.back": "Back to home",
+        "nav.backAppearance": "Back to appearance",
+        "entry.layout.title": "Keyboard layout",
+        "entry.layout.subtitle": "Pinyin · Double pinyin · Nine-key · Strokes",
+        "entry.fuzzy.title": "Fuzzy pinyin",
+        "entry.fuzzy.subtitle": "zh/z · in/ing · n/l",
+        "entry.candidates.title": "Candidates",
+        "entry.candidates.subtitle": "Associations · Mixed English · Word position",
+        "entry.clip.title": "Clipboard & phrases",
+        "entry.clip.subtitle": "On this phone only · Phrases and symbols",
+        "entry.feedback.title": "Sound & haptics",
+        "entry.feedback.subtitle": "Clicks · Vibration · Key bubbles",
+        "entry.privacy.title": "Privacy & offline",
+        "entry.privacy.subtitle": "Keystrokes, voice, and wallpapers stay here",
+        "entry.input.title": "Keyboard & input",
+        "entry.input.subtitle": "Feel · Double pinyin · Custom keys",
+        "entry.dict.title": "Lexicon",
+        "entry.dict.subtitle": "Import · User words · Phrases",
+        "entry.backup.title": "Backup & restore",
+        "entry.backup.subtitle": "Settings · Phrases · Lexicons",
+        "entry.voice.title": "Voice input",
+        "entry.voice.subtitle": "Offline recognition · Mandarin note · Punctuation",
+        "entry.update.title": "Keyboard updates",
+        "entry.update.subtitle": "Update keyboard HTML/CSS/JS",
+        "entry.about.title": "About",
+        "entry.about.subtitle": "Version info · Components",
+        "entry.test.title": "Input test",
+        "entry.test.subtitle": "Wake Feelime and try it",
+        "page.input": "Keyboard & input",
+        "page.dict": "Lexicon",
+        "dict.badge": "Overlay",
+        "dict.import.title": "Import a dictionary",
+        "dict.import.enable": "Dictionary file (.dict.yaml / Sogou .scel / QQ .qcel / .qpyd / Baidu .bdict / plain-text .txt)",
+        "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice. The optional 3rd column (candidate rank 1-9) only applies to symbol words unless the file header declares columns: [text, code, rank]. Sogou .scel, QQ .qcel/.qpyd and Baidu .bdict import directly; plain-text .txt takes one word per line, optionally with pinyin (pinyin is auto-derived when missing). Community Rime dictionaries such as rime-ice, wanxiang and rime-frost are .dict.yaml and import directly.",
+        "dict.userwords.title": "User words",
+        "dict.userwords.enable": "Hand-maintained words",
+        "dict.userwords.hint": "Add word + pinyin pairs, or long-press a candidate and choose Save to my words. Rime dictionaries can be imported on this page. On this phone only, up to 200 entries.",
+        "dict.userwords.manage": "Manage words",
+        "dict.lexicon.title": "Correction & habit lexicon",
+        "dict.lexicon.correction": "Pinyin typo correction",
+        "dict.lexicon.correctionHint": "On by default. Mis-typed pinyin still offers candidates (one edit away); corrected candidates carry a “纠” mark, sit after the normal ones, and commit on tap.",
+        "dict.lexicon.habit": "Habit auto-lexicon",
+        "dict.lexicon.habitHint": "On by default. Words you type often are saved to your words after 3 uses, on this phone only; a sentence picked by typing its initials is remembered the first time and comes first next time you type the same initials. Turning it off stops new saves; saved words stay.",
+        "dict.lexicon.autoWords": "Auto-saved words",
+        "dict.lexicon.autoWordsEmpty": "No auto-saved words yet. Type a common word a few times and it will show up here.",
+        "dict.lexicon.autoWordsDeleted": "Deleted",
+        "page.userwords": "User words",
+        "page.fuzzy": "Fuzzy input",
+        "page.keyboards": "Keyboard selection",
+        "userwords.list.title": "Words",
+        "userwords.list.empty": "No words yet - add one below.",
+        "userwords.form.text": "Word (e.g. hello world)",
+        "userwords.form.code": "Code (leave empty for auto pinyin)",
+        "userwords.form.add": "Add",
+        "userwords.form.save": "Save",
+        "userwords.form.cancel": "Cancel",
+        "userwords.list.note": "Leave the code empty to auto-generate pinyin (polyphones expand to every reading; double-pinyin keys auto-adapt); tap a word to edit, ✕ deletes. Applies immediately, 200-entry cap.",
+        "userwords.note.saved": "Saved",
+        "userwords.note.deleted": "Deleted",
+        "userwords.err.notReady": "Word list still loading, try again shortly",
+        "userwords.err.duplicate": "That code already exists",
+        "userwords.err.limit": "200 entries max",
+        "userwords.form.textErr": "Word cannot be empty",
+        "userwords.form.codeErr": "Code must be 1-48 letters",
+        "userwords.count": "{0} entries",
+        "nav.backDict": "Back to dictionary",
+        "dict.base.title": "Base dictionary",
+        "dict.base.badge": "Base",
+        "dict.base.hint": "Swap the whole lexicon: pick a zip bundle (rime-ice: the whole zip; wanxiang: the tone-free Lite zip; a lone .dict.yaml only works when it carries its own entries — umbrella files with just import_tables always fail), recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
+        "dict.base.pick": "Pick a dictionary file",
+        "dict.base.revert": "Restore built-in",
+        "dict.slot.delete": "Delete",
+        "dict.base.builtin": "Built-in rime-frost",
+        "dict.base.custom": "Custom: {0}",
+        "dict.base.builtinNote": "Bundled rime-frost dictionary",
+        "dict.base.entries": "{0} entries",
+        "dict.base.nonPinyin": "A large share of codes in this dictionary are not pinyin syllable sequences (shape-code layout): characters may not be reachable by typing their pronunciation. Dedicated shape-code schema support may come later.",
+        "dict.base.t9Skip": "This dictionary was imported by an older version whose memory guard skipped 9-key compilation (since fixed; it no longer skips). Pinyin and double-pinyin are unaffected; re-importing the dictionary restores the 9-key mode.",
+        "dict.base.toned": "Codes in this dictionary carry tone marks (likely the full variant, e.g. wanxiang Base): tones are not typeable on this keyboard, so many entries will never match. Use the tone-free Lite variant (or restore the built-in).",
+        "flypy.title": "Shape-code table",
+        "flypy.badge": "Shape",
+        "flypy.hint": "Import a shape-code table (e.g. the flypy rime dict .dict.yaml, or plain TAB-separated word/code text): two sound codes + two shape codes, unique 4-code auto-commit. Compiled on this device into a standalone mode - the pinyin lexicon is untouched. Removable anytime.",
+        "flypy.pick": "Import shape-code table",
+        "flypy.revert": "Remove table",
+        "flypy.none": "Not imported (no shape mode in the mode menu yet)",
+        "flypy.custom": "Imported: {0}",
+        "flypy.building": "Processing the shape-code table…",
+        "dict.base.stageCopy": "Reading the dictionary file…",
+        "dict.base.stageActivate": "Switching dictionary…",
+        "dict.base.stageAnalyze": "Analyzing the dictionary…",
+        "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
+        "dict.base.elapsed": "{0}s elapsed",
+        "dict.base.readingPct": "Reading {0}% ({1}/{2})",
+        "dict.base.compilingStep": "Compiling {0}/{1}, now: {2}",
+        "dict.base.compilingFinalize": "Compiling {0}/{1}, finalizing",
+        "dict.base.compilingCount": "Compiling {0}/{1}",
+        "dict.base.canLeave": "you can leave this page",
+        "dict.base.etaSec": "about {0}s remaining",
+        "dict.base.etaMin": "about {0} min remaining",
+        "dict.base.part.main": "main table",
+        "dict.base.part.t9": "9-key",
+        "dict.base.part.dp": "double pinyin",
+        "dict.base.part.fuzzy": "fuzzy variants",
+        "dict.base.part.flypy": "shape-code",
+        "dict.base.switching": "Active: {0}, switching to {1}: ",
+        "page.appearance": "Appearance",
+        "themeMode.auto": "Follow system",
+        "themeMode.light": "Light",
+        "themeMode.dark": "Dark",
+        "page.voice": "Voice recognition",
+        "page.update": "Keyboard updates",
+        "page.about": "About",
+        "page.test": "Input test",
+        "input.fuzzy.title": "Fuzzy input",
+        "input.fuzzy.manage": "Manage fuzzy pinyin",
+        "input.fuzzy.manageHint": "Type confusable sounds interchangeably (z/zh, n/l, nasal endings). Applies to full pinyin and T9, not double pinyin.",
+        "input.fuzzy.badge": "Input",
+        "input.fuzzy.g.ping": "Retroflex z/zh, c/ch, s/sh",
+        "input.fuzzy.g.ping.hint": "Typing zang also matches 张, typing zhang also matches 脏.",
+        "input.fuzzy.g.nl": "n/l initials",
+        "input.fuzzy.g.nl.hint": "Typing nai also matches 来, typing lai also matches 奶.",
+        "input.fuzzy.g.fh": "f/h initials",
+        "input.fuzzy.g.fh.hint": "Typing fu also matches 湖, typing hu also matches 父.",
+        "input.fuzzy.g.rl": "r/l initials",
+        "input.fuzzy.g.rl.hint": "Typing re also matches 乐, typing le also matches 热.",
+        "input.fuzzy.g.nasal": "Front/back nasals",
+        "input.fuzzy.g.nasal.hint": "an/ang, en/eng, in/ing: typing zang also matches 张, typing zhon also matches 中.",
+        "input.assoc.title": "Chinese word association",
+        "input.assoc.badge": "Input",
+        "input.assoc.enable": "Suggest the next word after a commit",
+        "input.assoc.hint": "After a word commits, likely next words appear. Ones you recently typed yourself move to the front, and stay on this phone. Works for full pinyin, double pinyin, nine-key, and strokes.",
+        "input.assoc.backspaceClear": "Backspace dismisses associations",
+        "input.hwkb.title": "Physical keyboard",
+        "input.hwkb.badge": "Input",
+        "input.hwkb.form": "When a physical keyboard is connected",
+        "input.hwkb.formHint": "Candidates only: the keyboard collapses to a candidates bar (pinyin/double-pinyin etc.); Full keyboard: unchanged; Follow system: obey the system's show-on-screen-keyboard setting.",
+        "input.hwkb.candidates": "Candidates only",
+        "input.hwkb.full": "Full keyboard",
+        "input.hwkb.follow": "Follow system",
+        "input.hwkb.hint": "Type with a hard keyboard: letters feed the pinyin composer, space picks a candidate, Ctrl+Space or a lone Shift toggles Chinese/English.",
+        "input.quickSwitch.policy": "Quick switch (toggle / Ctrl+Space)",
+        "input.quickSwitch.policyHint": "Fixed pair: always flips between the two keyboards you picked; Current keyboard ↔ English: returns to the last keyboard you used.",
+        "input.quickSwitch.follow": "Current keyboard ↔ English",
+        "input.quickSwitch.fixed": "Fixed pair",
+        "input.assoc.backspaceClearHint": "When association candidates are showing, backspace clears them and restores the toolbar (nothing deleted); off = backspace deletes as usual.",
+        "input.datetime.title": "Date & time candidates",
+        "input.datetime.badge": "Input",
+        "input.datetime.enable": "Type date/time/week for quick stamps",
+        "input.datetime.hint": "The candidates bar offers the current date, time and weekday (full pinyin riqi/shijian/xingqi works too); turn off if unwanted.",
+        "input.candidates.title": "Candidate extras",
+        "input.phrases.title": "Symbol candidates",
+        "input.phrases.badge": "Input",
+        "input.phrases.enable": "Symbol / emoji candidates",
+        "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui; they sit near candidate #3 by default and each word can get an explicit position under Manage entries; works in full and double Pinyin.",
+        "input.phrases.freqSort": "Rank by use frequency",
+        "input.phrases.freqSortHint": "Words without an explicit position climb as you pick them (5 picks can move one to the front for space-bar entry); off keeps them near slot #3. Explicit positions ignore this switch.",
+        "input.english.enable": "English word candidates",
+        "input.english.hint": "Type english words like github, ios or android right inside Pinyin composing — no mode switch; works in full and double Pinyin.",
+        "input.phrases.wxSlash": "wanxiang / feature guide",
+        "input.phrases.wxSlashHint": "After installing the wanxiang Pinyin schema, enable to route / into the engine on the full/double-Pinyin keyboards (/sj offers time characters, /rq date characters — from the built-in static tables, not wanxiang's dynamic time); the shape-code, T9, handwriting and English keyboards are not supported — / commits directly there, as it does when off.",
+        "input.phrases.manage": "Manage entries",
+        "input.phrases.importHint": "Entries from a rime dictionary join the candidates as an overlay (the built-in lexicon stays; original frequencies are not carried). Importing again replaces the previous import.",
+        "input.phrases.importBtn": "Pick a file",
+        "input.phrases.clearBtn": "Clear imported",
+        "input.phrases.confirmClear": "Confirm clear",
+        "input.phrases.importedCount": "{0} entries imported",
+        "page.phrases": "Symbol candidates",
+        "nav.backInput": "Back to Keyboard & input",
+        "phrases.list.title": "Entries",
+        "phrases.list.empty": "No entries yet — add one below.",
+        "phrases.list.note": "Codes use full Pinyin (single-syllable entries also match double-pinyin keys); tap an entry to edit, ✕ to delete. Changes apply immediately.",
+        "phrases.form.text": "Text (e.g. ↑ or a word)",
+        "phrases.form.rank": "Slot",
+        "phrases.form.code": "Code (e.g. shang)",
+        "phrases.form.add": "Add",
+        "phrases.form.save": "Save changes",
+        "phrases.form.cancel": "Cancel",
+        "phrases.note.saved": "Saved",
+        "phrases.note.deleted": "Deleted",
+        "phrases.err.duplicate": "An entry with this code already exists",
+        "phrases.err.notReady": "Entries are still loading — try again shortly",
+        "phrases.err.limit": "Limit is 200 entries — remove some first",
+        "input.double.title": "Double-pinyin scheme",
+        "input.double.badge": "Input",
+        "input.double.scheme": "Scheme",
+        "input.double.hint": "Takes effect when the keyboard is in Double Pinyin mode.",
+        "input.double.layout": "Key layout",
+        "input.double.layoutHint": "14-key merges neighbouring letters into wide caps - bigger targets, fewer mis-taps.",
+        "input.double.layout26": "26 keys",
+        "input.feel.kbLayout": "Letter layout",
+        "input.feel.kbLayoutHint": "Applies to pinyin, double-pinyin and English; 14-key merges neighbouring letters into wider caps.",
+        "input.double.layout14": "14 keys",
+        "input.double.ziranma": "Ziranma",
+        "input.double.flypy": "Flypy (小鹤)",
+        "input.double.sogou": "Sogou / MSPY",
+        "input.double.ziguang": "Ziguang (紫光)",
+        "input.double.note.ziranma": "Initials match full Pinyin (except zh=V, ch=I, sh=U). Zero-initial syllables (a/e) use full Pinyin: 啊=aa、爱=ai、安=an、恩=en、二=er.",
+        "input.double.note.flypy": "Initials match full Pinyin (except zh=V, ch=I, sh=U). Zero-initial syllables (a/e/o) double the first letter; full Pinyin also works: 啊=aa、爱=ai、恩=ef、二=er.",
+        "input.double.note.sogou": "Initials match full Pinyin (except zh=V, ch=I, sh=U); ing sits on the “;” key (the wide key on the keyboard), ü on Y. Zero-initial syllables always start with O: 啊=oa、爱=ol、安=oj、恩=of、二=or. Sogou and MSPY share the exact same layout.",
+        "input.double.note.ziguang": "The Ziguang (紫光) layout. zh=U、ch=A、sh=I; ing sits on the “;” key, ü on V (ju/qu/xu also take v). Zero-initial syllables always start with O: 啊=oa、爱=op、安=or.",
+        "input.double.mapCaption": "Final key map (finals under each key, double initials bottom-right)",
+        "input.custom.title": "Custom keys",
+        "input.custom.badge": "Advanced",
+        "input.custom.enabled": "Enable the custom symbols page",
+        "input.custom.jsonLabel": "Custom JSON ({\"version\":1,\"rows\":[[{\"t\":\"key label\",\"tap\":\"output\",\"note\":\"note\"}]]})",
+        "input.custom.jsonPlaceholder": "Paste custom JSON",
+        "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
+        "input.custom.manage": "Manage custom keys",
+        "input.custom.badjson": "Invalid JSON — check the format (version/rows)",
+        "page.customkeys": "Custom keys",
+        "ck.status.title": "Custom keys",
+        "ck.openEditor": "Open editor",
+        "ck.openEditor.hint": "Build keys by tapping - no code needed",
+        "ck.json.title": "Advanced",
+        "ck.json.hint": "The editor covers everyday needs; use JSON for bulk import/export or advanced tricks.",
+        "ck.rows.title": "Keys: tap to edit, hold to move/delete",
+        "ck.quick.title": "Quick add",
+        "ck.quick.title.hint": "Tap a key to edit it, hold to rearrange; tap ＋ to add.",
+        "ck.edit.title": "Edit key",
+        "ck.apply": "Apply",
+        "ck.save": "Save",
+        "ck.add": "＋",
+        "ck.f.t": "Label",
+        "ck.f.t.hint": "Text shown on the key",
+        "ck.f.action": "Tap action",
+        "ck.f.mode": "Type",
+        "ck.f.mode.text": "Text",
+        "ck.f.mode.single": "Key",
+        "ck.f.mode.combo": "Combo",
+        "ck.f.mode.advanced": "Adv",
+        "ck.f.mode.open": "Open",
+        "ck.f.mode.setting": "Settings",
+        "ck.f.mode.panel": "Panel",
+        "ck.f.kind": "Type",
+        "ck.lang.title": "Language keyboards",
+        "ck.t9.title": "Keyboard symbol strips",
+        "ck.t9.entryT9": "T9 nine-key strip",
+        "ck.t9.entryStroke": "Stroke keyboard strip",
+        "ck.t9.entryInk": "Handwriting strip",
+        "ck.t9.pageTitleT9": "T9 strip",
+        "ck.t9.pageTitleStroke": "Stroke strip",
+        "ck.t9.pageTitleInk": "Handwriting strip",
+        "ck.t9.hintT9": "Symbols in the left column of the nine-key keyboard when idle. Drag ≡ to reorder, tap ✕ to remove; while typing the column shows pinyin syllables instead.",
+        "ck.t9.hintStroke": "Symbols in the stroke keyboard's left column. Drag ≡ to reorder, tap ✕ to remove.",
+        "ck.t9.hintInk": "Symbols in the handwriting keyboard's scrolling column. Drag ≡ to reorder, tap ✕ to remove.",
+        "ck.t9.drag": "Drag to reorder",
+        "ck.t9.resetConfirm": "Restore the default symbols and order for this strip?",
+        "ck.t9.lastOne": "Keep at least one symbol",
+        "ck.t9.resetOne": "Reset",
+        "ck.t9.addLabel": "Add symbol",
+        "ck.t9.addPlaceholder": "Symbol",
+        "ck.t9.addBtn": "Add",
+        "ck.t9.limitHint": "Up to 24 symbols",
+        "ck.t9.up": "Move up",
+        "ck.t9.down": "Move down",
+        "ck.t9.remove": "Remove",
+        "ck.t9.defaultSummary": "Default",
+        "ck.t9.sameAsDefault": "Same as default",
+        "ck.lang.pinyin": "Pinyin (26-key)",
+        "ck.lang.dp": "Double Pinyin",
+        "ck.lang.english": "English",
+        "ck.lang.french": "French",
+        "ck.lang.russian": "Russian",
+        "ck.lang.count": "{count} keys customized",
+        "ck.lang.default": "Default",
+        "ck.lang.hint1": "Tap a letter or the comma key to customize its hint and flick actions; layout, tap and long-press stay unchanged.",
+        "ck.lang.hint2": "Split / backspace / 123 / CN-EN / enter are fixed; space long-press keeps its global action.",
+        "ck.lang.reset": "Reset all",
+        "ck.lang.resetDone": "Reset (remember to save)",
+        "ck.lang.editTitle": "Edit key {0}",
+        "ck.lang.editKey": "Customize key {0}",
+        "ck.lang.editPunct": "Customize comma key",
+        "ck.lang.lock": "Types letter {0} · tap & long-press fixed",
+        "ck.lang.lockPunct": "Types comma · tap & long-press fixed",
+        "ck.lang.alt": "Hint",
+        "ck.lang.altPlaceholder": "Default: {0}",
+        "ck.lang.altAsUp": "Swipe up to type the hint",
+        "ck.lang.slotUp": "↗ Flick up",
+        "ck.lang.slotDown": "↘ Flick down",
+        "ck.lang.defUp": "Default · uppercase {0}",
+        "ck.lang.defDown": "Default · hint character",
+        "ck.lang.shiftKey": "split",
+        "ck.lang.cnEn": "中/EN",
+        "ck.sym.title": "Symbol keyboard",
+        "ck.sym.entry": "“Custom” symbol tab",
+        "ck.sym.hint": "Tap to edit, long-press to move/delete",
+        "ck.sym.pageTitle": "“Custom” symbol tab",
+        "ck.f.mode.def": "Keyboard default",
+        "ck.f.mode.none": "Off",
+        "ck.f.mode.op": "Action",
+        "ck.f.op": "Action",
+        "ck.op.undo": "Undo",
+        "ck.op.redo": "Redo",
+        "ck.op.cut": "Cut",
+        "ck.op.copy": "Copy",
+        "ck.op.paste": "Paste",
+        "ck.op.selectAll": "Select all",
+    "ck.op.share": "Share selected text",
+        "ck.op.clear": "Clear editor",
+        "ck.op.cursorLeft": "Cursor left by word",
+        "ck.op.cursorRight": "Cursor right by word",
+        "ck.op.lineStart": "Line start",
+        "ck.op.lineEnd": "Line end",
+        "ck.spaceTitle": "Hold-space action",
+        "ck.space.edit": "Edit action",
+        "ck.space.face": "Space key label",
+        "ck.space.faceHint": "Shown on the space bar (e.g. 📋, up to 8 chars)",
+        "ck.space.hint": "A 350ms press on the space bar runs this action; Voice is hold-to-talk, others fire once.",
+        "ck.f.panel.pick": "Which panel to open",
+        "ck.f.text": "Text to type, e.g. :w or me@example.com",
+        "ck.f.mods": "Mods",
+        "ck.f.key": "Key",
+        "ck.f.open.uri": "Link",
+        "ck.f.setting.pick": "Setting to open",
+        "ck.f.open.placeholder": "e.g. doubao:// or https://example.com",
+        "ck.f.open.presets": "Presets",
+        "ck.f.open.presetPick": "Pick a preset…",
+        "ck.f.open.hint": "App deeplinks (app must be installed) or web addresses; tapping switches to the target app and hides the keyboard. intent:// etc. are not allowed; requires keyboard 3.73.22+.",
+        "ck.f.dsl": "DSL (e.g. [esc]ggVGD or [open:doubao://])",
+        "ck.help.aria": "DSL help",
+        "ck.help.dsl": "<b>Write what should happen, in order:</b><br>· Type text: just write it, e.g. <code>:w</code>, <code>me@example.com</code><br>· One key: bracket it, e.g. <code>[esc]</code>, <code>[f5]</code>, <code>[backspace]</code><br>· Combos: <code>[ctrl+s]</code> (save), <code>[alt+f4]</code><br>· Open an app/web page: <code>[open:doubao://]</code>, <code>[open:https://translate.google.com]</code><br>· Sequences: <code>[esc]ggVGD</code> = Vim delete the whole file: <code>[esc]ggVGD</code><br>· Key names: esc, tab, enter, space, backspace, del, arrows, home, end, pgup, pgdn, f1-f12, letters, digits; modifiers: ctrl, alt, shift, win.",
+        "ck.f.span": "Width",
+        "ck.f.color": "Color",
+        "ck.color.default": "Default",
+        "ck.color.custom": "Custom",
+        "ck.color.hex": "Hex",
+        "ck.color.hexLabel": "Keycap color code",
+        "ck.color.hue": "Hue",
+        "ck.color.sat": "Saturation",
+        "ck.f.note": "Note",
+        "ck.f.note.hint": "Shown on long-press",
+        "ck.editBar.hint": "Drag to move, tap × to delete",
+        "ck.editBar.done": "Done",
+        "ck.common": "Common",
+        "ck.common.hint": "Pick one to prefill, tweak, apply",
+        "ck.err.t": "Key face is required",
+        "ck.err.tap": "Tap action is required",
+        "ck.err.open": "Link must be an http(s) web address or an app link like doubao://, with no spaces",
+        "ck.err.setting": "Pick a setting first",
+        "ck.err.panel": "Invalid panel target",
+        "ck.err.tapLong": "Tap action exceeds 128 characters (link too long) - please use a shorter link",
+        "ck.note.saved": "Saved; applied the next time the keyboard loads",
+        "ck.note.deleted": "Deleted",
+        "ck.row": "Row {n}",
+        "ck.none": "(empty)",
+        "ck.align.aria": "Row alignment",
+        "ck.align.left": "L",
+        "ck.align.center": "C",
+        "ck.align.right": "R",
+        "ck.dirty": "Unsaved changes",
+        "ck.back.title": "Editing keys",
+        "ck.back.text": "Still in edit mode (drag to move, tap × to delete). Discard editing or continue?",
+        "ck.back.go": "Discard editing",
+        "ck.back.stay": "Keep editing",
+        "ck.del.title": "Delete key",
+        "ck.del.confirm": "Delete \"{t}\"?",
+        "ck.del.go": "Delete",
+        "ck.del.cancel": "Cancel",
+        "ck.add.aria": "Add a key to row {n}",
+        "ck.newTitle": "New key",
+        "ck.cancel": "Cancel",
+        "ck.confirmLeave": "You have unsaved changes. Leave anyway?",
+        "ck.confirmLeaveTitle": "Unsaved changes",
+        "ck.leaveGo": "Discard and leave",
+        "ck.leaveStay": "Stay",
+        "input.keyboards.title": "Keyboard selection",
+        "input.keyboards.manage": "Manage keyboards & quick switch",
+        "input.keyboards.manageHint": "Which keyboards appear in the long-press menu, and the quick-switch pair.",
+        "input.keyboards.badge": "Menu",
+        "input.keyboards.enable": "Keyboards listed in the long-press menu",
+        "input.keyboards.hint": "Checked keyboards appear in the mode-key long-press menu; row order is the menu order (arrow buttons). Unchecked ones can be re-enabled from that menu. Applies immediately.",
+        "input.keyboards.drag": "Drag to reorder",
+        "input.keyboards.moveUp": "Move up",
+        "input.keyboards.moveDown": "Move down",
+        "input.keyboards.pairA": "Quick switch · first",
+        "input.keyboards.pairB": "Quick switch · second",
+        "input.keyboards.pairHint": "The switch key toggles between these two; pick your two most-used keyboards.",
+        "input.keyboards.saved": "Saved; the keyboard applies it immediately",
+        "input.feel.bubbleLinger": "Bubble linger",
+        "input.feel.bubbleLingerHint": "How long the bubble stays after release; 0 hides it instantly.",
+        "input.feel.toastMs": "Toast duration",
+        "input.feel.toastMsHint": "How long on-keyboard notices stay up, 300-10000 ms; default 1600.",
+        "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon…",
+        "search.noResults": "No matching settings",
+        "action.saveCustom": "Save custom layout",
+        "action.insertTemplate": "Insert practical template",
+        "action.insertTemplateDev": "Developer template",
+        "action.viewDocs": "View guide",
+        "voice.models.title": "Microphone & voice models",
+        "voice.models.badge": "Voice",
+        "voice.backend.label": "Model source",
+        "voice.backend.auto": "Prefer app models",
+        "voice.backend.remote": "Downloaded models",
+        "voice.backend.hint": "Changes apply to the next recording. After selecting downloaded models, download any missing models below before recording.",
+        "voice.downloadSource.label": "Model download source",
+        "voice.downloadSource.pick": "Tap an option to save it; \"Speed test\" compares latency",
+        "voice.downloadSource.speedTest": "Speed test",
+        "voice.downloadSource.testing": "Testing…",
+        "voice.downloadSource.gitee": "Gitee mirror (default)",
+        "voice.downloadSource.github": "GitHub direct",
+        "voice.downloadSource.ghproxy": "GitHub (gh-proxy)",
+        "voice.downloadSource.fastest": "fastest ✓",
+        "voice.downloadSource.unavailable": "unavailable",
+        "voice.downloadSource.custom": "Custom source",
+        "voice.downloadSource.customPlaceholder": "For example: https://example.com/download/handwriting/ (one model's channel directory)",
+        "voice.downloadSource.save": "Save custom source",
+        "voice.downloadSource.hint": "Downloads are verified after transfer. Defaults to the Gitee mirror; GitHub direct and gh-proxy accelerated sources are also available.",
+        "voice.holdSpace": "Hold space",
+        "voice.holdSpaceHint": "What a long-press on the space bar does; Voice shows the mic glyph, Off disables the hold.",
+        "voice.hold.voice": "Voice input",
+        "voice.hold.clipboard": "Clipboard panel",
+        "voice.hold.favorites": "Phrases panel",
+        "voice.hold.emoji": "Emoji panel",
+        "voice.hold.edit": "Quick edit panel",
+        "voice.hold.control": "Control-key layer",
+        "voice.hold.custom": "Custom keys panel",
+        "voice.hold.none": "Off",
+        "voice.mic.permission": "Microphone permission",
+        "voice.mic.hint": "Required for voice input; processing stays on this device",
+        "voice.mic.action": "Allow",
+        "voice.models.note": "The full package includes all models. Smaller packages can download models here with resume and per-file verification.",
+        "voice.asr.title": "Voice recognition options",
+        "voice.asr.badge": "Recognition",
+        "voice.asr.stripPeriod": "Remove final periods",
+        "voice.asr.idleUnload": "Release speech models when idle",
+        "voice.asr.idleUnloadHint": "Off by default. Release after 5 idle minutes; the next recording reloads the models.",
+        "voice.asr.powerSaving": "Power saving mode",
+        "voice.asr.powerSavingHint": "Off by default. Turns off glass blur and key animations, uses streaming-only speech recognition, and releases models after 1 idle minute.",
+        "voice.asr.stripHint": "Question and exclamation marks stay; turn off to keep model output unchanged",
+        "voice.asr.numItn": "Write numbers as digits",
+        "voice.asr.numItnHint": "Quantities, dates, amounts and decimals convert automatically (三个 → 3个); off by default",
+        "voice.asr.hotwordsLabel": "Hotwords (one per line; Chinese or English; recognition gives these words priority)",
+        "voice.asr.hotwordsWeightHint": "A word keeps being misrecognized? Append \":number\" for a stronger pull, e.g. 姚程:10. Range 1-20 (one decimal at most), omitted = default strength; too high may duplicate the word or misrecognize others - lower it then.",
+        "voice.asr.hotwordsPlaceholder": "For example:\n倪妮\n姚程:10 ← stronger pull when misrecognized\nGPU",
+        "action.saveAsr": "Save recognition options",
+        "update.title": "Keyboard updates",
+        "update.badge": "Update",
+        "update.note": "Only keyboard HTML/CSS/JS are replaced. The engine, dictionaries, and voice models stay untouched.",
+        "update.sourceLabel": "Update source (metainfo.json)",
+        "update.sourcePlaceholder": "https://example.com/feelime/metainfo.json",
+        "update.autoCheck": "Check for updates when settings opens",
+        "update.autoCheckHint": "At most once a day; clearing the source disables automatic checks",
+        "update.urlLabel": "Keyboard package URL (network download)",
+        "update.urlPlaceholder": "https://example.com/feelime-keyboard.zip",
+        "action.checkUpdate": "Check for updates",
+        "action.install": "Download and install",
+        "action.importLocal": "Import local ZIP",
+        "action.restore": "Restore built-in",
+        "update.localHint": "Importing a local ZIP needs no network; its signature and compatibility are still verified.",
+        "update.unsigned": "⚠ An unsigned keyboard has IME access (debug builds only)",
+        "update.sigConfirmed": "⚠ Active keyboard: signature unverified (manually confirmed)",
+        "page.backup": "Backup & restore",
+        "backup.title": "Backup & restore",
+        "backup.badge": "Backup",
+        "backup.note": "Pack settings, saved phrases, custom keys and input lexicons into one editable JSON file for device migration.",
+        "backup.export": "Export data",
+        "backup.import": "Import data",
+        "backup.consent.title": "Confirm overwrite",
+        "backup.consent.badge": "Overwrite",
+        "backup.consent.message": "Importing overwrites your current settings, saved phrases, custom keys and lexicons. This cannot be undone. Continue?",
+        "backup.consent.cancel": "Cancel",
+        "webdav.title": "Cloud backup (WebDAV)",
+        "webdav.note": "Uploads backups to your own WebDAV server (e.g. Jianguoyun). Each backup is a new timestamped file - history is never overwritten; pick one from the list to restore. Credentials stay on this device and never travel inside backups.",
+        "webdav.urlLabel": "Server URL",
+        "webdav.dirLabel": "Subdirectory",
+        "webdav.dir": "feelime-backup",
+        "webdav.dirHint": "Backups are stored under this subdirectory of the server URL. Some providers (e.g. Jianguoyun) cannot store files in the root, so keeping a subdirectory is recommended; leave empty to use the root.",
+        "webdav.providerLabel": "Provider",
+        "webdav.provider.jg": "Jianguoyun",
+        "webdav.provider.inf": "InfiniCLOUD",
+        "webdav.provider.nc": "Nextcloud / Synology",
+        "webdav.provider.custom": "Custom…",
+        "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
+        "webdav.userLabel": "Username",
+        "webdav.user": "Username",
+        "webdav.passLabel": "App password",
+        "webdav.pass": "App password (not the login password)",
+        "webdav.save": "Save & test",
+        "webdav.backup": "Back up now",
+        "webdav.restoreBtn": "Restore from cloud",
+        "webdav.backupModal.title": "Back up to cloud",
+        "webdav.backupModal.hint": "A new backup file will be uploaded. The name defaults to the current time and can be edited.",
+        "webdav.backupModal.nameLabel": "Backup file name",
+        "webdav.backupModal.go": "Start backup",
+        "webdav.backupModal.dup": "⚠ A file with this name already exists in the cloud; saving will overwrite it",
+        "webdav.backupModal.dupBtn": "Overwrite existing file",
+        "webdav.backupModal.unknownDup": "Could not check the cloud for duplicates; if the name exists, the server will reject the upload",
+        "webdav.backupModal.sending": "Uploading…",
+        "webdav.backupModal.badName": "The name must start with feelime-backup- and end with .json, with no /, space or +",
+        "webdav.restoreModal.title": "Restore from cloud",
+        "webdav.restoreModal.back": "Back",
+        "webdav.empty": "No cloud backups yet.",
+        "webdav.consent.title": "Confirm restore",
+        "webdav.consent.message": "Restoring overwrites current settings, favorites, custom keys and dictionaries. This cannot be undone. Continue?",
+        "webdav.consent.confirm": "Restore this backup",
+        "webdav.note.testing": "Testing connection…",
+        "webdav.note.ok": "Connection OK",
+        "webdav.note.backupOk": "Backed up: {0}",
+        "webdav.note.restoreOk": "Restored: {0}",
+        "webdav.note.listing": "Fetching cloud list…",
+        "webdav.note.backing": "Backing up…",
+        "webdav.note.restoring": "Downloading and restoring…",
+        "webdav.err.AUTH": "Auth failed: wrong username or password",
+        "webdav.err.NOT_FOUND": "URL not found (check the path)",
+        "webdav.err.NO_DAV": "This URL does not speak WebDAV",
+        "webdav.err.EMPTY_URL": "Enter the server URL first",
+        "webdav.err.NETWORK": "Network error",
+        "webdav.err.TOO_LARGE": "File exceeds the size limit",
+        "webdav.err.TOO_LONG": "Input too long",
+        "webdav.err.BAD_NAME": "Invalid backup name",
+        "webdav.err.CONFLICT": "A file with this name already exists in the cloud",
+        "webdav.err.RESTORE_FAILED": "Restore failed: the backup content failed validation",
+        "webdav.err.INTERNAL": "Internal error",
+        "webdav.err.GENERIC": "Operation failed",
+        "webdav.size.kb": "{0} KB",
+        "backup.consent.confirm": "Choose a file",
+        "backup.done.export": "Exported to the chosen location.",
+        "backup.done.import": "Import complete; applying changes.",
+        "backup.failed.export": "Export failed",
+        "backup.failed.import": "Import failed",
+        "backup.error.FORMAT": "The file is not valid JSON.",
+        "backup.error.KIND": "This is not a Feelime backup file.",
+        "backup.error.VERSION": "The backup is from a newer version; update Feelime first.",
+        "backup.error.IO_ERROR": "Could not read or write the file.",
+        "backup.error.PATH": "The backup contains unsafe paths and was rejected.",
+        "backup.error.BASE64": "The lexicon data in the backup is corrupted.",
+        "kbSig.title": "Keyboard package signature mismatch",
+        "kbSig.badge": "Security",
+        "kbSig.message": "This keyboard package was not signed with the official release key (it may be self-modified or third-party). After importing it runs marked as \"signature unverified\" and survives restart.",
+        "kbSig.cancel": "Cancel",
+        "kbSig.confirm": "Import anyway",
+        "about.versionTitle": "Version information",
+        "about.badge": "Info",
+        "action.copyVersion": "Copy version info",
+        "action.appStore": "View app on Google Play",
+        "action.githubRepo": "GitHub repository",
+        "action.githubIssues": "Report an issue",
+        "action.githubUpstream": "Official upstream repository",
+        "action.feishuGroup": "Join the Feishu group",
+        "action.checkUpdate": "Check for updates",
+        "action.checkUpdatePlay": "Update on Google Play",
+        "action.dlThin": "Download thin build",
+        "action.dlFull": "Download full build",
+        "update.checking": "Checking for updates…",
+        "update.upToDate": "Up to date (v{0})",
+        "update.available": "New version v{0} available (current v{1}). Download:",
+        "update.failed": "Update check failed. Try again later, or visit GitHub Releases.",
+        "about.copyHint": "Paste this when reporting a problem. The copied report is marked sensitive and is kept out of keyboard clipboard history.",
+        "about.offlineHint": "Everything stays offline: voice recognition and text candidates use no network.",
+        "about.forkNote": "This fork is customized around personal usage habits and differs from the official upstream; update checks use this fork by default — see the link above for official upstream updates.",
+        "about.noticesTitle": "Third-party licenses & components",
+        "about.legalBadge": "Licenses",
+        "about.expandNotices": "Show full notices",
+        "about.openLicenses": "Open-source licenses & credits",
+        "about.openLicensesHint": "Components · Upstream links · Full notices",
+        "page.licenses": "Licenses & credits",
+        "nav.backAbout": "Back to about",
+        "licenses.self.title": "This app's license",
+        "licenses.self.note": "Feelime as a whole is offered under GPL-3.0: the built-in Chinese base lexicon comes from rime-frost (also GPL-3.0), and the corresponding source is the app's source repository.",
+        "licenses.components.title": "Credits",
+        "licenses.components.badge": "Open source",
+        "licenses.thanks": "Feelime stands on the shoulders of these open-source projects; tap a link to visit the upstream.",
+        "licenses.full.title": "Full notices",
+        "licenses.cmp.frost": "Chinese base lexicon (re-curated word frequencies)",
+        "licenses.cmp.librime": "Chinese input engine (bundles Boost/OpenCC/marisa-trie etc.)",
+        "licenses.cmp.rimedata": "Rime schemas & data files",
+        "licenses.cmp.sherpa": "Offline speech recognition runtime & models",
+        "licenses.cmp.mozc": "Japanese engine (Abseil/Protobuf/zlib bundled)",
+        "licenses.cmp.hunspell": "Spell checking (FR/RU dictionaries bundled)",
+        "licenses.cmp.okhttp": "Networking for model downloads (online only while downloading)",
+        "licenses.cmp.othersName": "Other bundled dependencies",
+        "licenses.cmp.others": "Commons Compress, yaml-cpp, LevelDB, RapidJSON etc. · see the full notices below",
+        "test.title": "Type a test sentence",
+        "test.badge": "Test",
+        "test.placeholder": "Tap here to wake Feelime and try it",
+        "test.note": "Text stays in this editor.",
+        "model.builtIn": "Included with the app",
+        "model.transferSize": "Download {download} (archive includes extra files)\nInstalled size {installed}",
+        "model.installed": "Downloaded and verified",
+        "model.downloading": "Downloading {percent}%",
+        "model.downloadingBytes": "Downloading {percent}% ({done} / {total})",
+        "model.broken": "File is invalid; download again",
+        "model.missing": "Not downloaded (about {size})",
+        "model.download": "Download",
+        "model.cancel": "Cancel",
+        "model.remove": "Delete",
+        "model.redownload": "Download again",
+        "model.import": "Import model file",
+        "model.importing": "Reading model file…",
+        "model.importValidating": "Verifying model file…",
+        "model.importInstalling": "Installing verified model…",
+        "model.importFormat": "Only official tar.bz2 or zip archives matching the built-in model list are accepted.",
+        "model.title.streaming": "Streaming speech recognition (Chinese/English)",
+        "model.title.final": "Full-sentence correction",
+        "model.title.punctuation": "Chinese-English punctuation restoration",
+        "model.consent.title": "Confirm download",
+        "model.consent.badge": "Data notice",
+        "model.consent.message": "“{name}” is about {bytes}. Your current network may incur data charges. Continue?",
+        "model.consent.cancel": "Cancel",
+        "model.consent.confirm": "Continue download",
+        "update.sourceBuiltIn": "Built-in APK",
+        "update.sourceHot": "Hot-updated version",
+        "update.version": "Version: {value}",
+        "update.hash": "Content hash: {value}…",
+        "update.state": "Status: {value}",
+        "update.lastError": "Latest error: {value}",
+        "update.lastSuccess": "Last success: {value}",
+        "update.sourceStatus": "Update source: {value}",
+        "update.sourceDefault": "Official default",
+        "update.sourceCustom": "User configured",
+        "update.sourceDisabled": "Disabled",
+        "update.states.BUILT_IN": "Built-in",
+        "update.states.DOWNLOADING": "Downloading",
+        "update.states.VERIFYING": "Verifying",
+        "update.states.CHECKING_COMPATIBILITY": "Checking compatibility",
+        "update.states.READY": "Ready",
+        "update.states.ACTIVE": "Active",
+        "update.states.ACTIVATING": "Activating",
+        "update.states.ROLLED_BACK": "Rolled back",
+        "update.states.FAILED": "Failed",
+        "about.appVersion": "App version",
+        "about.activeKeyboard": "Keyboard version (current)",
+        "about.builtInKeyboard": "Keyboard version (built-in)",
+        "about.device": "Device",
+        "about.android": "System version",
+                "about.androidValue": "Android {release} (API {sdk})",
+        "about.inputStats": "Characters typed",
+        "about.inputStatsValue": "Today {today} · Total {total}",
+        "note.saved": "Saved",
+        "note.copied": "Copied",
+        "custom.none": "No custom keys",
+        "custom.count": "{count} custom keys",
+        "error.INVALID_CUSTOM_JSON": "The custom JSON format is invalid.",
+        "error.INVALID_DP_SCHEME": "Invalid double-pinyin scheme.",
+                "input.ink.title": "Handwriting",
+        "input.ink.badge": "Hand",
+        "input.ink.delay": "Pause before recognition",
+        "input.ink.delayHint": "How long to wait after the pen lifts before recognizing; pick Slow if you write slowly, Fast if it fires too eagerly.",
+        "input.ink.live": "Live (per stroke)",
+        "input.ink.fast": "Fast (~300 ms)",
+        "input.ink.standard": "Standard (~600 ms)",
+        "input.ink.slow": "Slow (~1200 ms)",
+        "input.feel.title": "Keyboard feel",
+        "input.feel.badge": "Tuning",
+        "input.feel.pad": "Bottom padding",
+        "input.feel.padHint": "Blank strip under the keys; 0 keeps the keyboard flush with the screen (terminal use). Saved per orientation to compensate gesture bars or OEM IME buttons.",
+        "page.landscape": "Landscape display",
+        "input.landscape.title": "Landscape display",
+        "input.landscape.badge": "Landscape",
+        "entry.landscape.title": "Landscape display",
+        "entry.landscape.subtitle": "Cutout safe area · height ceiling · opacity",
+        "input.landscape.safeArea": "Keep side safe areas",
+        "input.landscape.safeAreaHint": "The keyboard background fills the full short edge including the cutout, while the keys avoid it; off lets keys fill it too.",
+        "input.landscape.ceil": "Height ceiling",
+        "input.landscape.ceilHint": "Maximum share of the screen height the landscape keyboard may take (40%–100%).",
+        "input.landscape.height": "Landscape keyboard height",
+        "input.landscape.heightHint": "Landscape keyboard height; dragging on the keyboard stays equivalent. Portrait and landscape are remembered separately.",
+        "input.landscape.heightReset": "Reset",
+        "input.landscape.opacity": "Overall opacity",
+        "input.landscape.opacityHint": "Opacity of the whole landscape keyboard (background included); lower it to see the content underneath.",
+        "input.feel.padPortrait": "Bottom padding · Portrait",
+        "input.feel.padLandscape": "Bottom padding · Landscape",
+        "input.feel.padLandscapeHint": "Saved separately from portrait.",
+        "input.feel.candFont": "Candidate text size",
+        "input.feel.candFontHint": "Size of the candidate words (80%-150%); keyboard row height is unchanged.",
+        "input.feel.keycapFont": "Keycap text size",
+        "input.feel.keycapFontHint": "Size of the keycap labels (50%-150%); row height is unchanged. Oversized labels are clamped under the superscripts.",
+        "input.feel.userFont": "Keyboard font",
+        "input.feel.userFontHint": "Render keyboard text with an imported font (TTF/OTF). Not included in backups; re-import after switching devices.",
+        "input.feel.userFontImport": "Import font…",
+        "input.feel.userFontClear": "Use system font",
+        "input.feel.userFontActive": "Current: {name}",
+        "input.feel.userFontImported": "Imported: {name}",
+        "error.font.IO_ERROR": "Font import failed: could not read the file, please retry.",
+        "error.font.TOO_LARGE": "Font import failed: file exceeds the 100MB limit.",
+        "error.font.BAD_MAGIC": "Font import failed: not a valid TTF/OTF font file.",
+        "error.font.BAD_FONT": "Font import failed: the file could not be parsed as a usable font.",
+        "fontLarge.title": "Large font file",
+        "fontLarge.badge": "Notice",
+        "fontLarge.message": "This font file is {mb} MB, over 20MB. Large fonts use more memory and take longer to load; lower-end devices may feel sluggish. Import anyway?",
+        "fontLarge.cancel": "Cancel",
+        "fontLarge.confirm": "Import anyway",
+        "input.feel.preeditFont": "Pinyin text size",
+        "input.feel.preeditFontHint": "Size of the pinyin letters while typing; the largest level takes extra band height.",
+        "input.feel.preeditBold": "Bold pinyin",
+        "input.feel.preeditBoldHint": "Show the composing pinyin letters in bold; off by default.",
+        "input.feel.oneHand": "One-handed mode",
+        "input.feel.oneHandHint": "Shift the keys left or right; the freed side strip holds cursor and editing actions.",
+        "input.feel.oneHandPad": "One-handed shrink",
+        "input.feel.oneHandPadHint": "Narrow the keyboard further on big screens so your thumb reaches every key.",
+        "pad.default": "Off",
+        "pad.15": "Shrink 15%",
+        "pad.25": "Shrink 25%",
+        "pad.35": "Shrink 35%",
+        "input.feel.sideContent": "Side strip content",
+        "input.feel.sideContentHint": "What fills the freed strip in one-handed mode.",
+        "input.feel.bgImageLight": "Light background",
+        "error.BAD_BG_IMAGE": "Image is too large or unreadable. Resize it and try again.",
+        "input.feel.bgImageDark": "Dark background",
+        "input.feel.themeMode": "Color mode",
+        "input.feel.themePreset": "Keyboard tint",
+        "input.feel.themePresetHint": "One hue drives the whole keyboard palette; drag the slider or tap a preset.",
+        "input.feel.themeSat": "Keyboard saturation",
+        "input.feel.themeSatHint": "Far left is grayscale (light/dark sets the base); colors deepen to the right.",
+        "input.feel.themePreview": "Preview",
+        "input.feel.themePreviewHint": "Reflects tint, saturation, key opacity and background images live; one board per theme.",
+        "preview.light": "Light",
+        "preview.dark": "Dark",
+        "input.feel.keyHue": "Keycap tint",
+        "input.feel.keyHueHint": "Recolors keycaps/accents only (background stays); tap Follow to inherit again.",
+        "input.feel.keySat": "Keycap saturation",
+        "input.feel.keySatHint": "Color intensity of the keycap group only; far left makes keycaps grayscale.",
+        "input.feel.kbGroup": "Keyboard",
+        "input.feel.keyGroup": "Keycaps",
+        "input.feel.keyFollow": "Follow keyboard",
+        "input.feel.keyFollowHint": "Keycap hue/saturation follow the keyboard group while on; turn off to tune them independently.",
+        "input.feel.themeHex": "Keyboard source color",
+        "input.feel.themeHexHint": "The input color that generates backgrounds and panels (not the final pixel color); keycaps follow it while Follow is on.",
+        "input.feel.keyHex": "Keycap source color",
+        "input.feel.keyHexHint": "The input color that generates keycaps and accents; shows the keyboard source color while following.",
+        "input.feel.hexPlaceholder": "#RRGGBB",
+        "preset.followKey": "Follow keyboard",
+        "preset.classic": "Classic green",
+        "preset.ocean": "Ocean",
+        "preset.violet": "Violet",
+        "preset.amber": "Amber",
+        "preset.sakura": "Sakura",
+        "preset.teal": "Teal",
+        "input.feel.themeModeHint": "Follow the system, or pin light/dark.",
+                "无": "None",
+        "选择图片": "Pick an image…",
+"input.feel.keyOpacity": "Key opacity",
+        "input.feel.kbHeight": "Keyboard height",
+        "input.feel.kbHeightHint": "Portrait keyboard height; dragging on the keyboard stays equivalent.",
+        "input.feel.kbHeightReset": "Reset",
+        "input.feel.keyOpacityHint": "How see-through the keycaps are. The default is lightly translucent glass; the right end is solid. Labels stay opaque.",
+        "input.feel.systemBarNote": "The globe and hide-keyboard row is shown or hidden by the phone’s system settings. Feelime does not draw a second row and has no switch for it. When the system shows that row, the keys move up by the inset the system reports so they do not cover its buttons.",
+        "input.feel.glassTitle": "Liquid glass",
+        "input.feel.glassBadge": "Skin",
+        "input.feel.glassSkin": "Built-in skins",
+        "input.feel.glassSkinHint": "A skin sets tint, opacity, blur, and corners together. You can still tweak afterwards; tweaking leaves the skin.",
+        "input.feel.glassBlur": "Frost",
+        "input.feel.glassBlurHint": "Gaussian blur on the background and wallpaper. 0 is sharp; higher looks more like frosted glass.",
+        "input.feel.glassRadius": "Corners",
+        "input.feel.glassRadiusHint": "Corner radius of keys and popups. Higher is rounder.",
+        "input.feel.panelOpacity": "Panel opacity",
+        "input.feel.panelOpacityHint": "How solid the candidate bar, menus, and voice card are. Text stays opaque.",
+        "input.feel.preeditFrame": "Pinyin outline",
+        "input.feel.preeditFrameHint": "Draw an extra box that shrinks around the composing pinyin. Off by default; pinyin sits above each character.",
+        "skin.liuli": "Liuli",
+        "skin.ocean": "Deep sea",
+        "skin.violet": "Dusk",
+        "skin.amber": "Amber",
+        "skin.sakura": "Sakura mist",
+        "skin.aurora": "Aurora",
+        "skin.ink": "Ink jade",
+        "skin.frost": "Frost",
+        "clip.title": "Clipboard & phrases",
+        "clip.badge": "On device",
+        "clip.note": "The keyboard clipboard stays on this phone. It is not uploaded and is not part of cloud backup. There is no fixed item cap; about 32MB of text total is the on-device ceiling. After you copy text, tap the clipboard icon on the keyboard to paste it back. Phrases and symbol words are managed below.",
+        "clip.deleteConfirm": "Confirm before deleting",
+        "clip.deleteConfirmHint": "On = deleting clipboard items or phrases asks first; only tapping Delete deletes. Off = delete immediately, no prompt.",
+        "voice.asr.honest": "The current offline model works best with fairly standard Mandarin: steady pace, a quiet room, then tap Done. Punctuation is added by the on-device model (saying the word “comma” does not insert one). Trailing periods can be stripped below. Audio is never uploaded, and no setting here can invent higher accuracy.",
+        "privacy.title": "Privacy and offline",
+        "privacy.badge": "On device",
+        "privacy.note": "Keystrokes, candidates, voice, and wallpapers stay on this phone. Feelime does not upload what you type and does not include analytics. Voice models ship with the app or are downloaded by you. Diagnostics, if you turn them on, record engine events and not the text you typed.",
+        "input.feel.keyBubble": "Key bubble",
+        "input.feel.cnEnComposingGuard": "Block language switch while composing",
+        "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
+        "input.feel.preeditScrub": "Space swipe moves pinyin caret",
+        "input.feel.preeditScrubHint": "While composing, swipe the space key sideways to move the caret inside the pinyin string for quick edits; with no composition it still moves the text caret. On by default; turn it off from this row. Pinyin & double-pinyin only for now (#103).",
+        "input.feel.bottomSymSplit": "Split bottom symbols/digits key",
+        "input.feel.bottomSymSplitHint": "Splits the bottom-left [123] key into [Symbols] and [123]: symbols opens the symbol panel, 123 goes straight to the number pad. Off by default; when off, tapping 123 opens symbols and long-press opens the number pad (#113).",
+        "voice.readyHaptic": "Vibrate when voice is ready",
+        "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
+        "input.feel.keyBubbleHint": "Enlarge the pressed character right above the keycap and linger briefly after release (on by default).",
+        "entry.appearance.title": "Look & skins",
+        "entry.appearance.subtitle": "Liquid glass · Colors · Wallpaper",
+        "entry.skin.title": "Skin",
+        "entry.skin.subtitle": "Tint · Saturation · Background",
+        "page.skin": "Skin",
+        "input.appearance.title": "Appearance",
+        "input.appearance.preview": "Preview",
+        "input.appearance.previewHint": "The keyboard no longer pops up automatically here (use the Skin page for live colors); tap this box to summon it and try typing.",
+        "input.appearance.previewPlaceholder": "Type here to try it",
+        "input.appearance.badge": "Theme",
+        "input.feel.bgImageHint": "A custom wallpaper covers the whole keyboard (toolbar to bottom padding). It is compressed to 720px and stored only on this phone.",
+        "input.feel.bgImageHintDark": "Each theme uses its own image when you switch.",
+        "自定义": "Custom",
+        "光标控制": "Cursor",
+        "自定义图片": "Custom image",
+        "左手": "Left hand",
+        "右手": "Right hand",
+        "关": "Off",
+        "空白": "Blank",
+        "input.feel.hold": "Long-press trigger",
+        "input.feel.holdHint": "How long a press waits before popup selection, caps lock, or the mode menu opens.",
+"input.feel.flickSwap": "Swap flick directions",
+        "input.feel.flickSwapHint": "By default flick up gives the digit/symbol and flick down uppercases; enabling swaps them (the keycap hint moves below).",
+        "input.feel.doubleShiftLock": "Double-tap Shift to enable Caps Lock",
+        "input.feel.doubleShiftLockHint": "Two Shift taps within 300 ms lock caps (same as long-press lock); turn off to fall back to single taps.",
+        "input.feel.scrub": "Cursor speed",
+        "input.feel.scrubHint": "Distance the caret moves per drag step.",
+        "input.feel.snap": "Swipe selection range",
+        "input.feel.snapHint": "How far the finger may drift during popup swipe before the pick cancels: loose = forgiving, tight = early cancel.",
+        "input.feel.keySoundVolume": "Key volume",
+        "input.feel.keySoundVolumeHint": "Shared by the beep, system keypress and custom sounds.",
+        "input.feel.keyHapticStrength": "Haptic strength",
+        "input.feel.keyHapticStrengthHint": "Approximated by duration when the motor lacks amplitude control.",
+        "input.feel.keyHapticFollowSystem": "Follow system strength",
+        "input.feel.keyHapticFollowSystemHint": "On = system default strength, the weak/medium/strong selector is greyed out; off = manual weak/medium/strong.",
+        "input.feel.hapticLight": "Light", "input.feel.hapticMedium": "Medium", "input.feel.hapticStrong": "Strong",
+        "input.feel.keySound": "Key sound",
+        "input.feel.keySoundHint": "A soft click on each key press; follows system volume, silent in mute mode.",
+        "input.feel.keySoundStyle": "Key sound style",
+        "input.feel.keySoundStyleHint": "Sounds beyond the default beep;",
+        "input.feel.kssDefault": "Default beep",
+        "input.feel.kssKeypress": "System keypress tone",
+        "input.feel.kssCustom": "Custom sound",
+        "input.feel.keySoundFile": "Custom sound file",
+        "input.feel.keySoundFileHint": "Pick a short audio (ogg/mp3/wav) within 2MB; clear to fall back to the default.",
+        "input.feel.keySoundPick": "Choose file",
+        "input.feel.keySoundClear": "Clear",
+        "feel.keySound.current": "Current: ",
+        "feel.keySound.none": "none",
+        "input.feel.keyHaptic": "Key vibration",
+        "diag.title": "Diagnostics",
+        "diag.badge": "Debug",
+        "diag.toggle": "Record engine diagnostic events",
+        "diag.toggleHint": "Enable before reproducing issues like raw letters landing directly. Records engine/editor events only (package, inputType, degrade reason) — never any typed content.",
+        "diag.copy": "Export diagnostics",
+        "diag.on": "Recording. Reproduce the issue, then come back and export the diagnostics.",
+        "diag.exported": "Diagnostics file created — pick WeChat / email etc. in the share sheet.",
+        "diag.off": "Diagnostics recording is off.",
+        "input.feel.keyHapticHint": "A light tap on each key press; strength follows the device tuning. No vibration while the system haptics master switch is off.",
+        "input.feel.snapLoose": "Loose",
+        "input.feel.snapStandard": "Standard",
+        "input.feel.snapTight": "Tight",
+        "error.INVALID_FEEL_OPTION": "Invalid feel option; the previous value was kept.",
+        "error.EMPTY_SOURCE": "Enter an update source (metainfo.json) first.",
+        "error.EMPTY_URL": "Enter a keyboard package URL first.",
+        "error.INVALID_SOURCE": "The update source URL is invalid.",
+        "error.NO_RELEASE": "No release is currently available.",
+        "error.NO_INSTALLABLE_ASSET": "The release has no installable keyboard package.",
+        "error.AMBIGUOUS_ASSET": "The release has ambiguous keyboard packages.",
+        "error.INVALID_ASSET_URL": "The release asset URL is invalid.",
+        "error.RATE_LIMITED": "GitHub rate limited the request. Try again later.",
+        "error.NETWORK_ERROR": "The network request failed.",
+        "error.BAD_RESPONSE": "The update source returned an unrecognized response.",
+        "error.INTERNAL_ERROR": "Update failed. Try again later.",
+        "error.URL_NOT_HTTPS": "The update URL must use HTTPS.",
+        "error.URL_USER_INFO": "The update URL cannot contain a username or password.",
+        "error.TIMEOUT": "The network request timed out.",
+        "error.TLS_ERROR": "The secure connection failed.",
+        "error.REDIRECT_LIMIT": "Too many redirects.",
+        "error.REDIRECT_NOT_HTTPS": "Redirect URLs must use HTTPS.",
+        "error.DOWNLOAD_TOO_LARGE": "The downloaded file is too large.",
+        "error.ZIP_TOO_LARGE": "The keyboard package is too large.",
+        "error.NOT_ZIP": "The keyboard package has an invalid format.",
+        "error.SIGNATURE_MISSING": "The keyboard package has no signature.",
+        "error.SIGNATURE_BAD": "Keyboard package signature verification failed.",
+        "error.PAYLOAD_HASH": "Keyboard file verification failed.",
+        "error.VERSION_MISMATCH": "Keyboard version information is inconsistent.",
+        "error.COMPAT_MIN_NATIVE_API": "This Feelime version does not support the package.",
+        "error.COMPAT_CAPABILITIES": "The package requires unavailable capabilities.",
+        "error.FRAGMENT_PIN_MISMATCH": "The keyboard package fingerprint does not match.",
+        "error.IO_ERROR": "A local file operation failed.",
+        "error.ENTRY_LIMIT": "The keyboard package contains too many files.",
+        "error.DUPLICATE_ENTRY": "The keyboard package contains a duplicate file.",
+        "error.PATH_TRAVERSAL": "The keyboard package contains an unsafe path.",
+        "error.PATH_ABSOLUTE": "The keyboard package contains an absolute path.",
+        "error.PATH_BACKSLASH": "The keyboard package contains an unsafe path format.",
+        "error.PATH_NUL": "The keyboard package path contains an invalid character.",
+        "error.SYMLINK_OR_SPECIAL": "The keyboard package contains an unsupported special file.",
+        "error.UNICODE_CONFLICT": "The keyboard package contains conflicting filenames.",
+        "error.UNKNOWN_ENTRY": "The keyboard package contains an unknown file.",
+        "error.ENVELOPE_MISSING": "The keyboard package is missing verification metadata.",
+        "error.MANIFEST_INVALID_JSON": "The keyboard package manifest is invalid.",
+        "error.MANIFEST_UNKNOWN_KEY": "The keyboard package manifest has an unknown field.",
+        "error.MANIFEST_MISSING_KEY": "The keyboard package manifest is missing a required field.",
+        "error.MANIFEST_LISTS_ENVELOPE": "The keyboard package manifest structure is invalid.",
+        "error.MANIFEST_PAYLOAD_ALLOWLIST": "The keyboard package contains disallowed content.",
+        "error.KEY_UNKNOWN": "The keyboard package signing key is unknown.",
+        "error.PAYLOAD_LENGTH": "Keyboard file size verification failed.",
+        "error.INFLATED_TOO_LARGE": "The unpacked keyboard package is too large.",
+        "error.HOTWORDS_TRUNCATED": "Saved, but {count} hotword lines exceeded the limit (up to {max} lines, {chars} characters each).",
+        "error.NO_NETWORK": "No network connection is available.",
+        "error.STALE_CONFIRMATION": "The download confirmation expired; tap Download again.",
+        "error.MODEL_DOWNLOAD_FAILED": "Model download failed. Try again later.",
+        "error.MODEL_IMPORT_FAILED": "Model import failed. Check that this is an official model archive and try again.",
+        "error.MODEL_IMPORT_BUSY": "The model is already being processed.",
+        "error.MODEL_NETWORK_CHANGED": "The network changed and the download paused. Confirm and try again.",
+        "error.INVALID_MODEL_SOURCE": "A custom source needs an HTTPS repository URL and its matching tar.bz2 archive URL.",
+    },
+};
+
+// #39-12：customkeys（二级）与 customkeys-editor（三级）。
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "licenses", "test"];
+const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
+const progressPercent = {};
+
+function browserLocale() {
+    const value = (typeof navigator !== "undefined" && navigator.language) ||
+        (window.navigator && window.navigator.language) || "zh-CN";
+    return String(value).toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+function normalizeChoice(value) {
+    return ["auto", "zh", "en"].includes(value) ? value : "auto";
+}
+
+function normalizeLocale(value) {
+    return ["zh", "en"].includes(value) ? value : null;
+}
+
+function format(template, values = {}) {
+    return String(template).replace(/\{(\w+)\}/g, (_all, name) =>
+        values[name] === undefined ? `{${name}}` : String(values[name]));
+}
+
+function t(key, values) {
+    const dictionary = I18N[uiLocale] || I18N.zh;
+    const template = dictionary[key] ?? I18N.zh[key] ?? key;
+    return format(template, values);
+}
+
+function call(action, ...args) {
+    try {
+        if (typeof BRIDGE[action] === "function") BRIDGE[action](...args, token);
+    } catch (error) {
+        console.warn("bridge call failed", action, error);
+    }
+}
+
+function setTheme(theme) {
+    if (theme === "light" || theme === "dark") document.documentElement.className = `theme-${theme}`;
+}
+
+/** 左上角 logo 换成真实的输入法应用图标（桥下发 base64）。失败/缺失
+ *  时保留「F.」占位方块，幂等：已替换过就不再动 DOM。 */
+function applyAppIcon(dataUri) {
+    if (!dataUri) return;
+    const mark = $("heroLogo");
+    if (!mark || mark.dataset.appIcon === "1") return;
+    const img = document.createElement("img");
+    img.src = dataUri;
+    img.alt = "";
+    mark.textContent = "";
+    mark.append(img);
+    mark.dataset.appIcon = "1";
+}
+
+function applyLocale() {
+    document.documentElement.lang = uiLocale === "zh" ? "zh-CN" : "en";
+    document.title = t("title");
+    document.querySelectorAll("[data-i18n]").forEach(node => {
+        node.textContent = t(node.dataset.i18n);
+    });
+    document.querySelectorAll("[data-i18n-aria]").forEach(node => {
+        node.setAttribute("aria-label", t(node.dataset.i18nAria));
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach(node => {
+        node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
+    });
+    const language = $("uiLanguage");
+    if (language) language.value = uiChoice;
+    if (lastState) renderDoublePinyin(lastState);
+    if (pendingModelConsent) {
+        $("modelConsentMessage").textContent = t("model.consent.message", {
+            name: pendingModelConsent.name,
+            bytes: mb(pendingModelConsent.bytes),
+        });
+    }
+    if (lastModelError) setNote("modelNote", eventText(lastModelError, "error.MODEL_DOWNLOAD_FAILED"));
+}
+
+function adoptLocale(state) {
+    const choice = normalizeChoice(state && state.uiLanguage);
+    if (state && state.uiLanguage !== undefined) uiChoice = choice;
+    const resolved = normalizeLocale(state && state.uiLocale);
+    const next = resolved || (uiChoice === "auto" ? browserLocale() : uiChoice);
+    const changed = next !== uiLocale;
+    uiLocale = next;
+    if (changed || state && state.uiLanguage !== undefined) applyLocale();
+}
+
+function setUiLanguage(choice) {
+    uiChoice = normalizeChoice(choice);
+    uiLocale = uiChoice === "auto" ? browserLocale() : uiChoice;
+    applyLocale();
+    call("setUiLanguage", uiChoice);
+}
+
+function mb(bytes) {
+    return `${(Number(bytes || 0) / 1048576).toFixed(1)} MB`;
+}
+
+function modelTitle(model) {
+    const key = {
+        "streaming-zipformer-bilingual-zh-en": "model.title.streaming",
+        "paraformer-zh-small": "model.title.final",
+        "paraformer-zh-large": "model.title.final",
+        "offline-punct-zh-en": "model.title.punctuation",
+        "online-punct-en": "model.title.punctuation", // Legacy model ID.
+    }[String(model && model.id || "")];
+    return key ? t(key) : String(model && (model.title || model.id) || "");
+}
+
+function activeKeyboardVersion(state) {
+    return (state.update && state.update.activeVersion) || state.keyboardVersion || "?";
+}
+
+function statusSpan(text, className) {
+    const span = document.createElement("span");
+    span.className = className || "";
+    span.textContent = text;
+    return span;
+}
+
+function setNote(id, text) {
+    const node = $(id);
+    if (node) node.textContent = text;
+}
+
+function eventText(event, fallbackKey, values) {
+    const code = String(event && (event.code || event.errorCode) || "");
+    const key = code ? `error.${code}` : "";
+    if (key && ERROR_KEYS.has(key)) {
+        const translated = t(key, values || event);
+        const detail = String(event && (event.detail || event.errorDetail) || "").trim();
+        return detail ? `${translated} ${detail}` : translated;
+    }
+    if (event && event.message) return String(event.message);
+    if (event && (event.detail || event.errorDetail)) return String(event.detail || event.errorDetail);
+    return t(fallbackKey, values);
+}
+
+/* --- event channel ----------------------------------------------------- */
+
+window.FeelimeSettings = {
+    // #51 定制按键 setting 型的纯函数出口（自动化/表单回填测试用）。
+    ckTapFromDraft,
+    ckTapParse,
+    /** 系统 BACK 键入口（2026-10-04 用户裁定）：编辑态/脏态时壳侧转进
+     *  这里，页面弹框问用户——放弃编辑（退出编辑态，改动保留为脏）/继
+     *  继续编辑；脏态复用既有离开确认。普通翻页壳侧自理（onSubPage 逐
+     *  级返回），不经此路。 */
+    backPressed() {
+        // BACK 优先关最上层的 WebDAV 弹窗（backup 页）：native 只在定制键
+        // 页转交弹窗返回，其余页面直接翻页——弹窗开着翻页，回来旧弹窗
+        // 与选择全在（发版 review P2）。ck 系弹窗仍走下面的定制键流程。
+        const openWebdav = document.querySelector(
+            "#webdavBackupModal:not([hidden]), #webdavRestoreModal:not([hidden])");
+        if (openWebdav) { openWebdav.hidden = true; return; }
+        if (typeof ckEditMode === "undefined" || currentPage !== "customkeys") return;
+        // Android 惯例：BACK 先收最上层已开的对话框（ckDelModal/ckModal
+        // 等开着时直接进编辑态确认会两框同屏，review P3-3）。
+        const openModal = [...document.querySelectorAll(".ck-modal")]
+            .find(el => !el.hidden);
+        if (openModal && openModal.id !== "ckBackModal" && openModal.id !== "ckLeaveModal") {
+            openModal.hidden = true;
+            return;
+        }
+        if (ckEditMode) {
+            document.getElementById("ckBackModal").hidden = false;
+            return;
+        }
+        if (typeof ckDirty !== "undefined" && ckDirty) {
+            const back = document.querySelector('.page[data-page="customkeys"] .page-back');
+            ckLeaveTarget = back?.dataset?.back || "input";
+            document.getElementById("ckLeaveModal").hidden = false;
+        }
+    },
+    onBridgeHello(payload) {
+        payload = payload || {};
+        token = payload.token || "";
+        reportImeGestureSupport();
+        resyncImeFocusReport();
+        if (payload.theme) setTheme(payload.theme);
+        applyAppIcon(payload.appIcon);
+        if (payload.uiLanguage !== undefined) uiChoice = normalizeChoice(payload.uiLanguage);
+        const helloLocale = normalizeLocale(payload.uiLocale);
+        uiLocale = helloLocale || (uiChoice === "auto" ? browserLocale() : uiChoice);
+        applyLocale();
+        call("ready");
+        // WebDAV 表单回填要等 token 就位（native 侧 webdavGetConfig 带
+        // token 门闸）；且只在首次握手做一次——onResume 会重推 hello，
+        // 反复回填会把用户切去密码管理器前填了一半的表单冲掉
+        // （发版 review P2）。
+        if (!webdavFormInit) {
+            webdavFormInit = true;
+            webdavFillConfig();
+        }
+    },
+
+    onEvent(event) {
+        if (!event || !event.type) return;
+        switch (event.type) {
+            case "state":
+                lastState = event.state || {};
+                if (lastState.theme) setTheme(lastState.theme);
+                adoptLocale(lastState);
+                render(lastState);
+                break;
+            case "modelProgress":
+                renderProgress(event);
+                break;
+            case "modelDownloadConfirmation":
+                renderModelConsent(event);
+                break;
+            case "modelDownloadError":
+                lastModelError = event;
+                if (!pendingModelConsent || pendingModelConsent.id === String(event.id || "")) hideModelConsent();
+                setNote("modelNote", eventText(event, "error.MODEL_DOWNLOAD_FAILED"));
+                break;
+            case "modelImportStatus":
+                renderImportStatus(event);
+                break;
+            case "modelSourceError":
+                setNote("modelNote", eventText(event, "error.INVALID_MODEL_SOURCE"));
+                break;
+            case "customError":
+                setNote("customNote", eventText(event, "error.INVALID_CUSTOM_JSON"));
+                break;
+            case "customPhrasesError":
+                setNote("phrasesNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
+                break;
+            case "bgImageError":
+                setNote("bgImageNote", eventText(event, "error.BAD_BG_IMAGE"));
+                $("bgImageNote").hidden = false;
+                break;
+            case "keySoundError":
+                // #30-2：音效文件不可用（超限/损坏）——提示后 state 回推
+                // 会把风格弹回实际生效值。
+                setNote("feelNote", eventText(event, "error.KEY_SOUND_FILE"));
+                break;
+            case "userWordsError":
+                setNote("userWordsNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
+                break;
+            case "keyboardsError":
+                // 排序/勾选保存失败要让用户看见（验收 2026-09-26 问题 A：
+                // 参数错位时静默拒绝，UI 还提示「已保存」）。事件比乐观的
+                // 「已保存」晚到，覆盖同一 note。
+                setNote("keyboardsNote", eventText(event, "error.BAD_KEYBOARD_SELECTION"));
+                break;
+            case "dictImported":
+                setNote("dictImportNote", event.message || "");
+                break;
+            case "dictBaseProgress":
+                onDictBaseProgress(event);
+                break;
+            case "dictBaseDone":
+            case "dictBaseError":
+                setNote("dictBaseNote", event.message || "");
+                $("dictBaseBuilding").hidden = true;
+                setDictBar("dictBaseProgressBar", null);
+                dictBasePending = null;
+                break;
+            case "flypyDone":
+            case "flypyError":
+                setNote("flypyNote", event.message || "");
+                $("flypyBuilding").hidden = true;
+                setDictBar("flypyBuildingBar", null);
+                break;
+            case "dpSchemeError":
+                setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
+                break;
+            case "bottomPadError":
+            case "candidateFontError":
+            case "keycapFontError":
+            case "preeditFontError":
+            case "feelOptionsError":
+            case "fuzzyPinyinError":
+                setNote("feelNote", eventText(event, "error.INVALID_FEEL_OPTION"));
+                break;
+            case "fontImportStatus":
+                // #70 导入结果：成功回显文件名，失败给可读原因（码表见
+                // KeyboardFontStore）。结果挂在 userFontNoteHold 上——
+                // 紧随其后的 pushState 会走渲染分支，不接管就直接被
+                // 「当前：xxx」冲掉（review P2 实测）。
+                // #80：超 20MB 软上限先弹确认（CONFIRM_LARGE 带 bytes），
+                // 确认后 confirmLargeFontImport 带 allowLarge 重导。
+                if (!event.ok && event.code === "CONFIRM_LARGE") {
+                    const mb = Number(event.bytes) > 0 ? (Number(event.bytes) / 1048576).toFixed(1) : "20+";
+                    $("fontConsentMessage").textContent = t("fontLarge.message", { mb });
+                    $("fontConsent").hidden = false;
+                    userFontNoteHold = null;
+                    break;
+                }
+                $("fontConsent").hidden = true;
+                userFontNoteHold = event.ok
+                    ? t("input.feel.userFontImported", { name: event.name || "?" })
+                    : t(["IO_ERROR", "TOO_LARGE", "BAD_MAGIC", "BAD_FONT"].includes(event.code)
+                        ? `error.font.${event.code}` : "error.font.IO_ERROR");
+                $("userFontNote").textContent = userFontNoteHold;
+                break;
+            case "asrNote":
+                if (typeof event.hotwords === "string"
+                    && asrHotwordsSubmitted !== null
+                    && $("hotwords").value === asrHotwordsSubmitted) {
+                    // 成功回执：用户未再编辑——回显规范化形态并解除草稿保护
+                    $("hotwords").value = event.hotwords;
+                    asrHotwordsDirty = false;
+                    asrHotwordsSubmitted = null;
+                }
+                setNote("asrNote", eventText(event, "note.saved", {
+                    count: event.count, max: event.max || event.maxLines, chars: event.chars || event.maxChars,
+                }));
+                break;
+            case "updateError":
+                if (event.confirmable && event.confirmId) {
+                    pendingKbSigId = String(event.confirmId);
+                    $("kbSigConsent").hidden = false;
+                } else if (pendingKbSigId) {
+                    // 新的失败事件让旧的确认请求作废。
+                    pendingKbSigId = "";
+                    $("kbSigConsent").hidden = true;
+                }
+                setNote("updateStatus", eventText(event, "error.INTERNAL_ERROR"));
+                break;
+            case "backupStatus":
+                renderBackupStatus(event);
+                break;
+            case "webdavStatus":
+                renderWebdavStatus(event);
+                break;
+            case "webdavList":
+                renderWebdavList(event);
+                break;
+            default:
+                break;
+        }
+    },
+
+    showPage,
+    focusSetting,
+    webdavFillConfig,
+};
+
+/* --- pages ------------------------------------------------------------- */
+
+let currentPage = "home";
+
+// #51 各页滚动位置备忘：全文档共享一个 scroller（window），hidden 切换
+// 会把 scrollY 钳到 0——离开页记下、返回页恢复，深层设置不再每次回顶。
+const pageScrolls = {};
+
+function showPage(name) {
+    // 拖动会话不能跨页存活：先取消（回滚），再走既有切换流程。
+    if (typeof cancelStripDrag === "function") cancelStripDrag();
+    if (!PAGES.includes(name)) return;
+    // #39-12 定制按键页：脏态离开先弹页内确认（改完退出没保存都不
+    // 知道——用户验收实录；不用 confirm：WebChromeClient 不处理时恒
+    // false 会把用户锁死）。收口在本函数里——包装外层函数会漏掉已
+    // 导出的旧引用。ckEnter 同理在进页时统一触发。
+    const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"];
+    if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage)
+        && !CK_FAMILY.includes(name) && ckDirty) {
+        ckLeaveTarget = name;
+        document.getElementById("ckLeaveModal").hidden = false;
+        return;
+    }
+    // 预览页只有 skin（2026-10-13）：上一页已在皮肤页则不重复弹；
+    // 从外观页（已不自动弹）进皮肤页要弹。
+    const wasPreview = currentPage === "skin";
+    // 页内深链会再次 showPage(本页)：customkeys 此时不能 ckMarkDirty(false)
+    // ——脏标被清、内存编辑还在，离开不再确认，改动静默丢失（评审 P3-11）。
+    const wasCustomkeys = currentPage === "customkeys";
+    // 离开定制页时编辑态镜像回落（review P1-2）：页内 ‹ 不经编辑态出口
+    // 直接翻页，ckEditMode 残留 true 会把壳侧 BACK 键分流成静默 no-op
+    // （backPressed 只在本页响应）。与重进页 ckEnter() 强制 false 同
+    // 一语义，并即时上报壳侧。
+    if (wasCustomkeys && name !== "customkeys" && typeof ckEditMode !== "undefined" && ckEditMode) {
+        ckEditMode = false;
+        document.body.classList.remove("ck-editing");
+        // 拖动会话一并收掉：‹ 离开时手指可能还按着，ghost 残留会冻在
+        // 屏上（真机实录 review 取证 ghostGone=false）。
+        if (typeof ckEndDragSession === "function") ckEndDragSession();
+        if (typeof ckReportState === "function") ckReportState();
+    }
+    // #51 离开页记滚动（早退分支没动 currentPage，无需记账）。
+    if (typeof window.scrollTo === "function") pageScrolls[currentPage] = window.scrollY;
+    currentPage = name;
+    document.querySelectorAll("[data-page]").forEach(node => {
+        node.hidden = node.dataset.page !== name;
+    });
+    // #51 返回已知页恢复原位，新访问从顶部开始。focusSetting 随后的
+    // scrollIntoView 会覆盖恢复值，深链行为不受影响。
+    if (typeof window.scrollTo === "function") {
+        const memo = pageScrolls[name];
+        if (typeof memo === "number" && memo > 0) window.scrollTo(0, memo);
+        else window.scrollTo(0, 0);
+    }
+    // 定制按键家族三页共享一条脏态草稿，但保存条只随两个四级页走
+    // （分页各自保存，2026-10-12 用户裁定：首页纯导航+开关，无保存
+    // 动作）：DOM 随当前页移动（page = header + 滚动 main + 保存条的
+    // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
+    // 隐藏，脏态由离开确认兜底。
+    if (["cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"].includes(name)) {
+        // 深链直达（focusSetting/URL）没经过 ckEnter→ckLoad，rows=null：
+        // 此时「保存全部」的整包会把已有定制覆盖掉（codex review P1——
+        // rows 保底 [] 的前提是「草稿已加载」，未加载≠空表）。
+        if (!ckRows) ckLoad();
+        const bar = document.getElementById("ckSaveBar");
+        const pageEl = document.querySelector('[data-page="' + name + '"]');
+        if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
+    }
+    if (name === "cklang") renderLangKb(ckLangCurrent);
+    if (CK_STRIP_PAGES[name]) renderStripPage(CK_STRIP_PAGES[name]);
+    if (name === "customkeys" && !wasCustomkeys && typeof refreshLangCounts === "function") {
+        refreshLangCounts();
+    }
+    // 外观页预览：真实键盘在屏幕底部弹出、本页窗口被压缩；离开时收起。
+    // 皮肤页（从外观拆出）同样要真实键盘预览：调色时看得见效果——进出
+    // 两个预览页（appearance↔skin）不收键盘（codex P1：隐藏条件要与
+    // 显示条件同一个集合，否则外观→皮肤会把预览键盘收掉）。
+    // 自动弹键盘只在皮肤页（调色实时预览所在）：外观页曾默认弹，用户
+    // 感知为「默认 focus 预览输入框」（2026-10-13 验收裁定撤）——外观
+    // 页要试打点输入框自然唤起。
+    const isPreviewPage = name === "skin";
+    if (isPreviewPage && !wasPreview) call("previewKeyboard", true);
+    if (!isPreviewPage && wasPreview) call("previewKeyboard", false);
+    // 页面父级随页上报：系统 BACK 逐级返回用。层级唯一事实源是本页
+    // ‹ 按钮的 data-back（index.html），壳侧不再维护第二份映射——
+    // userwords/customkeys 曾因此各自漂移回 home（用户验收实录）。
+    const back = document.querySelector(`.page[data-page="${name}"] .page-back`);
+    call("reportPage", name, back?.dataset?.back || "home");
+    if (name === "customkeys" && !wasCustomkeys && typeof ckEnter === "function") {
+        // 只重置编辑态/弹层，不清脏标：三页共享同一草稿，从子页返回
+        // 首页清脏标会让未保存改动失去保存引导（验收实录：
+        // 改完子页回首页提示消失，退出即丢）。
+        ckEnter();
+    }
+    // 符号页四级化后 ckRowList 的首次渲染发生在进首页时（cksymbol
+    // 此刻 hidden、clientWidth=0，ckFitStrip 全跳过）——进符号页补一
+    // 轮渲染，恢复「超宽行缩放进容器」约束；「高级」textarea 同步
+    // 投影当前草稿。rAF 等首帧布局把宽度量准。
+    if (name === "cksymbol" && typeof ckEnter === "function") {
+        // 深链直达符号页（未经过首页 ckEnter→ckLoad）时草稿未载：
+        // null 渲染会崩，先补载（ckSyncJsonView 也依赖草稿）。
+        if (!ckRows) ckLoad();
+        if (typeof ckSyncJsonView === "function") ckSyncJsonView();
+        requestAnimationFrame(() => {
+            if (currentPage === "cksymbol") ckRenderRows();
+        });
+    }
+}
+
+/* --- 皮肤滑条显示态（模块级，跨 render 存活）-------------------------- */
+
+// 四个色调/饱和度滑条的本地显示值 + 键面组跟随态。放模块级是因为
+// renderFeel 每轮重建局部变量：拖动中的异步 state 回推会连预览带滑条
+// 一起拽回旧值（codex R2 复核：焦点守卫只挡 input.value 不够，显示值
+// 本身要在拖动期间保留本地值）。
+let themeHueShown = 160, themeSatShown = 100;
+let keyHueShown = 160, keySatShown = 100;
+let keyHueFollow = true, keySatFollow = true, keyLFollow = true;
+// #61 亮度偏移显示值（themeL/keyL：加在各表面色设计 l 上的 offset）。
+let themeLShown = 0, keyLShown = 0;
+/* #61 三轮（codex 方案 e）：色号/色块=「配色原色」——生成这组配色的
+ * 输入色，不对应任何实际表面像素。基准 s=100/l=50：色号显示
+ * hsl(hue, sat%, 50%+lift)；用户拖滑条色块即明显变化（旧「暗色基准
+ * 底色」l=12% 让色块恒近黑——三轮验收实录）。实际表面由 CSS 按
+ * 设计系数派生（s: 设计s×sat/100；l: N+(100-N)·w·t），l=50 时完全
+ * 等于原设计。 */
+const FEEL_BASE = { theme: { s: 100, l: 50 }, key: { s: 100, l: 50 } };
+
+function hslToHex(h, s, l) {
+    s = Math.max(0, Math.min(100, s)) / 100;
+    l = Math.max(0, Math.min(100, l)) / 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = ((h % 360) + 360) % 360 / 60;
+    const x = c * (1 - Math.abs(hp % 2 - 1));
+    let r = 0, g = 0, b = 0;
+    if (hp < 1) [r, g, b] = [c, x, 0];
+    else if (hp < 2) [r, g, b] = [x, c, 0];
+    else if (hp < 3) [r, g, b] = [0, c, x];
+    else if (hp < 4) [r, g, b] = [0, x, c];
+    else if (hp < 5) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    const m = l - c / 2;
+    const ch = v => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+    return ("#" + ch(r) + ch(g) + ch(b)).toUpperCase();
+}
+
+/** #RRGGBB（# 可省、忽略空格）→ {h,s,l}；非法返回 null。 */
+function hexToHsl(str) {
+    const m = /^\s*#?([0-9a-fA-F]{6})\s*$/.exec(String(str || ""));
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > .5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60;
+    }
+    return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+/** 墨色对比度择优（review #61-P5：固定阈值在纯绿等色上误判，白字
+ * 1.37:1 不可读）——两墨色与底色的 WCAG 对比度取高者。 */
+function feelInkOn(bgHex) {
+    const channel = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const lum = hex => {
+        const n = parseInt(hex.slice(1), 16);
+        return .2126 * channel(n >> 16 & 255) + .7152 * channel(n >> 8 & 255) + .0722 * channel(n & 255);
+    };
+    const L = lum(bgHex);
+    const better = ink => (Math.max(L, ink) + .05) / (Math.min(L, ink) + .05);
+    return better(lum("#1a1a1a")) >= better(lum("#ffffff")) ? "#1a1a1a" : "#fff";
+}
+
+/** 整组编辑会话守卫（review #61-P4）：任一色号框聚焦=编辑中，滑条
+ * 显示值/预览不被异步回推拽回（旧守卫只看滑条自身焦点）。 */
+function hexEditing() {
+    const a = document.activeElement;
+    return !!a && (a.id === "themeHex" || a.id === "keyHex");
+}
+
+// 最近一次确认（提交成功/state 合成）的色号：非法输入回滚的目标——
+// 回到「已确认值」而非编辑草稿（review #61-P4：草稿混用会滚错）。
+let themeHexConfirmed = "", keyHexConfirmed = "";
+
+/** 两组当前原色（跟随态键面取背景组 hue/sat、l 用键面组自己的）。 */
+function feelHexOf(group) {
+    if (group === "theme") {
+        return hslToHex(themeHueShown, FEEL_BASE.theme.s * themeSatShown / 100,
+            FEEL_BASE.theme.l + themeLShown);
+    }
+    const kh = keyHueFollow ? themeHueShown : keyHueShown;
+    const ks = keySatFollow ? themeSatShown : keySatShown;
+    return hslToHex(kh, FEEL_BASE.key.s * ks / 100, FEEL_BASE.key.l + keyLShown);
+}
+
+/** 色号框回显（滑条拖动/回推后调用；hex 框正在编辑时不打扰）。 */
+function refreshHexBoxes(force) {
+    [["themeHex", "themeHexSwatch", "theme"], ["keyHex", "keyHexSwatch", "key"]]
+        .forEach(([inputId, swId, group]) => {
+            const input = document.getElementById(inputId);
+            if (!input || (!force && document.activeElement === input)) return;
+            const hex = feelHexOf(group);
+            input.value = hex;
+            if (group === "theme") themeHexConfirmed = hex; else keyHexConfirmed = hex;
+            const sw = document.getElementById(swId);
+            if (sw) sw.style.background = hex;
+        });
+}
+
+/** 色号输入 → 拆 (h,s,l) → 滑条显示值 + 预览（不落盘，change 才提交）。 */
+function feelApplyHex(group, hex) {
+    const hsl = hexToHsl(hex);
+    if (!hsl) return false;
+    // 原色语义（三轮）：s 直接落滑条（0-100=原色饱和度）；l 相对中位
+    // 50 的偏移 = 原色亮度-50，clamp ±50（50=原色 l=100）。表面派生
+    // 由 CSS 系数管（见 FEEL_BASE 注释），不再在此折损用户的输入。
+    const satPct = Math.max(0, Math.min(100, hsl.s));
+    const lOff = Math.max(-50, Math.min(50, hsl.l - 50));
+    if (group === "theme") {
+        themeHueShown = hsl.h; themeSatShown = satPct; themeLShown = lOff;
+        const hueEl = $("themeHue"), satEl = $("themeSat");
+        if (hueEl) { hueEl.value = String(hsl.h); hueEl.style.setProperty("--thumb-hue", String(hsl.h)); }
+        if (satEl) satEl.value = String(satPct);
+    } else {
+        keyHueFollow = false; keySatFollow = false;
+        keyHueShown = hsl.h; keySatShown = satPct; keyLShown = lOff;
+        const hueEl = $("keyHue"), satEl = $("keySat");
+        if (hueEl) { hueEl.value = String(hsl.h); hueEl.style.setProperty("--thumb-hue", String(hsl.h)); }
+        if (satEl) satEl.value = String(satPct);
+    }
+    updateThemePreview();
+    return true;
+}
+
+/** 色号框事件绑定（renderFeel 里 DOM 稳定，绑一次即可——oninput/onchange
+ *  直接赋值同滑条模式，重复 render 覆盖无泄漏）。 */
+function bindHexBox(group) {
+    const input = document.getElementById(group === "theme" ? "themeHex" : "keyHex");
+    if (!input) return;
+    input.oninput = () => {
+        const raw = String(input.value || "");
+        const applied = feelApplyHex(group, raw);
+        // 输入过程即时刷色块：显示用户输入的原色（合法时），不要等提
+        // 交后的合成色（基准暗、被钳制，验收实录「看着永远是黑的」）。
+        const sw = document.getElementById(group === "theme" ? "themeHexSwatch" : "keyHexSwatch");
+        if (sw && applied) sw.style.background = raw.trim().replace(/^#?/, "#");
+    };
+    input.onchange = () => {
+        if (!feelApplyHex(group, input.value)) {
+            // 非法输入：回滚到最近确认值（已提交/state 合成），不是编辑
+            // 草稿（review #61-P4）。
+            feelApplyHex(group, group === "theme" ? themeHexConfirmed : keyHexConfirmed);
+            refreshHexBoxes(true);
+            return;
+        }
+        if (group === "theme") {
+            call("setThemeHue", themeHueShown);
+            call("setThemeSat", themeSatShown);
+            call("setThemeL", themeLShown);
+        } else {
+            call("setKeyHue", keyHueShown);
+            call("setKeySat", keySatShown);
+            call("setKeyL", keyLShown);
+        }
+        // 提交后强制回显实际采用色（截限后不再是用户输入的假色，
+        // review #61-P3）。
+        refreshHexBoxes(true);
+    };
+}
+// 预览素材（用户验收五轮）：按键不透明度 + 亮/暗背景图（state 带
+// base64，source=none 时无图）。
+let pvKeyAlpha = 1;
+let pvBgLightImg = "none", pvBgDarkImg = "none";
+
+// 最终色彩预览（用户验收三轮起持续升级）：任一滑条拖动实时反映。键面
+// 组跟随（keyHue/keySat=-1）时用背景组的本地拖动值，脱离跟随后用自己
+// 的；不透明度与背景图同样进预览（亮/暗两板各取各的图）。
+function updateThemePreview() {
+    const pv = $("themePreview");
+    if (!pv) return;
+    pv.style.setProperty("--pv-hue", String(Math.round(themeHueShown)));
+    pv.style.setProperty("--pv-sat", String(themeSatShown / 100));
+    const kh = keyHueFollow ? themeHueShown : keyHueShown;
+    const ks = keySatFollow ? themeSatShown : keySatShown;
+    pv.style.setProperty("--pv-key-hue", String(Math.round(kh)));
+    pv.style.setProperty("--pv-key-sat", String(ks / 100));
+    pv.style.setProperty("--pv-key-alpha", String(pvKeyAlpha));
+    pv.style.setProperty("--pv-bg-img-light", pvBgLightImg);
+    pv.style.setProperty("--pv-bg-img-dark", pvBgDarkImg);
+    // #61 三轮（原色模型）：预览推派生系数 t=lift/50（CSS 按组系数
+    // 乘法派生）；键面跟随（keyL=-1 语义）时取背景组 lift。
+    pv.style.setProperty("--pv-bg-lt", themeLShown / 50);
+    const kl = keyLFollow ? themeLShown : keyLShown;
+    pv.style.setProperty("--pv-key-lt", kl / 50);
+    refreshHexBoxes();
+}
+
+/* --- render ------------------------------------------------------------ */
+
+function render(state) {
+    state = state || {};
+    renderIme(state);
+    renderDoublePinyin(state);
+    renderFeel(state);
+    renderLandscape(state);
+    renderVoice(state);
+    renderAsr(state);
+    renderCustom(state);
+    renderKeyboards(state);
+    renderCustomPhrases(state);
+    renderUserWords(state);
+    renderLexicon(state);
+    renderDictBase(state);
+    renderFlypy(state);
+    renderUpdate(state);
+    renderAbout(state);
+}
+
+/** #39 横屏三级页：安全区开关 + 高度上限/不透明度滑杆（滑杆拖动
+ *  即写 pref，回显容错野值）。 */
+function renderLandscape(state) {
+    const safe = $("landscapeSafeArea");
+    if (safe && document.activeElement !== safe) safe.checked = state.landscapeSafeArea !== 0;
+    // #H 物理键盘形态档回显（焦点中不抢用户操作）。
+    const hwkb = $("hwkbForm");
+    if (hwkb && document.activeElement !== hwkb) hwkb.value = state.hwkbForm || "candidates";
+    const qsp = $("quickSwitchPolicy");
+    if (qsp && document.activeElement !== qsp) qsp.value = state.quickSwitchPolicy || "fixed";
+    const ceil = $("landscapeCeil");
+    const ceilOut = $("landscapeCeilOut");
+    const ceilVal = Number(state.landscapeCeil);
+    if (ceil && Number.isFinite(ceilVal) && ceilVal >= 40 && ceilVal <= 100
+        && document.activeElement !== ceil) ceil.value = String(ceilVal);
+    if (ceilOut) ceilOut.textContent = Math.round(Number(ceil && ceil.value)) + "%";
+    const op = $("landscapeOpacity");
+    const opOut = $("landscapeOpacityOut");
+    const opVal = Number(state.landscapeOpacity);
+    if (op && Number.isFinite(opVal) && opVal >= 10 && opVal <= 100
+        && document.activeElement !== op) op.value = String(opVal);
+    if (opOut) opOut.textContent = Math.round(Number(op && op.value)) + "%";
+    // 横屏键盘高度（3.74.10）：与竖屏滑块同口径，横竖屏分开记忆；
+    // 0 = 默认（横屏上限 CSS px）。
+    const kbh = $("kbHeightLandscape");
+    if (kbh) {
+        const min = Number(state.kbHeightLandscapeMin ?? 170);
+        const max = Number(state.kbHeightLandscapeMax ?? 300);
+        const def = Number(state.kbHeightLandscapeDefault ?? max);
+        kbh.min = String(min);
+        kbh.max = String(max);
+        kbh.step = "5";
+        const saved = Number(state.kbHeightLandscape ?? 0);
+        if (document.activeElement !== kbh) {
+            kbh.value = String(saved >= min && saved <= max ? saved : def);
+        }
+        kbh.dataset.default = String(def);
+        rangeOut("kbHeightLandscape", kbh.value + " px");
+    }
+}
+
+/** 键盘手感（mode-fallback §3/§4）：底部留白 + 长按/滑动/光标微调。
+ *  值来自桥接 state（与 IME hello 同一份 prefs 回落逻辑）；取值先对
+ *  合法档位白名单校验，避免把 state 里的野值灌进 select。 */
+function renderFeel(state) {
+    const setSelect = (id, value, allowed) => {
+        const node = $(id);
+        if (!node) return;
+        const text = String(value);
+        if (allowed.includes(text) && document.activeElement !== node) node.value = text;
+    };
+    setSelect("bottomPadPortrait", state.bottomPadPortrait ?? 0, ["0", "12", "24", "36", "48"]);
+    setSelect("bottomPadLandscape", state.bottomPadLandscape ?? 0, ["0", "12", "24", "36", "48"]);
+    // #42 候选字号滑杆（80-150）：拖动中不被 state 回显打断；state
+    //  未带该键时回落 100%（老 bridge 推送）。
+    {
+        const cand = $("candidateFont");
+        const candVal = Number(state.candidateFont ?? 100);
+        if (Number.isFinite(candVal) && candVal >= 80 && candVal <= 150 &&
+            document.activeElement !== cand) {
+            cand.value = String(candVal);
+        }
+        const shown = parseInt(cand.value, 10);
+        $("candidateFontOut").textContent =
+            `${Number.isFinite(shown) ? shown : 100}%`;
+    }
+    // #70 键帽字号滑杆（80-150）：交互口径同候选字号。
+    {
+        const kc = $("keycapFont");
+        const kcVal = Number(state.keycapFont ?? 100);
+        if (Number.isFinite(kcVal) && kcVal >= 50 && kcVal <= 150 &&
+            document.activeElement !== kc) {
+            kc.value = String(kcVal);
+        }
+        const shown = parseInt(kc.value, 10);
+        $("keycapFontOut").textContent =
+            `${Number.isFinite(shown) ? shown : 100}%`;
+    }
+    // #70 用户字体：状态行 + 「恢复系统字体」显隐。digest 空说明未导入
+    // 或文件丢失（含恢复备份后的换机场景），提示重新导入。导入结果
+    // （userFontNoteHold）优先于 state 渲染，直到用户发起下一次操作。
+    {
+        const font = state.userFont || {};
+        $("btnClearFont").hidden = !font.digest;
+        $("userFontNote").textContent = userFontNoteHold !== null
+            ? userFontNoteHold
+            : (font.digest ? t("input.feel.userFontActive", { name: font.name || "?" }) : "");
+    }
+    setSelect("preeditFont", state.preeditFont ?? 0, ["0", "1", "2"]);
+    setSelect("oneHand", state.oneHand ?? 0, ["0", "1", "2"]);
+    setSelect("oneHandPad", state.oneHandPad ?? 0, ["0", "15", "25", "35"]);
+    setSelect("sideContent", state.sideContent ?? 0, ["0", "1"]);
+    // 外观页:色彩模式 + 按键不透明度。
+    const themeSel = $("themeMode");
+    if (themeSel) {
+        const mode = state.themeMode || "auto";
+        themeSel.value = ["auto", "light", "dark"].includes(mode) ? mode : "auto";
+    }
+    // #31 键盘色调：预置色板（单选 swatch 行）+ 自定义色相滑条。
+    // 自定义 hue（0-360）优先于预置：有自定义值时滑条亮「已自定义」态
+    // 且预置全不选中；-1（未自定义）时滑条停在各预置对应的 hue。
+    const swatches = $("themePresetSwatches");
+    // #61 亮度偏移回显（hex 框编辑中不受回推打扰——refreshHexBoxes 自带
+    // activeElement 守卫；shown 值仍要更新，失焦后能对齐最新状态）。
+    const tl = Number(state.themeL);
+    if (Number.isFinite(tl) && tl >= -50 && tl <= 50) themeLShown = Math.round(tl);
+    const klv = Number(state.keyL);
+    if (Number.isFinite(klv) && (klv === -1 || (klv >= -50 && klv <= 50))) {
+        keyLFollow = klv === -1;
+        keyLShown = keyLFollow ? (Number.isFinite(tl) ? Math.round(tl) : 0) : Math.round(klv);
+    }
+    bindHexBox("theme");
+    bindHexBox("key");
+    // 跟随键盘（组级开关，2026-10-13）：开=hue/sat 都继承（-1）；关=把
+    // 当前显示值写成显式（否则 -1 关掉后没有独立值可用）。亮度偏移
+    // 恒独立（keyL 无继承语义），开关不动它。
+    const keyFollow = $("keyFollow");
+    if (keyFollow) {
+        if (document.activeElement !== keyFollow) keyFollow.checked = keyHueFollow && keySatFollow;
+        keyFollow.onchange = () => {
+            if (keyFollow.checked) {
+                call("setKeyHue", -1);
+                call("setKeySat", -1);
+                call("setKeyL", -1);   // 整原色跟随（三轮）
+            } else {
+                call("setKeyHue", keyHueFollow ? themeHueShown : keyHueShown);
+                call("setKeySat", keySatFollow ? themeSatShown : keySatShown);
+                call("setKeyL", keyLShown);
+            }
+        };
+    }
+    const hueInput = $("themeHue");
+    const hue = Number(state.themeHue);
+    const hasCustomHue = Number.isFinite(hue) && hue >= 0 && hue <= 360;
+    if (swatches) {
+        const current = !hasCustomHue && THEME_PRESET_LIST.includes(state.themePreset)
+            ? state.themePreset : "";
+        swatches.textContent = "";
+        THEME_PRESET_LIST.forEach(id => {
+            const dot = document.createElement("button");
+            dot.type = "button";
+            dot.className = "preset-swatch" + (id === current ? " active" : "");
+            dot.dataset.preset = id;
+            dot.style.setProperty("--sw", THEME_PRESET_COLORS[id] || "#23c890");
+            dot.setAttribute("aria-label", t("preset." + id));
+            dot.setAttribute("aria-pressed", id === current ? "true" : "false");
+            dot.addEventListener("click", () => call("setThemePreset", id));
+            swatches.append(dot);
+        });
+    }
+    if (hueInput) {
+        // 焦点守卫（与 setSelect 同款）：拖动中的异步 state 回推不得覆盖
+        // 本地值——否则旧回包会把滑条拽回旧 hue，松手提交的就是错值。
+        // 显示值存模块级（themeHueShown 等）：renderFeel 每轮重建局部
+        // let，跳过赋值也保不住上一轮的拖动值（codex R2 复核）。
+        if (document.activeElement !== hueInput && !hexEditing()) {
+            themeHueShown = hasCustomHue ? Math.round(hue)
+                : PRESET_HUE[THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic"] || 160;
+            hueInput.value = String(themeHueShown);
+            hueInput.style.setProperty("--thumb-hue", String(themeHueShown));
+        }
+        hueInput.classList.toggle("customized", hasCustomHue);
+        hueInput.oninput = () => {
+            // 拖动只跟 thumb 颜色与预览（本地），松手才落盘+广播生效
+            // （hello 全量重推，拖动实时推会抖）。
+            hueInput.style.setProperty("--thumb-hue", hueInput.value);
+            const v = Number(hueInput.value);
+            if (Number.isFinite(v)) { themeHueShown = Math.max(0, Math.min(360, Math.round(v))); updateThemePreview(); }
+        };
+        hueInput.onchange = () => {
+            const v = Math.round(Number(hueInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 360) call("setThemeHue", v);
+        };
+    }
+    // 饱和度滑块（黑白灰，用户验收二轮）：0=纯灰度。与 hue 同款焦点
+    // 守卫 + 松手提交。
+    const satInput = $("themeSat");
+    if (satInput) {
+        const sat = Number(state.themeSat);
+        if (document.activeElement !== satInput && !hexEditing()) {
+            themeSatShown = Number.isFinite(sat) && sat >= 0 && sat <= 100 ? Math.round(sat) : 100;
+            satInput.value = String(themeSatShown);
+        }
+        satInput.oninput = () => {
+            const v = Number(satInput.value);
+            if (Number.isFinite(v)) { themeSatShown = Math.max(0, Math.min(100, Math.round(v))); updateThemePreview(); }
+        };
+        satInput.onchange = () => {
+            const v = Math.round(Number(satInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 100) call("setThemeSat", v);
+        };
+    }
+    // 皮肤双组（用户验收四轮+codex 收口）：键面 hue/sat 独立滑条；
+    // -1=跟随背景组（饱和度继承标记同样为 -1，100 是显式全彩）。
+    const keyHueInput = $("keyHue");
+    if (keyHueInput) {
+        const kv = Number(state.keyHue);
+        const hasKeyHue = Number.isFinite(kv) && kv >= 0 && kv <= 360;
+        // 跟随态也受焦点守卫：拖动中（oninput 已置 false）的异步回推
+        // 不得把它翻回跟随，否则预览又跳回背景组取值。
+        if (document.activeElement !== keyHueInput) keyHueFollow = !hasKeyHue;
+        // 焦点守卫覆盖到显示值与预览（模块级变量才有「保留」可言）。
+        if (document.activeElement !== keyHueInput && !hexEditing()) {
+            keyHueShown = hasKeyHue ? Math.round(kv) : themeHueShown;
+            keyHueInput.value = String(keyHueShown);
+            keyHueInput.style.setProperty("--thumb-hue", String(keyHueShown));
+        }
+        keyHueInput.classList.toggle("customized", hasKeyHue);
+        keyHueInput.oninput = () => {
+            // 拖动键面滑条=脱离跟随（codex R2-P2：跟随态下拖动预览不动）。
+            keyHueFollow = false;
+            keyHueInput.style.setProperty("--thumb-hue", keyHueInput.value);
+            const v = Number(keyHueInput.value);
+            if (Number.isFinite(v)) { keyHueShown = Math.max(0, Math.min(360, Math.round(v))); updateThemePreview(); }
+        };
+        keyHueInput.onchange = () => {
+            const v = Math.round(Number(keyHueInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 360) call("setKeyHue", v);
+        };
+        // 键面色调同款取色（用户验收五轮）：预置色板点选=setKeyHue(预置
+        // hue)。跟随不再走色板档位（2026-10-13 验收裁定）：独立开关
+        // keyFollow 承担（见下方），色板只留预置。
+        const keySwatches = $("keyHueSwatches");
+        if (keySwatches) {
+            keySwatches.textContent = "";
+            THEME_PRESET_LIST.forEach(id => {
+                const dot = document.createElement("button");
+                dot.type = "button";
+                const active = hasKeyHue && Math.round(kv) === PRESET_HUE[id];
+                dot.className = "preset-swatch" + (active ? " active" : "");
+                dot.style.setProperty("--sw", THEME_PRESET_COLORS[id] || "#23c890");
+                dot.setAttribute("aria-label", t("preset." + id));
+                dot.setAttribute("aria-pressed", active ? "true" : "false");
+                dot.addEventListener("click", () => call("setKeyHue", PRESET_HUE[id]));
+                keySwatches.append(dot);
+            });
+        }
+    }
+    const keySatInput = $("keySat");
+    if (keySatInput) {
+        const ks = Number(state.keySat);
+        const hasKeySat = Number.isFinite(ks) && ks >= 0 && ks <= 100;
+        // 跟随态同受焦点守卫（见 keyHue）。
+        if (document.activeElement !== keySatInput) keySatFollow = !hasKeySat;
+        if (document.activeElement !== keySatInput && !hexEditing()) {
+            keySatShown = hasKeySat ? Math.round(ks) : themeSatShown;
+            keySatInput.value = String(keySatShown);
+        }
+        rangeOut("keySat", keySatShown + "%");
+        keySatInput.oninput = () => {
+            // 拖动键面滑条=脱离跟随（同 keyHue）。
+            keySatFollow = false;
+            const v = Number(keySatInput.value);
+            if (Number.isFinite(v)) {
+                keySatShown = Math.max(0, Math.min(100, Math.round(v)));
+                rangeOut("keySat", keySatShown + "%");
+                updateThemePreview();
+            }
+        };
+        keySatInput.onchange = () => {
+            const v = Math.round(Number(keySatInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 100) call("setKeySat", v);
+        };
+    }
+    // 预览素材先行初始化（不透明度 + 亮/暗背景图），再刷预览。
+    const opacity = $("keyOpacity");
+    if (opacity) {
+        const opPct = Math.max(5, Math.min(100, Number(state.keyOpacity ?? 74)));
+        pvKeyAlpha = opPct / 100;
+        opacity.value = String(opPct);
+        rangeOut("keyOpacity", opPct + "%");
+    }
+    // toast 停留时长回显（300-10000ms；脏值夹回默认，与 readToastMs 同口径）。
+    const toastMsInput = $("toastMs");
+    if (toastMsInput) {
+        const ms = Math.max(300, Math.min(10000, Number(state.toastMs ?? 1600)));
+        toastMsInput.value = String(ms);
+        rangeOut("toastMs", ms + " ms");
+    }
+    const pvBg = (imgKey, srcKey) => (state[srcKey] && state[srcKey] !== "none" && state[imgKey])
+        ? `url("${state[imgKey].startsWith('https://feelime.local/keyboard/background/')
+            ? state[imgKey] : 'data:image/jpeg;base64,' + state[imgKey]}")` : "none";
+    pvBgLightImg = pvBg("bgImageLight", "bgImageLightSource");
+    pvBgDarkImg = pvBg("bgImageDark", "bgImageDarkSource");
+    updateThemePreview();
+    const glassGrid = $("glassSkinGrid");
+    if (glassGrid) {
+        const active = typeof state.glassSkin === "string" ? state.glassSkin : "";
+        glassGrid.textContent = "";
+        GLASS_SKIN_LIST.forEach(skin => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "skin-card" + (skin.id === active ? " active" : "");
+            btn.dataset.skin = skin.id;
+            btn.setAttribute("aria-pressed", skin.id === active ? "true" : "false");
+            const dot = document.createElement("span");
+            dot.className = "skin-dot";
+            dot.style.setProperty("--sw", skin.color);
+            const label = document.createElement("span");
+            label.textContent = t("skin." + skin.id);
+            btn.append(dot, label);
+            btn.addEventListener("click", () => call("setGlassSkin", skin.id));
+            glassGrid.append(btn);
+        });
+    }
+    [["glassBlur", "glassBlur", 26, 0, 32], ["glassRadius", "glassRadius", 22, 8, 28],
+        ["panelOpacity", "panelOpacity", 42, 35, 100]].forEach(([id, key, fallback, min, max]) => {
+        const slider = $(id);
+        if (!slider || document.activeElement === slider) return;
+        const raw = Number(state[key]);
+        const value = Number.isFinite(raw) ? Math.max(min, Math.min(max, Math.round(raw))) : fallback;
+        slider.value = String(value);
+    });
+    const bubble = $("keyBubble");
+    if (bubble) bubble.checked = state.keyBubble === true;
+    const guard = $("cnEnComposingGuard");
+    if (guard) guard.checked = state.cnEnComposingGuard === true;
+    const scrub = $("preeditScrub");
+    if (scrub) scrub.checked = state.preeditScrub === true;
+    const symSplit = $("bottomSymSplit");
+    if (symSplit) symSplit.checked = state.bottomSymSplit === true;
+    const vrh = $("voiceReadyHaptic");
+    if (vrh) vrh.checked = state.voiceReadyHaptic === true;
+    const lingerSel = $("bubbleLinger");
+    if (lingerSel && document.activeElement !== lingerSel) {
+        lingerSel.value = String(state.bubbleLinger ?? 400);
+    }
+    const kbHeight = $("kbHeight");
+    if (kbHeight) {
+        const min = Number(state.kbHeightMin ?? 226);
+        const max = Number(state.kbHeightMax ?? 400);
+        const def = Number(state.kbHeightDefault ?? 272);
+        kbHeight.min = String(min);
+        kbHeight.max = String(max);
+        kbHeight.step = "5";
+        // 0 = 默认（键盘内置自适应默认 CSS px）；滑块位停在默认值上。
+        const saved = Number(state.kbHeightPortrait ?? 0);
+        kbHeight.value = String(saved >= min ? saved : def);
+        kbHeight.dataset.default = String(def);
+        rangeOut("kbHeight", kbHeight.value + " px");
+    }
+    // 背景图两组回显：source = none/builtin/custom（custom 选项按需挂载）。
+    [["bgImageLight", "bgImageLightSource"], ["bgImageDark", "bgImageDarkSource"]].forEach(([id, key]) => {
+        const sel = $(id);
+        if (!sel) return;
+        const src = state[key] || "none";
+        let opt = sel.querySelector('option[value="custom"]');
+        if (src === "custom" && !opt) {
+            opt = document.createElement("option");
+            opt.value = "custom";
+            opt.textContent = t("自定义");
+            sel.append(opt);
+        }
+        if (opt && src !== "custom") opt.remove();
+        sel.value = src === "custom" ? "custom" : src;
+    });
+    setSelect("holdMs", state.holdMs ?? 350, ["200", "300", "350", "450", "600"]);
+    setSelect("kbLayout", state.kbLayout === "14" ? "14" : "26", ["26", "14"]);
+    setSelect("scrubSpeed", state.scrubSpeed ?? 3, ["1", "2", "3", "4", "5"]);
+    const flickSwap = $("flickSwap");
+    if (flickSwap) flickSwap.checked = state.flickSwap === true;
+    const doubleShiftLock = $("doubleShiftLock");
+    if (doubleShiftLock) doubleShiftLock.checked = state.doubleShiftLock === true;
+    setSelect("popupSnap", state.popupSnap ?? 1, ["0", "1", "2"]);
+    const setToggle = (id, value) => {
+        const node = $(id);
+        if (node && document.activeElement !== node) node.checked = !!value;
+    };
+    setToggle("keySound", state.keySound);
+    const vol = $("keySoundVolume");
+    if (vol && document.activeElement !== vol) vol.value = String(state.keySoundVolume ?? 60);
+    if (vol) rangeOut("keySoundVolume", vol.value + "%");
+    setSelect("keyHapticStrength", String(state.keyHapticStrength ?? 1), ["0", "1", "2"]);
+    // 全局震动跟随系统（3.74.10）：开 = 强度用系统默认，弱/中/强
+    // 选择器置灰禁用；关 = 手动三档。
+    const followHaptic = state.keyHapticFollowSystem === true;
+    setToggle("keyHapticFollowSystem", followHaptic);
+    // 删除前确认（3.74.11）：默认开；老版本 state 缺该键时也按开回读。
+    setToggle("deleteConfirm", state.deleteConfirm !== false);
+    const strengthSel = $("keyHapticStrength");
+    if (strengthSel) strengthSel.disabled = followHaptic;
+    // #30-2 音效风格回读：custom 需文件在（native 已保证不悬空），文件行
+    // 仅在选了 custom 或已有文件时露出。
+    {
+        const style = state.keySoundStyle || "default";
+        const sel = $("keySoundStyle");
+        if (sel && document.activeElement !== sel) sel.value = style;
+        const name = $("keySoundName");
+        if (name) name.textContent = state.keySoundName
+            ? t("feel.keySound.current") + state.keySoundName : t("feel.keySound.none");
+        const fileRow = $("keySoundFileRow");
+        if (fileRow) fileRow.hidden = !(style === "custom" || state.keySoundName);
+    }
+    setToggle("keyHaptic", state.keyHaptic);
+    setToggle("preeditBold", state.preeditBold);
+    setToggle("preeditFrame", state.preeditFrame);
+}
+
+/** 双拼方案 + 键位图（dp-data.js 的 window.FeelimeDp 提供各方案键位）。 */
+function renderDoublePinyin(state) {
+    const select = $("dpScheme");
+    if (!select) return;
+    // 白名单直接取生成数据（dp-data.js 随方案列表再生成，不重复维护）。
+    const known = (window.FeelimeDp && window.FeelimeDp.schemes)
+        || ["ziranma", "flypy", "sogou"];
+    const scheme = known.includes(state.dpScheme)
+        ? state.dpScheme : "ziranma";
+    if (document.activeElement !== select) select.value = scheme;
+    // 模糊音分组开关：按位掩码勾选，焦点所在的组不回写（连续点按不被
+    // 异步 state 推送打断）。
+    const mask = Number(state.fuzzyPinyinMask) || 0;
+    document.querySelectorAll("input[data-fuzzy-bit]").forEach(box => {
+        if (document.activeElement === box) return;
+        box.checked = (mask & Number(box.dataset.fuzzyBit)) !== 0;
+    });
+    if (document.activeElement !== $("associationOn")) {
+        $("associationOn").checked = !!state.associationOn;
+    }
+    if (document.activeElement !== $("backspaceAssocOn")) {
+        $("backspaceAssocOn").checked = !!state.backspaceAssocOn;
+    }
+    if (document.activeElement !== $("wxSlashOn")) {
+        $("wxSlashOn").checked = !!state.wxSlashOn;
+    }
+    if (document.activeElement !== $("dynamicDateTimeOn")) {
+        $("dynamicDateTimeOn").checked = state.dynamicDateTimeOn !== false;
+    }
+    $("dpNote").textContent = t(`input.double.note.${select.value}`);
+    renderDpKeymap(select.value);
+}
+
+function renderDpKeymap(scheme) {
+    const host = $("dpKeymap");
+    if (!host) return;
+    host.replaceChildren();
+    const data = window.FeelimeDp || {};
+    const rows = data.maps && data.maps[scheme];
+    if (!Array.isArray(rows)) return;
+    const caption = document.createElement("div");
+    caption.className = "hint block";
+    caption.textContent = t("input.double.mapCaption");
+    host.append(caption);
+    // [key, final1, final2|null, initial|null] per cell; two finals stack
+    // inside the key, V's short pair shares one line ("ui ü").
+    rows.forEach(cells => {
+        const row = document.createElement("div");
+        row.className = "kmap-row";
+        cells.forEach(([key, first, second, initial]) => {
+            const cell = document.createElement("div");
+            cell.className = "kmap-key";
+            const cap = document.createElement("b");
+            cap.textContent = key === ";" ? ";" : key.toUpperCase();
+            cell.append(cap);
+            [first, second].forEach(final => {
+                if (!final) return;
+                const fin = document.createElement("span");
+                fin.textContent = final;
+                cell.append(fin);
+            });
+            if (initial) {
+                const ini = document.createElement("i");
+                ini.textContent = initial;
+                cell.append(ini);
+            }
+            row.append(cell);
+        });
+        host.append(row);
+    });
+}
+
+function renderIme(state) {
+    const ime = state.ime || {};
+    setLed("imeEnabledRow", !!ime.enabled);
+    setLed("imeDefaultRow", !!ime.isDefault);
+    $("btnEnableIme").hidden = !!ime.enabled;
+    $("btnPickIme").hidden = !!ime.isDefault;
+}
+
+function setLed(rowId, ok) {
+    const row = $(rowId);
+    if (!row) return;
+    const led = row.querySelector("[data-led]");
+    if (led) led.className = `led ${ok ? "ok" : "warn"}`;
+}
+
+function renderVoice(state) {
+    renderSpaceHold(state);
+    if (document.activeElement !== $("modelBackend")) {
+        $("modelBackend").value = state.modelBackend === "remote" ? "remote" : "auto";
+    }
+    const source = state.modelDownloadSource || {};
+    if (document.activeElement !== $("modelDownloadCustom")) {
+        $("modelDownloadCustom").value = source.customBase || "";
+    }
+    renderModelSourceRows(source, state.modelSourceSpeed || {});
+    $("modelSourceCustomBox").hidden = source.mode !== "custom";
+    const mic = state.mic || {};
+    setLed("micRow", !!mic.granted);
+    $("btnMic").hidden = !!mic.granted;
+    const host = $("modelRows");
+    const models = Array.isArray(state.models) ? state.models : [];
+    const existing = new Map([...host.querySelectorAll(".model")].map(node => [node.dataset.id, node]));
+    const current = new Set();
+    models.forEach(model => {
+        current.add(model.id);
+        let node = existing.get(model.id);
+        if (!node) {
+            node = buildModelRow(model);
+            host.append(node);
+        }
+        updateModelRow(node, model);
+    });
+    existing.forEach((node, id) => { if (!current.has(id)) node.remove(); });
+}
+
+/** 下载源单选行（podic UpdateSourcePicker 语义）：●/○ 选中、行内显示
+ * 测速结果（ms/不可用/最快✓），点行即保存；custom 行只展开输入框。 */
+function renderModelSourceRows(source, speed) {
+    const host = $("modelSourceRows");
+    if (!host) return;
+    const mode = ["gitee", "github", "ghproxy", "custom"].includes(source.mode) ? source.mode : "gitee";
+    const entries = Object.entries(speed).filter(([key]) => key !== "running");
+    const values = entries.map(([, value]) => value).filter(value => value > 0);
+    const fastest = values.length ? Math.min(...values) : null;
+    const button = $("btnSpeedTest");
+    if (button) {
+        button.disabled = !!speed.running;
+        button.textContent = speed.running ? t("voice.downloadSource.testing") : t("voice.downloadSource.speedTest");
+    }
+    host.querySelectorAll(".source-row").forEach(node => node.remove());
+    [
+        ["gitee", "voice.downloadSource.gitee"],
+        ["github", "voice.downloadSource.github"],
+        ["ghproxy", "voice.downloadSource.ghproxy"],
+        ["custom", "voice.downloadSource.custom"],
+    ].forEach(([value, labelKey]) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = `source-row${mode === value ? " active" : ""}`;
+        row.setAttribute("role", "radio");
+        row.setAttribute("aria-checked", mode === value ? "true" : "false");
+        const label = document.createElement("span");
+        label.className = "source-row-label";
+        const dot = document.createElement("i");
+        dot.className = "source-dot";
+        dot.textContent = mode === value ? "●" : "○";
+        label.append(dot);
+        const labelText = document.createElement("span");
+        labelText.textContent = t(labelKey);
+        label.append(labelText);
+        if (fastest !== null && speed[value] === fastest && value !== "custom") {
+            const badge = document.createElement("em");
+            badge.className = "source-fastest";
+            badge.textContent = t("voice.downloadSource.fastest");
+            label.append(badge);
+        }
+        row.append(label);
+        if (Object.prototype.hasOwnProperty.call(speed, value)) {
+            const result = document.createElement("span");
+            result.className = speed[value] > 0 ? "source-ms" : "source-fail";
+            result.textContent = speed[value] > 0 ? `${speed[value]} ms` : t("voice.downloadSource.unavailable");
+            row.append(result);
+        }
+        row.addEventListener("click", () => {
+            if (value === "custom") {
+                $("modelSourceCustomBox").hidden = false;
+                $("modelDownloadCustom").focus();
+                return;
+            }
+            call("setModelDownloadSource", value, $("modelDownloadCustom").value || "");
+            setNote("modelNote", t("note.saved"));
+        });
+        host.append(row);
+    });
+}
+
+function buildModelRow(model) {
+    const node = document.createElement("div");
+    node.className = "model";
+    node.dataset.id = model.id;
+    node.innerHTML = `
+        <div class="model-head">
+            <span class="model-name"></span>
+            <span class="model-size"></span>
+        </div>
+        <p class="model-status"></p>
+        <div class="progress" hidden><i></i></div>
+        <div class="model-actions"></div>`;
+    node.querySelector(".model-name").textContent = modelTitle(model);
+    node.querySelector(".model-size").textContent = mb(model.sizeBytes);
+    const actions = node.querySelector(".model-actions");
+    const button = (kind, className, textKey) => {
+        const buttonNode = document.createElement("button");
+        buttonNode.type = "button";
+        buttonNode.className = `btn small ${className}`.trim();
+        buttonNode.textContent = t(textKey);
+        buttonNode.setAttribute("aria-label", `${t(textKey)}: ${modelTitle(model)}`);
+        buttonNode.dataset.action = kind;
+        if (kind === "download") buttonNode.addEventListener("click", () => {
+            // A retry starts a new request. Do not let a previous failure
+            // survive the downloading state or a later locale refresh.
+            lastModelError = null;
+            setNote("modelNote", "");
+            call("downloadModel", model.id);
+        });
+        if (kind === "cancel") buttonNode.addEventListener("click", () => call("cancelModelDownload"));
+        if (kind === "remove") buttonNode.addEventListener("click", () => call("deleteModel", model.id));
+        if (kind === "import") buttonNode.addEventListener("click", () => {
+            lastModelError = null;
+            setNote("modelNote", "");
+            call("openModelDocument", model.id);
+        });
+        return buttonNode;
+    };
+    actions.append(
+        button("download", "primary", "model.download"),
+        button("cancel", "", "model.cancel"),
+        button("remove", "link", "model.remove"),
+        button("import", "", "model.import"),
+    );
+    return node;
+}
+
+function updateModelRow(node, model) {
+    const status = node.querySelector(".model-status");
+    const bar = node.querySelector(".progress");
+    const download = node.querySelector('[data-action="download"]');
+    const cancel = node.querySelector('[data-action="cancel"]');
+    const remove = node.querySelector('[data-action="remove"]');
+    const importer = node.querySelector('[data-action="import"]');
+    node.querySelector(".model-name").textContent = modelTitle(model);
+    const hasArchive = model.downloadBytes > model.sizeBytes &&
+        model.state !== "built_in" && model.state !== "installed";
+    node.querySelector(".model-size").textContent = hasArchive
+        ? t("model.transferSize", { download: mb(model.downloadBytes), installed: mb(model.sizeBytes) })
+        : mb(model.sizeBytes);
+    node.querySelectorAll("[data-action]").forEach(button => {
+        const key = {
+            download: model.state === "broken" ? "model.redownload" : "model.download",
+            cancel: "model.cancel",
+            remove: "model.remove",
+            import: "model.import",
+        }[button.dataset.action];
+        if (key) {
+            button.textContent = t(key);
+            button.setAttribute("aria-label", `${t(key)}: ${modelTitle(model)}`);
+        }
+    });
+    status.className = "model-status";
+    bar.hidden = true;
+    cancel.hidden = true;
+    remove.hidden = true;
+    importer.hidden = false;
+    download.hidden = true;
+    switch (model.state) {
+        case "built_in":
+            if (model.errorCode) {
+                status.textContent = eventText(model, "error.MODEL_DOWNLOAD_FAILED");
+                status.classList.add("bad");
+                download.textContent = t("model.redownload");
+                download.hidden = false;
+            } else {
+                status.textContent = t("model.builtIn");
+                status.classList.add("ok");
+            }
+            break;
+        case "installed":
+            if (model.errorCode) {
+                status.textContent = eventText(model, "error.MODEL_DOWNLOAD_FAILED");
+                status.classList.add("bad");
+                download.textContent = t("model.redownload");
+                download.hidden = false;
+                remove.hidden = false;
+            } else {
+                status.textContent = t("model.installed");
+                status.classList.add("ok");
+                remove.hidden = false;
+            }
+            break;
+        case "downloading":
+            status.textContent = t("model.downloading", { percent: lastPercentFor(model.id) });
+            status.classList.add("warn");
+            bar.hidden = false;
+            bar.firstElementChild.style.width = `${lastPercentFor(model.id)}%`;
+            cancel.hidden = false;
+            importer.hidden = true;
+            break;
+        case "importing":
+            status.textContent = t("model.importing");
+            status.classList.add("warn");
+            bar.hidden = false;
+            cancel.hidden = false;
+            importer.hidden = true;
+            break;
+        case "broken":
+            status.textContent = model.errorCode ?
+                eventText(model, "error.MODEL_DOWNLOAD_FAILED") : t("model.broken");
+            status.classList.add("bad");
+            download.textContent = t("model.redownload");
+            download.hidden = false;
+            break;
+        default:
+            if (model.errorCode) {
+                status.textContent = eventText(model, "error.MODEL_DOWNLOAD_FAILED");
+                status.classList.add("bad");
+                download.textContent = t("model.redownload");
+            } else {
+                status.textContent = t("model.missing", { size: mb(model.downloadBytes || model.sizeBytes) });
+                download.textContent = t("model.download");
+            }
+            download.hidden = false;
+            break;
+    }
+}
+
+function lastPercentFor(id) { return progressPercent[id] ?? 0; }
+
+function renderProgress(event) {
+    const percent = Math.max(0, Math.min(100, Number(event.percent) || 0));
+    progressPercent[event.id] = percent;
+    const node = document.querySelector(`.model[data-id="${event.id}"]`);
+    if (!node) return;
+    const bar = node.querySelector(".progress");
+    const status = node.querySelector(".model-status");
+    bar.hidden = false;
+    bar.firstElementChild.style.width = `${percent}%`;
+    status.textContent = t("model.downloadingBytes", {
+        percent, done: mb(event.doneBytes), total: mb(event.totalBytes),
+    });
+}
+
+function renderImportStatus(event) {
+    const node = document.querySelector(`.model[data-id="${event.id}"]`);
+    if (!node) return;
+    const status = node.querySelector(".model-status");
+    const labels = {
+        reading: "model.importing",
+        validating: "model.importValidating",
+        installing: "model.importInstalling",
+    };
+    status.textContent = t(labels[event.status] || "model.importing");
+    status.className = "model-status warn";
+}
+
+function renderModelConsent(event) {
+    lastModelError = null;
+    pendingModelConsent = {
+        id: String(event.id || ""),
+        name: String(event.name || event.id || ""),
+        bytes: Number(event.bytes || 0),
+    };
+    const consent = $("modelConsent");
+    consent.hidden = false;
+    $("modelConsentMessage").textContent = t("model.consent.message", {
+        name: pendingModelConsent.name,
+        bytes: mb(pendingModelConsent.bytes),
+    });
+    setNote("modelNote", "");
+}
+
+function hideModelConsent() {
+    pendingModelConsent = null;
+    const consent = $("modelConsent");
+    if (consent) consent.hidden = true;
+}
+
+// Rejected saves must keep the draft: a later pushState (model download
+// finishing, another setting changing) would otherwise overwrite the
+// unsaved text with the old prefs while the error note still shows.
+let asrHotwordsDirty = false;
+
+function renderAsr(state) {
+    const asr = state.asr || {};
+    $("asrIdleUnload").checked = asr.idleUnload === true;
+    $("powerSaving").checked = state.powerSaving === true;
+    const field = $("hotwords");
+    if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
+    if (document.activeElement !== field && !asrHotwordsDirty) field.value = asr.hotwords || "";
+    if (document.activeElement !== $("stripPeriod")) $("stripPeriod").checked = !!asr.stripPeriod;
+    if (document.activeElement !== $("numItn")) $("numItn").checked = asr.itn === true;
+}
+
+function renderCustom(state) {
+    const custom = state.custom || {};
+    $("customSummary").textContent = customSummary(custom.summary);
+    const ckStatus = document.getElementById("ckStatus");
+    if (ckStatus) ckStatus.textContent = customSummary(custom.summary);
+    // 开关只管符号页定制（用户裁定 2026-10-12）：关闭时首页入口卡随
+    // 之隐藏（undefined=未下发=默认显示，与 native 恒推 enabled 对齐）。
+    const symCard = document.getElementById("ckSymCard");
+    if (symCard) symCard.hidden = custom.enabled === false;
+    if (document.activeElement !== $("customEnabled")) $("customEnabled").checked = !!custom.enabled;
+    if (document.activeElement !== $("customJson") && !$(`customJson`).value && !ckDirty) {
+        $("customJson").value = custom.json || "";
+    }
+}
+
+function customSummary(summary) {
+    const raw = String(summary || "");
+    if (!raw || raw === "未定制" || raw.toLowerCase() === "no custom keys") return t("custom.none");
+    const count = raw.match(/(?:已定制\s*(\d+)|(?:custom keys?\s*)?(\d+)\s*custom keys?)/i);
+    return count ? t("custom.count", { count: count[1] || count[2] }) : raw;
+}
+
+/* --- custom phrases (issue #17) ----------------------------------------- */
+
+/** 桥侧真相源镜像：state.customPhrases = {enabled, items}。CRUD 都在
+ *  这份副本上全量重发（saveCustomPhrases），native 落盘+派生+引擎重载。
+ *  初始为 null（state 未到）：全量重发的语义下，拿空表当真相源会把
+ *  种子表覆盖清空，所以 CRUD 在 state 到达前一律拒绝。 */
+let phraseItems = null;
+let phraseEditing = -1;
+
+function phraseState() {
+    return { enabled: !!($("phrasesOn").checked), items: phraseItems };
+}
+
+/** 设置搜索（验收 2026-09-24，同日二改）：索引到「行」级——每个设置行
+ *  （label + 说明小注 + data-keywords 意图词 + 所在卡标题）都是独立条目，
+ *  搜「背景」出「亮色背景」「暗色背景」而不是只有「外观」。卡片标题条目
+ *  只做兜底：它的行有命中时从结果里隐掉，避免同卡重复。 */
+let searchIndex = null;
+
+function buildSearchIndex() {
+    const entries = [];
+    document.querySelectorAll(".page").forEach(page => {
+        const pageName = page.dataset.page;
+        if (pageName === "home") return;
+        const pageTitle = page.querySelector(".page-title")?.textContent || pageName;
+        page.querySelectorAll("section.card").forEach(card => {
+            const heading = card.querySelector(".section-heading h2");
+            const title = heading?.textContent?.trim() || "";
+            const cardKey = heading?.id || title;
+            card.querySelectorAll(".row, label.row").forEach(row => {
+                // 标签只取主 span：querySelector(".row-label span, .row-label")
+                // 会按文档序先命中 .row-label 本身，textContent 连说明小注
+                // 一起聚合，标题就脏了。
+                const label = row.querySelector(".row-label span") || row.querySelector(".row-label");
+                const labelText = label?.textContent?.trim() || "";
+                const hintParts = [];
+                row.querySelectorAll("small").forEach(node => hintParts.push(node.textContent));
+                const keywords = [];
+                row.querySelectorAll("[data-keywords]").forEach(node =>
+                    keywords.push(node.dataset.keywords));
+                // 无名行（纯布局）不入索引；条目文本聚合 label/说明/意图词/卡名。
+                if (!labelText && !hintParts.length && !keywords.length) return;
+                // 锚 id 优先取行内控件 id（每个设置行都有），其次意图词元素
+                // 或行自身——搜索点击与键盘 tile 深链共用 focusSetting(id)。
+                const control = row.querySelector("select[id], input[id], button[id]");
+                const anchorId = (control && control.id)
+                    || row.querySelector("[data-keywords][id]")?.id
+                    || row.id
+                    || heading?.id
+                    || "";
+                entries.push({
+                    page: pageName,
+                    pageTitle,
+                    title: labelText || title,
+                    desc: hintParts.join(" ").replace(/\s+/g, " ").trim(),
+                    anchorId,
+                    anchorEl: row,
+                    cardKey,
+                    rowHit: true,
+                    text: [labelText, ...hintParts, ...keywords, title]
+                        .filter(Boolean).join(" ").replace(/\s+/g, " "),
+                });
+            });
+            const parts = [title];
+            card.querySelectorAll(".row-label span, .row-label small").forEach(node => {
+                parts.push(node.textContent);
+            });
+            entries.push({
+                page: pageName,
+                pageTitle,
+                title,
+                desc: "",
+                anchorId: heading?.id || "",
+                anchorEl: heading || card,
+                cardKey,
+                rowHit: false,
+                text: parts.filter(Boolean).join(" ").replace(/\s+/g, " "),
+            });
+        });
+    });
+    return entries;
+}
+
+/** 跳转后的呼吸灯提醒：整个设置项背景呼吸三次（约 1.9s）。 */
+function flashAnchor(el) {
+    if (!el) return;
+    el.classList.remove("search-flash");
+    void el.offsetWidth; // reflow 让重播动画可靠触发
+    el.classList.add("search-flash");
+    setTimeout(() => el.classList.remove("search-flash"), 2100);
+}
+
+/** 直达某个设置项（搜索点击 / 键盘快捷设置 tile 深链共用）：翻到所在页
+ *  → 滚到整行 → 整行呼吸三次提醒。hashtag 同步写入便于定位与自动化
+ *  断言。返回 false 表示目标不存在（调用方可以重试）。 */
+function focusSetting(id) {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    const page = el.closest(".page");
+    if (page && page.dataset.page) showPage(page.dataset.page);
+    const row = el.closest(".row, label.row, section.card") || el;
+    // 全程同步执行，不进 rAF/setTimeout：键盘 tile 深链时 WebView 正从
+    // IME 覆盖下恢复，入队的 rAF 回调在 ace 真机上整批丢失；搜索点击
+    // 翻到外观页会弹真键盘预览，WebView 被压后台连 setTimeout 都冻结。
+    // scrollIntoView 与 hidden 切换都是同步布局，无须等帧；呼吸是 CSS
+    // 合成器动画，类挂上就播。
+    if (typeof row.scrollIntoView === "function") {
+        row.scrollIntoView({ block: "center" });
+    }
+    flashAnchor(row);
+    // 显式带 #：不依赖浏览器对 hash 赋值的规范化（fake DOM/自动化同口径）。
+    // #51 hashtag 直达：写入即消费（lastAppliedHash 挡 hashchange 回环）。
+    if (window.location) {
+        lastAppliedHash = "#" + id;
+        window.location.hash = lastAppliedHash;
+    }
+    return true;
+}
+
+// #51 hashtag 直达：设置项锚 #<element-id>。启动消费一次；外部改写
+// （地址栏/automation）经 hashchange 重新聚焦。focusSetting 自己写回的
+// hash 不再回环。
+let lastAppliedHash = "";
+function applyLocationHash() {
+    const hash = (window.location && window.location.hash) || "";
+    if (!hash || hash === lastAppliedHash) return;
+    focusSetting(hash.slice(1));
+}
+
+function runSettingsSearch(query) {
+    const box = $("searchResults");
+    if (!box) return;
+    const q = query.trim().toLowerCase();
+    if (!q) { box.hidden = true; box.textContent = ""; return; }
+    if (!searchIndex) searchIndex = buildSearchIndex();
+    const matched = searchIndex.filter(entry => entry.text.toLowerCase().includes(q));
+    // 标题命中排在说明/关键词命中前面（皮肤页重排后「背景」的首中曾
+    // 变成说明里带「背景」二字的键面色调——用户搜标题词要的是那个设置）。
+    matched.sort((a, b) =>
+        (b.title.toLowerCase().includes(q) ? 1 : 0) - (a.title.toLowerCase().includes(q) ? 1 : 0));
+    // 卡兜底条目在同卡有行命中时让位——行级条目就是更准的答案。
+    const rowCards = new Set(matched.filter(e => e.rowHit).map(e => e.cardKey));
+    const hits = matched.filter(e => e.rowHit || !rowCards.has(e.cardKey)).slice(0, 12);
+    box.textContent = "";
+    if (!hits.length) {
+        const empty = document.createElement("p");
+        empty.className = "search-empty";
+        empty.textContent = t("search.noResults");
+        box.append(empty);
+    } else {
+        hits.forEach(entry => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "search-hit";
+            const main = document.createElement("span");
+            main.className = "search-hit-main";
+            const label = document.createElement("span");
+            label.textContent = entry.title || entry.pageTitle;
+            main.append(label);
+            if (entry.desc) {
+                const desc = document.createElement("small");
+                desc.className = "search-hit-desc";
+                desc.textContent = entry.desc;
+                main.append(desc);
+            }
+            const where = document.createElement("small");
+            where.className = "search-hit-page";
+            where.textContent = entry.pageTitle;
+            button.append(main, where);
+            button.addEventListener("click", () => {
+                $("settingsSearch").value = "";
+                box.hidden = true;
+                if (entry.anchorId) {
+                    focusSetting(entry.anchorId);
+                } else {
+                    showPage(entry.page);
+                    // 同 focusSetting：同步执行（rAF/setTimeout 在 WebView
+                    // 恢复/冻结窗口都会丢）。
+                    if (entry.anchorEl) {
+                        if (typeof entry.anchorEl.scrollIntoView === "function") {
+                            entry.anchorEl.scrollIntoView({ block: "center" });
+                        }
+                        flashAnchor(entry.anchorEl);
+                    }
+                }
+            });
+            box.append(button);
+        });
+    }
+    box.hidden = false;
+}
+
+$("settingsSearch").addEventListener("input", event => runSettingsSearch(event.target.value));
+
+/** 键盘选择（验收 2026-09-24）：菜单模式勾选 + 快捷切换对。真相源在
+ *  键盘 localStorage、经 pushStores 镜像原生（备份走原生）；保存写同一
+ *  镜像（saveKeyboardSelection），键盘 hello 的 pullStores 按 rev 落地。 */
+function selectedMenuModes(state) {
+    const raw = (state.keyboards && state.keyboards.menuModes) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed.filter(x => typeof x === "string");
+    } catch (_) { /* unset */ }
+    return DEFAULT_MENU_MODES.slice();
+}
+
+function selectedQuickPair(state) {
+    const raw = (state.keyboards && state.keyboards.quickPair) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === 2) return parsed;
+    } catch (_) { /* unset */ }
+    return ["pinyin", "direct"];
+}
+
+/** 排序真相源（评审 P1 修正）：键盘长按菜单/快捷设置拖拽共用的全序是
+ *  feelime_mode_order（键盘侧 orderedModeNames：已知项过滤 + 未列补齐）。
+ *  这里做同语义展开；无存序时回 null（渲染落目录序）。 */
+function selectedModeOrder(state) {
+    const raw = (state.keyboards && state.keyboards.modeOrder) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) {
+            const known = parsed.filter(id => KEYBOARD_MODES.some(([m]) => m === id));
+            KEYBOARD_MODES.forEach(([id]) => { if (!known.includes(id)) known.push(id); });
+            return known;
+        }
+    } catch (_) { /* unset */ }
+    return null;
+}
+
+function renderKeyboards(state) {
+    const host = $("kbModeList");
+    if (!host) return;
+    const selected = selectedMenuModes(state);
+    host.textContent = "";
+    // 排序能力（2026-09-26 用户反馈；评审 P1 修正真相源）：行序 =
+    // feelime_mode_order（长按菜单与键盘快捷设置拖拽共用），勾选只决定
+    // 谁进菜单。上下移重排全序并即时保存。行是 div 包 label：按钮放在
+    // label 外，点按钮不会带翻勾选框。
+    const ordered = selectedModeOrder(state) || KEYBOARD_MODES.map(([id]) => id);
+    ordered.forEach((id) => {
+        const found = KEYBOARD_MODES.find(([modeId]) => modeId === id);
+        const label = found ? found[1] : id;
+        const row = document.createElement("div");
+        row.className = "row switch-row";
+        const btns = document.createElement("span");
+        btns.className = "kb-order-btns";
+        // 拖动把手（用户验收二轮拍板：箭头按钮移除，拖动是唯一排序方式）。
+        const drag = document.createElement("button");
+        drag.type = "button";
+        drag.className = "btn small kb-drag";
+        drag.textContent = "≡";
+        drag.setAttribute("aria-label", t("input.keyboards.drag"));
+        drag.addEventListener("pointerdown", (e) => beginKbRowDrag(e, row, drag));
+        btns.append(drag);
+        const lab = document.createElement("label");
+        lab.className = "kb-order-label";
+        lab.htmlFor = "kbMode_" + id;
+        const text = document.createElement("span");
+        text.className = "row-label";
+        const main = document.createElement("span");
+        main.textContent = label;
+        text.append(main);
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = "kbMode_" + id;
+        box.className = "toggle";
+        box.dataset.kbMode = id;
+        box.checked = selected.includes(id);
+        box.addEventListener("change", () => saveKeyboardSelectionFromUi());
+        lab.append(text, box);
+        row.append(btns, lab);
+        host.append(row);
+    });
+    renderQuickPairSelects(state);
+}
+
+
+
+/** 拖动重排（≡ 把手）：pointer capture 跟手，拖动行中心越过相邻行中心
+ *  即让位（insertBefore 实时换位），松手按 DOM 序保存——与 ↑↓/勾选共
+ *  用 saveKeyboardSelectionFromUi，落同一份 feelime_mode_order。 */
+function beginKbRowDrag(e, row, handle) {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.preventDefault();
+    const host = row.parentElement;
+    if (!host) return;
+    const pid = e.pointerId;
+    let startY = e.clientY;
+    let moved = false;
+    // capture 与 move/up 监听挂 host（列表容器）而非 handle：让位的
+    // insertBefore 会移除再插回整行，Chromium 在元素移除路径清掉
+    // pending capture，绑在 handle 上的监听第一次换位后就收不到 up——
+    // 拖动挂死且不保存（codex 二轮 P1-2）。host 不随重排移动。
+    try { host.setPointerCapture(pid); } catch (_) { /* 已释放 */ }
+    const move = (ev) => {
+        if (ev.pointerId !== pid) return;
+        if (!moved && Math.abs(ev.clientY - startY) < 6) return;
+        moved = true;
+        row.classList.add("dragging");
+        // 指针 y 直接映射目标位（用户验收二轮：逐格让位=只能动一格，
+        // 与箭头无异）。对非拖动兄弟行做落点命中：插到第一个中心超过
+        // 指针的行之前；指针越过全部行则落末尾。拖多远落多远。
+        const siblings = [...host.children].filter(r => r !== row);
+        let anchor = null;
+        for (const sib of siblings) {
+            const rc = sib.getBoundingClientRect();
+            if (ev.clientY < rc.top + rc.height / 2) { anchor = sib; break; }
+        }
+        const inPlace = anchor ? row.nextSibling === anchor : host.lastElementChild === row;
+        if (!inPlace) host.insertBefore(row, anchor);
+    };
+    const finish = (ev) => {
+        if (ev.pointerId !== pid && ev.type !== "lostpointercapture") return;
+        try { host.releasePointerCapture(pid); } catch (_) { /* 无捕获 */ }
+        host.removeEventListener("pointermove", move);
+        host.removeEventListener("pointerup", finish);
+        host.removeEventListener("pointercancel", finish);
+        host.removeEventListener("lostpointercapture", finish);
+        row.classList.remove("dragging");
+        if (moved) saveKeyboardSelectionFromUi();
+    };
+    host.addEventListener("pointermove", move);
+    host.addEventListener("pointerup", finish);
+    host.addEventListener("pointercancel", finish);
+    host.addEventListener("lostpointercapture", finish);
+}
+
+function renderQuickPairSelects(state) {
+    const selected = selectedMenuModes(state);
+    const pair = selectedQuickPair(state);
+    [$("quickPairA"), $("quickPairB")].forEach((sel, slot) => {
+        if (!sel) return;
+        sel.textContent = "";
+        KEYBOARD_MODES.forEach(([id, label]) => {
+            if (!selected.includes(id)) return;
+            const option = document.createElement("option");
+            option.value = id;
+            option.textContent = label;
+            sel.append(option);
+        });
+        if (!selected.includes(pair[slot])) sel.value = selected[0] || "";
+        else sel.value = pair[slot];
+        if (sel.dataset.bound !== "1") {
+            sel.dataset.bound = "1";
+            sel.addEventListener("change", () => saveKeyboardSelectionFromUi());
+        }
+    });
+}
+
+function saveKeyboardSelectionFromUi() {
+    const boxes = [...document.querySelectorAll("#kbModeList input[data-kb-mode]")];
+    const order = boxes.map(box => box.dataset.kbMode);
+    const modes = boxes.filter(box => box.checked).map(box => box.dataset.kbMode);
+    if (!modes.length) {
+        setNote("keyboardsNote", t("input.keyboards.hint"));
+        return;
+    }
+    const pair = [$("quickPairA").value || modes[0], $("quickPairB").value || modes[0]]
+        .filter(id => modes.includes(id));
+    while (pair.length < 2) pair.push(modes.find(m => !pair.includes(m)) || modes[0]);
+    // 全序（含未勾项）落 feelime_mode_order——长按菜单/快捷设置拖拽的
+    // 共用真相源；勾选集落 feelime_menu_modes。
+    call("saveKeyboardSelection", JSON.stringify(modes), JSON.stringify(pair.slice(0, 2)), JSON.stringify(order));
+    renderQuickPairSelects({ keyboards: { menuModes: JSON.stringify(modes), quickPair: JSON.stringify(pair.slice(0, 2)), modeOrder: JSON.stringify(order) } });
+    setNote("keyboardsNote", t("input.keyboards.saved"));
+}
+
+function renderCustomPhrases(state) {
+    const phrases = state.customPhrases;
+    if (phrases) {
+        const ranks = phrases.symbolRanks && typeof phrases.symbolRanks === 'object'
+            ? phrases.symbolRanks : {};
+        phraseItems = (phrases.items || []).map(item => ({
+            text: String(item.text || ""), code: String(item.code || ""),
+            rank: Number(ranks[item.text] || 0) || 0,
+        }));
+        if (document.activeElement !== $("phrasesOn")) $("phrasesOn").checked = !!phrases.enabled;
+        const freqSort = $("symbolFreqSort");
+        if (freqSort && document.activeElement !== freqSort) {
+            freqSort.checked = phrases.symbolFreqSort === true;
+        }
+        if (document.activeElement !== $("englishWordsOn")) $("englishWordsOn").checked = phrases.englishEnabled !== false;
+        const posSel = $("englishPos");
+        if (posSel) {
+            const pos = [ -1, 1, 3, 5 ].includes(Number(state.englishPos)) ? Number(state.englishPos) : -1;
+            if (document.activeElement !== posSel) posSel.value = String(pos);
+            if (!posSel.dataset.bound) {
+                posSel.dataset.bound = "1";
+                posSel.addEventListener("change", () => {
+                    const v = Number(posSel.value);
+                    if ([ -1, 1, 3, 5 ].includes(v)) call("setEnglishPos", v);
+                });
+            }
+        }
+        renderPhraseList();
+        const imported = phrases.importedCount || 0;
+        const note = $("dictImportNote");
+        if (note) {
+            // 导入事件的具体消息（含截断说明）优先保留；归零（清空）时
+            // 旧消息必须撤掉——否则「Imported 4 entries」在清空后仍挂着
+            // （glm-flash 真机验证抓到的 UI bug）。
+            if (imported === 0 || !note.textContent) {
+                note.textContent = imported
+                    ? t("input.phrases.importedCount", [imported])
+                    : "";
+            }
+        }
+        const clear = $("btnClearImportedDict");
+        if (clear) clear.hidden = imported === 0;
+        // 重渲染（导入/清空/语言切换）撤掉可能残留的确认态。
+        if (clearDictArmed) disarmClearDict();
+    }
+}
+
+/** state 未到（bridge 慢/页面刚开）时 CRUD 一律不发——全量重发语义下
+ *  空表会覆盖种子。 */
+function phraseStateReady() {
+    if (phraseItems !== null) return true;
+    setNote("phrasesNote", t("phrases.err.notReady"));
+    return false;
+}
+
+function renderPhraseList() {
+    const list = $("phraseList");
+    list.textContent = "";
+    phraseItems.forEach((item, index) => {
+        const row = document.createElement("li");
+        row.className = "phrase-row";
+        const label = document.createElement("button");
+        label.type = "button";
+        label.className = "phrase-edit";
+        const text = document.createElement("span");
+        text.className = "phrase-text";
+        text.textContent = item.text;
+        const code = document.createElement("code");
+        code.textContent = item.code;
+        label.append(text, code);
+        if (item.rank >= 1 && item.rank <= 9) {
+            const rank = document.createElement("code");
+            rank.className = "phrase-rank";
+            rank.textContent = "（候选#" + item.rank + "）";
+            rank.setAttribute("aria-label", t("phrases.rank.aria", [item.rank]));
+            label.append(rank);
+        }
+        label.addEventListener("click", () => startPhraseEdit(index));
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "phrase-del";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("phrases.note.deleted"));
+        del.addEventListener("click", () => {
+            if (!phraseStateReady()) return;
+            phraseItems.splice(index, 1);
+            if (phraseEditing === index) resetPhraseForm();
+            if (phraseEditing > index) phraseEditing -= 1;
+            savePhrases();
+            setNote("phrasesNote", t("phrases.note.deleted"));
+        });
+        row.append(label, del);
+        list.append(row);
+    });
+    $("phraseEmpty").hidden = phraseItems.length > 0;
+}
+
+function startPhraseEdit(index) {
+    clearImeGestureSnapshots();
+    phraseEditing = index;
+    $("phraseText").value = phraseItems[index].text;
+    $("phraseCode").value = phraseItems[index].code;
+    $("phraseRank").value = phraseItems[index].rank >= 1 ? phraseItems[index].rank : "";
+    $("btnSavePhrase").textContent = t("phrases.form.save");
+    $("btnCancelPhraseEdit").hidden = false;
+}
+
+function resetPhraseForm() {
+    clearImeGestureSnapshots();
+    phraseEditing = -1;
+    $("phraseText").value = "";
+    $("phraseCode").value = "";
+    $("phraseRank").value = "";
+    $("btnSavePhrase").textContent = t("phrases.form.add");
+    $("btnCancelPhraseEdit").hidden = true;
+}
+
+function savePhrases() {
+    const payload = phraseItems.map(item => ({
+        text: item.text, code: item.code,
+        rank: item.rank >= 1 && item.rank <= 9 ? item.rank : 0,
+    }));
+    call("saveCustomPhrases", JSON.stringify(payload), phraseState().enabled);
+}
+
+$("phrasesOn").addEventListener("change", event => {
+    if (!phraseStateReady()) return;
+    call("saveCustomPhrases",
+        JSON.stringify(phraseItems.map(item => ({
+            text: item.text, code: item.code,
+            rank: item.rank >= 1 && item.rank <= 9 ? item.rank : 0,
+        }))),
+        event.target.checked);
+    setNote("phrasesNote", t("phrases.note.saved"));
+});
+// #81 词频排序总开关（默认关）：只影响未指定位置的符号词。
+$("symbolFreqSort").addEventListener("change", event => {
+    call("setSymbolFreqSort", event.target.checked);
+});
+
+// #29-3 英文词直出：内置词表整体开关（词表不进增删 UI）。
+$("englishWordsOn").addEventListener("change", event => {
+    call("setEnglishWords", event.target.checked);
+});
+$("btnManagePhrases").addEventListener("click", () => showPage("phrases"));
+$("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));
+// 词库导入（issue #37）：SAF 选择 .dict.yaml → 壳侧解析进 imported 段。
+$("btnImportDict").addEventListener("click", () => call("openDictDocument"));
+$("btnBaseDictPick").addEventListener("click", () => call("openBaseDictDocument"));
+
+/** 导入进度呈现：Kotlin 侧两个真实信号——COPYING 按源流字节比、
+ *  COMPILING 按 staging 产物落盘计数（librime 无逐 schema 回调）。
+ *  progress = {percent?, done, total, detail?}；ETA 用 elapsed/percent
+ *  比例外推（自校准：慢机已耗时长 → 剩余估计自动变长），早期（<8% 或
+ *  <3s）外推噪声大不显示。无 progress 的路径（模糊音补编等）回退
+ *  原阶段文案。完成/失败由 dictBaseDone/dictBaseError 收尾。 */
+function dictCompileTargetName(id) {
+    if (!id) return "";
+    if (id === "luna_pinyin") return t("dict.base.part.main");
+    if (id === "luna_pinyin_t9") return t("dict.base.part.t9");
+    if (id === "flypy") return t("dict.base.part.flypy");
+    // includes 而非 startsWith：ziranma_double_pinyin 等带前缀变体。
+    if (id.includes("double_pinyin")) return t("dict.base.part.dp");
+    if (id.startsWith("luna_pinyin_fuzzy")) return t("dict.base.part.fuzzy");
+    return id;
+}
+
+/** 主产物（table）落地前不给 ETA——该段占编译 ~70% 且 percent 不动，
+ *  比例外推会随 elapsed 单调上修（ace 实录 23s→「约 5 分钟」），越等
+ *  越焦虑；table 落地后剩余段外推准（实录误差 <15s）。 */
+function dictEtaText(elapsedMs, percent, done) {
+    if (!percent || percent >= 95 || !done) return "";
+    const elapsed = elapsedMs || 0;
+    if (percent < 8 || elapsed < 3000) return "";
+    const etaSec = Math.round(elapsed / percent * (100 - percent) / 1000);
+    if (etaSec < 5) return "";
+    return etaSec >= 90
+        ? t("dict.base.etaMin", [Math.max(1, Math.round(etaSec / 60))])
+        : t("dict.base.etaSec", [etaSec]);
+}
+
+function dictHasPercent(progress) {
+    return !!(progress && typeof progress.percent === "number"
+        && progress.total > 0);
+}
+
+function dictBaseStageText(stage, elapsedMs, progress) {
+    if (stage === "ACTIVATING") return t("dict.base.stageActivate");
+    const seconds = Math.round((elapsedMs || 0) / 1000);
+    if (stage === "ANALYZING") {
+        return `${t("dict.base.stageAnalyze")}（${t("dict.base.elapsed", [seconds])}）`;
+    }
+    if (stage === "COPYING") {
+        if (dictHasPercent(progress)) {
+            // 文案用真实文件读取比（progress.percent 是含编译段的整条
+            // 权重位置，直接展示会被误读成「只读了 14% 的文件」）。
+            const frac = Math.min(100, Math.round(progress.done / progress.total * 100));
+            const parts = [t("dict.base.readingPct", [frac,
+                mb(progress.done), mb(progress.total)])];
+            const eta = dictEtaText(elapsedMs, progress.percent, progress.done);
+            if (eta) parts.push(eta);
+            return parts.join(" · ");
+        }
+        return t("dict.base.stageCopy");
+    }
+    if (dictHasPercent(progress)) {
+        const target = dictCompileTargetName(progress.detail);
+        // detail 空 = 0/N（不知道 librime 在编哪项，别冒「正在编」）
+        // 或 N/N（收尾/校验中）。
+        const bits = [target
+            ? t("dict.base.compilingStep", [progress.done, progress.total, target])
+            : progress.done >= progress.total
+                ? t("dict.base.compilingFinalize", [progress.done, progress.total])
+                : t("dict.base.compilingCount", [progress.done, progress.total])];
+        bits.push(t("dict.base.elapsed", [seconds]));
+        bits.push(dictEtaText(elapsedMs, progress.percent, progress.done)
+            || t("dict.base.canLeave"));
+        return bits.join(" · ");
+    }
+    const label = t("dict.base.stageCompile");
+    return `${label}（${t("dict.base.elapsed", [seconds])}）`;
+}
+
+/** 进度条显隐/宽度（percent 缺失时整体隐藏，如 ACTIVATING 或补编）。 */
+function setDictBar(barId, progress) {
+    const bar = $(barId);
+    if (!bar) return;
+    const pct = dictHasPercent(progress) ? progress.percent : null;
+    bar.hidden = pct == null;
+    if (pct != null) bar.firstElementChild.style.width = `${pct}%`;
+}
+
+/** 切换目标（用户点选的 radio 值）：编译期间文案必须标出「实际生效 +
+ *  切换目标」（用户裁定——曾只有上一步的「已恢复内置词库」残留，分不清
+ *  现在用的哪个）。页面开着时它先于 state 推送可用；页面重开由
+ *  state.baseDict.targetSlot（Kotlin pendingSlotId）恢复同一信息。 */
+let dictBasePending = null;
+
+function dictBaseBuildingText(base) {
+    const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
+    const target = base.building && (base.targetSlot || dictBasePending);
+    if (!target) return stage;
+    let label = null;
+    if (target === "builtin") label = t("dict.base.builtin");
+    else {
+        const slot = (Array.isArray(base.slots) ? base.slots : [])
+            .find(s => s && s.id === target);
+        label = slot ? String(slot.name || slot.id) : null;
+    }
+    if (!label) return stage;
+    const effective = base.mode === "custom" && base.name
+        ? t("dict.base.custom", [base.name])
+        : t("dict.base.builtin");
+    return t("dict.base.switching", [effective, label]) + stage;
+}
+
+function onDictBaseProgress(event) {
+    if (event.operation === "flypy") {
+        $("flypyBuilding").hidden = false;
+        $("flypyBuilding").textContent = dictBaseStageText(
+            event.stage, event.elapsedMs, event.progress);
+        setDictBar("flypyBuildingBar", event.progress);
+        return;
+    }
+    const building = $("dictBaseBuilding");
+    building.hidden = false;
+    building.textContent = dictBaseBuildingText({
+        ...(lastState && lastState.baseDict),
+        stage: event.stage,
+        elapsedMs: event.elapsedMs,
+        progress: event.progress,
+        building: true,
+    });
+    setDictBar("dictBaseProgressBar", event.progress);
+}
+
+/** state.baseDict: {mode, building, stage, elapsedMs, name, installedAt}——
+ *  编译中离开再进设置页，提示行从 state 快照恢复（不丢进度文本）。 */
+function renderDictBase(state) {
+    const base = state.baseDict || {};
+    const when = base.installedAt
+        ? new Date(base.installedAt).toLocaleString() : "";
+    // #7 多槽列表：内置 + 已导入槽。radio 点选 = 激活（槽重编，免 SAF）；
+    // 「恢复内置」并入列表第一项（激活内置 = revert），槽行尾「删除」。
+    const host = $("dictBaseSlots");
+    if (host) {
+        host.textContent = "";
+        const building = !!base.building;
+        const mkRow = (value, label, note, delSlot) => {
+            const row = document.createElement("label");
+            row.className = "dict-slot";
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "dictBaseChoice";
+            radio.value = value;
+            radio.disabled = building;
+            row.append(radio);
+            const labelBox = document.createElement("span");
+            labelBox.className = "slot-label";
+            const main = document.createElement("span");
+            main.textContent = label;
+            labelBox.append(main);
+            if (note) {
+                const small = document.createElement("small");
+                small.textContent = note;
+                labelBox.append(small);
+            }
+            row.append(labelBox);
+            if (delSlot) {
+                const del = document.createElement("button");
+                del.type = "button";
+                del.className = "slot-del";
+                del.textContent = t("dict.slot.delete");
+                del.disabled = building;
+                del.addEventListener("click", event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    call("deleteBaseDictSlot", delSlot);
+                });
+                row.append(del);
+            }
+            radio.addEventListener("change", () => {
+                // 清上一步的残留提示（曾把「已恢复内置词库」带进整个
+                // 切换期）；目标记进 dictBasePending 供 building 文案用。
+                setNote("dictBaseNote", "");
+                dictBasePending = radio.value;
+                if (radio.value === "builtin") call("clearBaseDict");
+                else call("activateBaseDictSlot", radio.value);
+            });
+            host.append(row);
+        };
+        const active = base.activeSlot || null;
+        const slots = Array.isArray(base.slots) ? base.slots : [];
+        mkRow("builtin", t("dict.base.builtin"),
+            t("dict.base.builtinNote"));
+        slots.forEach(slot => mkRow(slot.id,
+            String(slot.name || slot.id),
+            `${t("dict.base.entries", [slot.entries])}${slot.installedAt ? " · " + new Date(slot.installedAt).toLocaleString() : ""}`,
+            slot.id));
+        // 选中态不走属性选择器（部分环境不支持）：遍历比对 value。
+        // 编译期指向切换目标（targetSlot），成功后 activeSlot 接棒——
+        // 曾在 revert 后整场编译都显示「内置」选中，误导实际生效项。
+        const want = (building && base.targetSlot) || active || "builtin";
+        host.querySelectorAll("input").forEach(input => {
+            if (input.type === "radio") input.checked = input.value === want;
+        });
+    }
+    const current = $("dictBaseCurrent");
+    if (current) current.textContent = base.mode === "custom" && base.name
+        ? `${t("dict.base.custom", [base.name])} · ${when}`
+        : t("dict.base.builtin");
+    // #37：形码/音形特征持续警示（换回内置或导入拼音系码表即消失）。
+    const warn = $("dictBaseNonPinyin");
+    if (warn) warn.hidden = !(typeof base.nonPinyin === "number");
+    // #35：带调码表（疑似完整版）持续警示。
+    const toned = $("dictBaseToned");
+    if (toned) toned.hidden = !base.toned;
+    // T9 内存门跳编的持续提示（词条量/内存不足）。
+    const t9skip = $("dictBaseT9Skip");
+    if (t9skip) t9skip.hidden = !base.t9Skipped;
+    $("btnBaseDictPick").disabled = !!base.building;
+    $("dictBaseBuilding").hidden = !base.building || base.operation === "flypy";
+    setDictBar("dictBaseProgressBar",
+        base.building && base.operation !== "flypy" ? base.progress : null);
+    if (base.building && base.operation !== "flypy") {
+        $("dictBaseBuilding").textContent = dictBaseBuildingText(base);
+    }
+}
+$("btnFlypyPick").addEventListener("click", () => call("openFlypyDocument"));
+$("btnFlypyRevert").addEventListener("click", () => call("clearFlypy"));
+
+/** state.baseDict.flypy: {installed, name, installedAt}——音形码表独立
+ *  状态段（#20）。building 与基底换装共用同一互斥标志。 */
+function renderFlypy(state) {
+    // baseDict 缺防御：旧 bridge/纯 flypy state 推送没有该段时整卡
+    // 渲染直接抛错（mock 套件 62 项连坐挂的根因）。
+    const base = state.baseDict || {};
+    const flypy = base.flypy || {};
+    // #20 幂等补勾选（codex P2-6）：导入成功后音形进长按菜单——放在
+    // 渲染层而非 flypyDone 事件里，编译期间退出设置页丢事件的路径
+    // （旧 bridge 销毁）也能在下次渲染补上。
+    if (flypy.installed) {
+        const box = document.querySelector('#kbModeList input[data-kb-mode="flypy"]');
+        if (box && !box.checked) {
+            box.checked = true;
+            saveKeyboardSelectionFromUi();
+        }
+    }
+    const current = $("flypyCurrent");
+    const when = flypy.installedAt
+        ? new Date(flypy.installedAt).toLocaleString() : "";
+    current.textContent = flypy.installed && flypy.name
+        ? `${t("flypy.custom", [flypy.name])} · ${when}`
+        : t("flypy.none");
+    $("btnFlypyRevert").hidden = !flypy.installed || !!base.building;
+    $("btnFlypyPick").disabled = !!base.building;
+    const building = $("flypyBuilding");
+    building.hidden = !base.building || base.operation !== "flypy";
+    setDictBar("flypyBuildingBar",
+        base.building && base.operation === "flypy" ? base.progress : null);
+    if (base.building && base.operation === "flypy") {
+        building.textContent =
+            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
+    }
+}
+/** 清空导入词的两击确认（#39 补充建议）：WebView 无原生 confirm
+ *  （WebChromeClient 未挂 onJsConfirm），首击变红「确认清空」，4s 内
+ *  再击才执行；超时或重新渲染恢复。 */
+let clearDictArmed = null;
+function disarmClearDict() {
+    clearTimeout(clearDictArmed);
+    clearDictArmed = null;
+    const btn = $("btnClearImportedDict");
+    btn.classList.remove("danger");
+    btn.textContent = t("input.phrases.clearBtn");
+}
+$("btnClearImportedDict").addEventListener("click", () => {
+    if (clearDictArmed) {
+        disarmClearDict();
+        call("clearImportedDict");
+        return;
+    }
+    const btn = $("btnClearImportedDict");
+    btn.classList.add("danger");
+    btn.textContent = t("input.phrases.confirmClear");
+    clearDictArmed = setTimeout(disarmClearDict, 4000);
+});
+$("btnCancelPhraseEdit").addEventListener("click", resetPhraseForm);
+$("btnSavePhrase").addEventListener("click", () => {
+    if (!phraseStateReady()) return;
+    const text = $("phraseText").value.trim();
+    const code = $("phraseCode").value.trim().toLowerCase();
+    // 校验与壳侧 saveCustomPhrases 一致：词条非空 + 码 1-16 位字母。
+    if (!text) {
+        setNote("phrasesNote", t("phrases.form.text"));
+        return;
+    }
+    if (!/^[a-z;]{1,16}$/.test(code)) {
+        setNote("phrasesNote", t("phrases.form.code"));
+        return;
+    }
+    // #81 位置：1-9 指定候选位次；空/越界按未指定（渲染层默认第 3 位）。
+    const rankInput = Number($("phraseRank").value);
+    const rank = Number.isInteger(rankInput) && rankInput >= 1 && rankInput <= 9 ? rankInput : 0;
+    if (phraseEditing >= 0) {
+        phraseItems[phraseEditing] = { text, code, rank };
+    } else {
+        if (phraseItems.some(item => item.code === code)) {
+            setNote("phrasesNote", t("phrases.err.duplicate"));
+            return;
+        }
+        // 与壳侧 saveCustomPhrases 同一条上限：先在本地拒绝，避免 push
+        // 后被 native 打回、页面副本却已带着第 201 条继续全量重发。
+        if (phraseItems.length >= 200) {
+            setNote("phrasesNote", t("phrases.err.limit"));
+            return;
+        }
+        phraseItems.push({ text, code, rank });
+    }
+    savePhrases();
+    resetPhraseForm();
+    setNote("phrasesNote", t("phrases.note.saved"));
+});
+
+/* --- 自造词（issue #29-5）：词库管理的三级编辑页，镜像候选符号词。
+ * state.userWords = [{text,code}]，CRUD 全量重发 saveUserWords，native
+ * 落盘 json 的 user 段 + 派生 txt + 广播引擎重载。 */
+let userWordItems = null;
+let userWordEditing = -1;
+
+function renderUserWords(state) {
+    const words = state.userWords;
+    if (!words) return;
+    userWordItems = words.map(item => ({
+        text: String(item.text || ""), code: String(item.code || ""),
+    }));
+    renderUserWordList();
+    const count = $("userWordsCount");
+    if (count) count.textContent = userWordItems.length
+        ? t("userwords.count", [userWordItems.length]) : "";
+}
+
+function userWordStateReady() {
+    if (userWordItems !== null) return true;
+    setNote("userWordsNote", t("userwords.err.notReady"));
+    return false;
+}
+
+function renderUserWordList() {
+    const list = $("userWordList");
+    list.textContent = "";
+    userWordItems.forEach((item, index) => {
+        const row = document.createElement("li");
+        row.className = "phrase-row";
+        const label = document.createElement("button");
+        label.type = "button";
+        label.className = "phrase-edit";
+        const text = document.createElement("span");
+        text.className = "phrase-text";
+        text.textContent = item.text;
+        const code = document.createElement("code");
+        code.textContent = item.code;
+        label.append(text, code);
+        label.addEventListener("click", () => startUserWordEdit(index));
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "phrase-del";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("userwords.note.deleted"));
+        del.addEventListener("click", () => {
+            if (!userWordStateReady()) return;
+            userWordItems.splice(index, 1);
+            if (userWordEditing === index) resetUserWordForm();
+            if (userWordEditing > index) userWordEditing -= 1;
+            saveUserWordsToBridge();
+            setNote("userWordsNote", t("userwords.note.deleted"));
+        });
+        row.append(label, del);
+        list.append(row);
+    });
+    $("userWordEmpty").hidden = userWordItems.length > 0;
+}
+
+function startUserWordEdit(index) {
+    clearImeGestureSnapshots();
+    userWordEditing = index;
+    $("userWordText").value = userWordItems[index].text;
+    $("userWordCode").value = userWordItems[index].code;
+    $("btnSaveUserWord").textContent = t("userwords.form.save");
+    $("btnCancelUserWordEdit").hidden = false;
+}
+
+function resetUserWordForm() {
+    clearImeGestureSnapshots();
+    userWordEditing = -1;
+    $("userWordText").value = "";
+    $("userWordCode").value = "";
+    $("btnSaveUserWord").textContent = t("userwords.form.add");
+    $("btnCancelUserWordEdit").hidden = true;
+}
+
+function saveUserWordsToBridge() {
+    const payload = userWordItems.map(item => ({ text: item.text, code: item.code }));
+    call("saveUserWords", JSON.stringify(payload));
+    const count = $("userWordsCount");
+    if (count) count.textContent = userWordItems.length
+        ? t("userwords.count", [userWordItems.length]) : "";
+}
+
+/* --- 纠错与习惯词库（3.74.10）：两个开关 + 自动收入的词列表。
+ * state.pinyinCorrection / state.habitLexicon（默认开，缺字段也当开）；
+ * state.autoWords = [词, ...]，删一条即调 removeAutoWord。 */
+function renderLexicon(state) {
+    if (document.activeElement !== $("pinyinCorrection")) {
+        $("pinyinCorrection").checked = state.pinyinCorrection !== false;
+    }
+    if (document.activeElement !== $("habitLexicon")) {
+        $("habitLexicon").checked = state.habitLexicon !== false;
+    }
+    const words = Array.isArray(state.autoWords) ? state.autoWords : [];
+    const list = $("autoWordList");
+    list.textContent = "";
+    words.forEach(word => {
+        const text = String(word || "");
+        if (!text) return;
+        const row = document.createElement("li");
+        row.className = "phrase-row";
+        const label = document.createElement("span");
+        label.className = "phrase-text";
+        label.textContent = text;
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "phrase-del";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("dict.lexicon.autoWordsDeleted"));
+        del.addEventListener("click", () => {
+            call("removeAutoWord", text);
+            setNote("autoWordsNote", t("dict.lexicon.autoWordsDeleted"));
+        });
+        row.append(label, del);
+        list.append(row);
+    });
+    $("autoWordEmpty").hidden = words.length > 0;
+}
+
+$("btnManageUserWords").addEventListener("click", () => showPage("userwords"));
+$("btnCancelUserWordEdit").addEventListener("click", resetUserWordForm);
+$("btnSaveUserWord").addEventListener("click", () => {
+    if (!userWordStateReady()) return;
+    const text = $("userWordText").value.trim();
+    const code = $("userWordCode").value.trim().toLowerCase();
+    // 校验与壳侧 saveUserWords 一致：词条非空 + 码 1-48 位字母。
+    if (!text) {
+        setNote("userWordsNote", t("userwords.form.textErr"));
+        return;
+    }
+    // 码可留空：空 = 自动注音（壳侧 autoPinyinCodes 生成主码，txt 侧展开
+    // 多音字全组合 + 双拼键序）；填了才校验格式。
+    if (code && !/^[a-z;]{1,48}$/.test(code)) {
+        setNote("userWordsNote", t("userwords.form.codeErr"));
+        return;
+    }
+    if (userWordEditing >= 0) {
+        userWordItems[userWordEditing] = { text, code };
+    } else {
+        if (code && userWordItems.some(item => item.code === code)) {
+            setNote("userWordsNote", t("userwords.err.duplicate"));
+            return;
+        }
+        if (userWordItems.length >= 200) {
+            setNote("userWordsNote", t("userwords.err.limit"));
+            return;
+        }
+        userWordItems.push({ text, code });
+    }
+    saveUserWordsToBridge();
+    resetUserWordForm();
+    setNote("userWordsNote", t("userwords.note.saved"));
+});
+
+function updateStateLabel(value) {
+    const key = `update.states.${String(value || "").toUpperCase()}`;
+    return I18N[uiLocale][key] || I18N.zh[key] || String(value || "");
+}
+
+function renderUpdate(state) {
+    const update = state.update || {};
+    if (document.activeElement !== $("updateSource")) $("updateSource").value = update.source || "";
+    if (document.activeElement !== $("updateUrl")) $("updateUrl").value = update.url || "";
+    if (document.activeElement !== $("autoUpdateCheck")) {
+        $("autoUpdateCheck").checked = !!update.autoCheck;
+    }
+    const source = update.activeSource === "built_in" ? t("update.sourceBuiltIn") : t("update.sourceHot");
+    const sourceStatus = update.sourceMode === "disabled" ? t("update.sourceDisabled") :
+        update.sourceMode === "custom" ? t("update.sourceCustom") : t("update.sourceDefault");
+    const lines = [
+        `${source}`,
+        t("update.sourceStatus", { value: sourceStatus }),
+        t("update.version", { value: update.activeVersion || "?" }),
+        update.activeContentHash ? t("update.hash", { value: update.activeContentHash.slice(0, 16) }) : "",
+        t("update.state", { value: updateStateLabel(update.state) }),
+    ].filter(Boolean);
+    const errorCode = String(update.lastErrorCode || "");
+    const errorDetail = String(update.lastErrorDetail || "");
+    if (errorCode) {
+        const translated = eventText({ code: errorCode, detail: errorDetail }, "error.INTERNAL_ERROR");
+        lines.push(t("update.lastError", { value: translated }));
+    } else if ((update.lastError || "").trim()) {
+        lines.push(t("update.lastError", { value: update.lastError.trim() }));
+    }
+    if (update.lastSuccessAt) lines.push(t("update.lastSuccess", { value: update.lastSuccessAt }));
+    $("updateStatus").textContent = lines.join("\n");
+    // 三种状态：正常签名（隐藏）/ 确认过的签名不符 / （调试构建）未签名。
+    const confirmedBad = update.activeSource === "hot" &&
+        !update.activeSigned && !!update.activeSignatureConfirmed;
+    $("updateDanger").hidden = !confirmedBad && !(update.activeSource === "hot" && !update.activeSigned);
+    $("updateDanger").textContent = t(confirmedBad ? "update.sigConfirmed" : "update.unsigned");
+}
+
+function aboutRows(state, opts = {}) {
+    const device = state.device || {};
+    const release = device.release || "?";
+    const sdk = device.sdkInt === undefined ? "?" : device.sdkInt;
+    const rows = [
+        [t("about.appVersion"), `v${state.appVersion || "?"}`],
+        [t("about.activeKeyboard"), `v${activeKeyboardVersion(state)}`],
+        [t("about.builtInKeyboard"), `v${state.keyboardVersion || "?"}`],
+        [t("about.device"), `${device.manufacturer || ""} ${device.model || ""}`.trim() || "?"],
+        [t("about.android"), t("about.androidValue", { release, sdk })],
+    ];
+    // #41 字数统计（native pref 唯一真相源，state 快照读取）。复制版本
+    // 信息（forCopy）不带：计数值随输入漂移，进了诊断贴反而成噪声。
+    if (state.inputStats && !opts.forCopy) {
+        rows.push([t("about.inputStats"),
+            t("about.inputStatsValue", {
+                today: state.inputStats.today || 0,
+                total: state.inputStats.total || 0,
+            })]);
+    }
+    return rows;
+}
+
+function renderAbout(state) {
+    $("btnAppStore").hidden = !state.playDistribution;
+    // 更新检测入口（关于页）：Play 渠道跳商店由商店管理更新；直装渠道
+    // 走 GitHub Releases 检测（见 checkGithubUpdate）。下载按钮只在检测
+    // 出新版本后出现，Play 渠道恒隐藏。
+    $("btnAboutCheckUpdate").hidden = false;
+    // data-i18n 跟着渠道换：translateStaticUi 按 key 重刷文案，静态 key
+    // 不换的话语言切换会把 Play 分支的「去 Google Play 更新」洗掉。
+    const checkKey = state.playDistribution ? "action.checkUpdatePlay" : "action.checkUpdate";
+    $("btnAboutCheckUpdate").dataset.i18n = checkKey;
+    $("btnAboutCheckUpdate").textContent = t(checkKey);
+    if (state.playDistribution) { $("btnDlThin").hidden = true; $("btnDlFull").hidden = true; }
+    setToggleSafe("diagnosticsOn", state.diagnosticsOn);
+    const host = $("aboutRows");
+    host.replaceChildren();
+    aboutRows(state).forEach(([label, value]) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const name = document.createElement("span");
+        name.className = "row-label";
+        name.textContent = label;
+        const val = document.createElement("span");
+        val.className = "row-value";
+        val.textContent = value;
+        row.append(name, val);
+        host.append(row);
+    });
+    if ($("noticesText").textContent !== (state.notices || "")) {
+        $("noticesText").textContent = state.notices || "";
+    }
+}
+
+/** 关于页等处的开关回读（与 renderFeel 的 setToggle 同语义：焦点不回写）。 */
+function setToggleSafe(id, value) {
+    const node = $(id);
+    if (node && document.activeElement !== node) node.checked = !!value;
+}
+
+/* --- wiring ------------------------------------------------------------ */
+
+$("btnEnableIme").addEventListener("click", () => call("enableIme"));
+$("btnPickIme").addEventListener("click", () => call("pickIme"));
+$("btnAddShortcut").addEventListener("click", () => call("addImeShortcut"));
+$("btnAddTile").addEventListener("click", () => call("addImeTile"));
+$("btnMic").addEventListener("click", () => call("requestMic"));
+$("uiLanguage").addEventListener("change", event => setUiLanguage(event.target.value));
+$("dpScheme").addEventListener("change", event => call("setDoublePinyinScheme", event.target.value));
+$("kbLayout").addEventListener("change", event => call("setKbLayout", event.target.value));
+
+// 输入测试框（验收反馈）：多行 textarea 随内容自适应增高，键盘弹出
+// 窗口压缩时也完整可见；min-height 兜底 rows=4 的初始高度。
+(() => {
+    const ta = $("testInput");
+    if (!ta) return;
+    const fit = () => {
+        ta.style.height = "auto";
+        ta.style.height = Math.max(96, ta.scrollHeight + 2) + "px";
+    };
+    ta.addEventListener("input", fit);
+    fit();
+})();
+
+// 键盘手感（mode-fallback §3/§4）：任一下拉变更即提交三值（-1=不变的是
+// 原生侧约定；这里三值总是全部上报，省一次「哪个变了」的状态跟踪）。
+function submitFeelOptions() {
+    call(
+        "setFeelOptions",
+        parseInt($("scrubSpeed").value, 10),
+        parseInt($("holdMs").value, 10),
+        parseInt($("popupSnap").value, 10),
+    );
+}
+$("bottomPadPortrait").addEventListener("change", event => call("setBottomPadPortrait", parseInt(event.target.value, 10)));
+
+// #39 横屏三级页：入口 + 开关 + 双滑杆（input 事件实时写，拖动即生效）。
+$("landscapeSafeArea").addEventListener("change", event =>
+    call("setLandscapeSafeArea", event.target.checked));
+const landscapeCeilInput = $("landscapeCeil");
+landscapeCeilInput.addEventListener("input", () => {
+    $("landscapeCeilOut").textContent = landscapeCeilInput.value + "%";
+});
+landscapeCeilInput.addEventListener("change", () =>
+    call("setLandscapeCeil", parseInt(landscapeCeilInput.value, 10)));
+const landscapeOpacityInput = $("landscapeOpacity");
+landscapeOpacityInput.addEventListener("input", () => {
+    $("landscapeOpacityOut").textContent = landscapeOpacityInput.value + "%";
+});
+landscapeOpacityInput.addEventListener("change", () =>
+    call("setLandscapeOpacity", parseInt(landscapeOpacityInput.value, 10)));
+$("bottomPadLandscape").addEventListener("change", event => call("setBottomPadLandscape", parseInt(event.target.value, 10)));
+// #42 拖动实时刷新读数，松手才落盘一次（照抄 keyOpacity/landscapeCeil）。
+$("candidateFont").addEventListener("input", event => {
+    $("candidateFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
+});
+$("candidateFont").addEventListener("change", event => call("setCandidateFont", parseInt(event.target.value, 10)));
+// toast 停留时长：交互口径同候选字号（拖动实时读数，松手落盘一次）。
+$("toastMs").addEventListener("input", event => {
+    rangeOut("toastMs", `${parseInt(event.target.value, 10)} ms`);
+});
+$("toastMs").addEventListener("change", event => call("setToastMs", parseInt(event.target.value, 10)));
+// #70 键帽字号：交互口径同候选字号（拖动实时读数，松手落盘）。
+$("keycapFont").addEventListener("input", event => {
+    $("keycapFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
+});
+$("keycapFont").addEventListener("change", event => call("setKeycapFont", parseInt(event.target.value, 10)));
+// #70 用户字体：导入走 SAF（结果在 fontImportStatus 事件里回显）。
+// 新操作开始时清上一条结果提示，渲染分支接管状态行。
+let userFontNoteHold = null;
+$("btnImportFont").addEventListener("click", () => {
+    userFontNoteHold = null;
+    $("fontConsent").hidden = true; // 新选择开始，旧确认不再有效
+    call("requestUserFontImport");
+});
+$("btnClearFont").addEventListener("click", () => {
+    userFontNoteHold = null;
+    $("fontConsent").hidden = true;
+    call("clearUserFont");
+});
+$("preeditFont").addEventListener("change", event => call("setPreeditFont", parseInt(event.target.value, 10)));
+$("preeditBold").addEventListener("change", event => call("setPreeditBold", event.target.checked));
+$("preeditFrame").addEventListener("change", event => call("setPreeditFrame", event.target.checked));
+$("oneHand").addEventListener("change", event => call("setOneHandMode", parseInt(event.target.value, 10)));
+$("oneHandPad").addEventListener("change", event => call("setOneHandPad", parseInt(event.target.value, 10)));
+$("sideContent").addEventListener("change", event => call("setSideContent", parseInt(event.target.value, 10)));
+// 外观页:色彩模式 + 键帽不透明度(input 实时预览,松手才落盘一次)。
+$("themeMode").addEventListener("change", event => call("setThemeMode", event.target.value));
+let keyOpacityDirty = false;
+$("keyOpacity").addEventListener("input", event => {
+    keyOpacityDirty = true;
+    // 拖动实时进预览（用户验收五轮）：不透明度直接影响键帽半透观感。
+    const v = parseInt(event.target.value, 10);
+    if (Number.isFinite(v)) {
+        pvKeyAlpha = Math.max(0, Math.min(1, v / 100));
+        rangeOut("keyOpacity", v + "%");
+        updateThemePreview();
+    }
+});
+$("keyOpacity").addEventListener("change", event => {
+    if (!keyOpacityDirty) return;
+    keyOpacityDirty = false;
+    call("setKeyOpacity", parseInt(event.target.value, 10));
+});
+[["glassBlur", "setGlassBlur"], ["glassRadius", "setGlassRadius"], ["panelOpacity", "setPanelOpacity"]]
+    .forEach(([id, method]) => {
+        const slider = $(id);
+        if (!slider) return;
+        let dirty = false;
+        slider.addEventListener("input", () => { dirty = true; });
+        slider.addEventListener("change", event => {
+            if (!dirty) return;
+            dirty = false;
+            call(method, parseInt(event.target.value, 10));
+        });
+    });
+// 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
+// 底下弹出的预览键盘。
+$("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
+$("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
+$("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
+$("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));
+$("voiceReadyHaptic").addEventListener("change", event => call("setVoiceReadyHaptic", event.target.checked));
+$("bubbleLinger").addEventListener("change", event => {
+    call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
+});
+// 键盘高度滑块：拖动即时反映在预览上，松手落盘；「恢复默认」写 0。
+let kbHeightDirty = false;
+$("kbHeight").addEventListener("input", event => {
+    kbHeightDirty = true;
+    rangeOut("kbHeight", event.target.value + " px");
+});
+$("kbHeight").addEventListener("change", event => {
+    if (!kbHeightDirty) return;
+    kbHeightDirty = false;
+    call("setKbHeight", parseInt(event.target.value, 10));
+});
+$("kbHeightReset").addEventListener("click", () => {
+    const slider = $("kbHeight");
+    slider.value = slider.dataset.default || "272";
+    rangeOut("kbHeight", slider.value + " px");
+    call("setKbHeight", 0);
+});
+// 横屏键盘高度（3.74.10）：与竖屏滑块同口径，分开记忆。
+let kbHeightLandscapeDirty = false;
+$("kbHeightLandscape").addEventListener("input", event => {
+    kbHeightLandscapeDirty = true;
+    rangeOut("kbHeightLandscape", event.target.value + " px");
+});
+$("kbHeightLandscape").addEventListener("change", event => {
+    if (!kbHeightLandscapeDirty) return;
+    kbHeightLandscapeDirty = false;
+    call("setKbHeightLandscape", parseInt(event.target.value, 10));
+});
+$("kbHeightLandscapeReset").addEventListener("click", () => {
+    const slider = $("kbHeightLandscape");
+    slider.value = slider.dataset.default || String(slider.max || 300);
+    rangeOut("kbHeightLandscape", slider.value + " px");
+    call("setKbHeightLandscape", 0);
+});
+// 背景图两组（亮/暗）：「选择图片…」打开文件选择器，选完压到 720px 宽
+// JPEG 走桥；「无 / 内置」直接桥调用。选中自定义图后 select 挂「自定义」
+// 回显；pick 项本身永不作为状态（取消选择时回退原值）。
+const bgPickGeneration = { light: 0, dark: 0 };
+[["bgImageLight", "light"], ["bgImageDark", "dark"]].forEach(([id, variant]) => {
+    const sel = $(id);
+    sel.dataset.prev = "none";
+    sel.addEventListener("change", () => {
+        const v = sel.value;
+        bgPickGeneration[variant] += 1;
+        if (v === "none") { call("clearBgImage", variant); sel.dataset.prev = "none"; }
+        else if (v === "builtin") { call("setBuiltinBgImage", variant); sel.dataset.prev = "builtin"; }
+        else if (v === "custom") { sel.value = sel.dataset.prev; }
+        else if (v === "pick") {
+            sel.value = sel.dataset.prev;
+            pickBgImage(variant);
+        }
+    });
+});
+function markBgCustom(variant) {
+    const sel = $("bgImage" + (variant === "light" ? "Light" : "Dark"));
+    let opt = sel.querySelector('option[value="custom"]');
+    if (!opt) {
+        opt = document.createElement("option");
+        opt.value = "custom";
+        opt.textContent = t("自定义");
+        sel.append(opt);
+    }
+    sel.value = "custom";
+    sel.dataset.prev = "custom";
+}
+function pickBgImage(variant) {
+    const generation = ++bgPickGeneration[variant];
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        $("bgImageNote").hidden = true;
+        if (file.size > 16 * 1024 * 1024) {
+            setNote("bgImageNote", t("error.BAD_BG_IMAGE"));
+            $("bgImageNote").hidden = false;
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (generation !== bgPickGeneration[variant]) return;
+            call("importBgImage", variant, String(reader.result).split(",")[1] || "");
+        };
+        reader.readAsDataURL(file);
+    });
+    input.click();
+}
+$("holdMs").addEventListener("change", submitFeelOptions);
+$("scrubSpeed").addEventListener("change", submitFeelOptions);
+$("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
+$("doubleShiftLock").addEventListener("change", event => call("setDoubleShiftLock", event.target.checked));
+$("popupSnap").addEventListener("change", submitFeelOptions);
+$("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
+$("spaceHoldEdit").addEventListener("click", openSpaceHoldEditor);
+$("btnSpeedTest").addEventListener("click", () => {
+    setNote("modelNote", "");
+    call("testModelDownloadSpeed");
+});
+$("btnSaveCustomSource").addEventListener("click", () => {
+    call("setModelDownloadSource", "custom", $("modelDownloadCustom").value || "");
+    setNote("modelNote", t("note.saved"));
+});
+$("modelConsentCancel").addEventListener("click", () => {
+    if (!pendingModelConsent) return;
+    const id = pendingModelConsent.id;
+    hideModelConsent();
+    call("confirmModelDownload", id, false);
+});
+$("modelConsentConfirm").addEventListener("click", () => {
+    if (!pendingModelConsent) return;
+    const id = pendingModelConsent.id;
+    hideModelConsent();
+    call("confirmModelDownload", id, true);
+});
+
+let asrHotwordsSubmitted = null;
+$("asrIdleUnload").addEventListener("change", event => call("setAsrIdleUnload", event.target.checked));
+$("powerSaving").addEventListener("change", event => call("setPowerSaving", event.target.checked));
+$("pinyinCorrection").addEventListener("change", event => call("setPinyinCorrection", event.target.checked));
+$("habitLexicon").addEventListener("change", event => call("setHabitLexicon", event.target.checked));
+$("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
+// toggle 拨动即生效（与 #39-2 同案：此前只随「保存识别设置」提交，拨了
+// 不点保存=从未落盘，重进被回读洗回旧值——1.4.3 验收实录）。走窄接口
+// setAsrToggles：不携带热词（codex P2：复用 saveAsrSettings 的成功回执带
+// hotwords 字段，会把校验失败后保留的草稿洗成旧值；快照热词也会陈旧回写）。
+$("stripPeriod").addEventListener("change", event =>
+    call("setAsrToggles", event.target.checked, $("numItn").checked));
+$("numItn").addEventListener("change", event =>
+    call("setAsrToggles", $("stripPeriod").checked, event.target.checked));
+$("btnSaveAsr").addEventListener("click", () => {
+    asrHotwordsSubmitted = $("hotwords").value;
+    call("saveAsrSettings", $("stripPeriod").checked, $("numItn").checked, $("hotwords").value);
+    setNote("asrNote", t("note.saved"));
+});
+
+$("btnSaveCustom").addEventListener("click", () => {
+    // 与保存条「保存」同一条链：先吸收 textarea 进草稿（坏 JSON 就地
+    // 报错不落盘），再统一打包（带 langKeys）。
+    if (!ckAbsorbJson()) {
+        setNote("customNote", t("input.custom.badjson"));
+        return;
+    }
+    ckSaveAll("customNote");
+});
+// 启用开关拨动即生效（#39-2）：此前只随「保存定制」提交，拨了不点
+// 保存=从未落盘，重进被回读洗回「开」。
+$("customEnabled").addEventListener("change", event => call("setCustomEnabled", event.target.checked));
+
+// 模板双轨（用户裁定 2026-10-03）：「插入模板」给实用表（与编辑器
+// 默认表 CK_TEMPLATE 同源），「开发者模板」承载全覆盖验收（2026-09-24
+// 模板要覆盖每个特性——含单键/文本+键混排/组合键/功能键/光标/⌫/[open:]）。
+$("btnCustomTemplate").addEventListener("click", () => {
+    // 程序赋值不触发 input 事件：手动置脏+吸收，贴完模板编辑器立即可
+    // 见（保存条「保存」也才带得上）。
+    $("customJson").value = CK_TEMPLATE;
+    ckMarkDirty(true);
+    ckAbsorbJson();
+});
+
+$("btnCustomTemplateDev").addEventListener("click", () => {
+    // 全功能示例——三行各自一类：①终端/Vim（单键、文本+键混排、组合键）
+    // ②光标/编辑键（含 ⌫ 专属形态）③短语/符号/外链。
+    $("customJson").value = JSON.stringify({
+        version: 1,
+        rows: [
+            [
+                { t: "Esc", tap: "[esc]", note: "单键" },
+                { t: ":w", tap: ":w[enter]", note: "文本+回车" },
+                { t: "整理", tap: "[esc]ggVGD", note: "Vim 删除全文" },
+                { t: "保存", tap: "[ctrl+s]", note: "组合键" },
+                { t: "F5", tap: "[f5]", note: "功能键" },
+            ],
+            [
+                { t: "←", tap: "[left]", note: "光标" },
+                { t: "行首", tap: "[home]" },
+                { t: "行尾", tap: "[end]" },
+                { t: "删字", tap: "[bs]" },
+                { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
+            ],
+            [
+                { t: "邮箱", tap: "me@example.com", note: "整段文本", align: "right" },
+                { t: "✓", tap: "好的" },
+                { t: "→", tap: "→ " },
+                { t: "￥", tap: "￥" },
+                { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开应用/网页" },
+            ],
+        ],
+    }, null, 2);
+    ckMarkDirty(true);
+    ckAbsorbJson();
+});
+
+$("btnCheckUpdate").addEventListener("click", () => call("checkUpdate", $("updateSource").value));
+$("autoUpdateCheck").addEventListener("change", event => call("setAutoUpdateCheck", event.target.checked));
+$("associationOn").addEventListener("change", event => call("setAssociation", event.target.checked));
+$("backspaceAssocOn").addEventListener("change", event => call("setBackspaceAssoc", event.target.checked));
+$("hwkbForm").addEventListener("change", event => call("setHwkbForm", event.target.value));
+$("quickSwitchPolicy").addEventListener("change", event => call("setQuickSwitchPolicy", event.target.value));
+$("wxSlashOn").addEventListener("change", event => call("setWxSlash", event.target.checked));
+$("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
+$("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
+
+$("keySoundVolume").addEventListener("input", event => {
+    rangeOut("keySoundVolume", event.target.value + "%");
+    clearTimeout(keySoundVolumeTimer);
+    keySoundVolumeTimer = setTimeout(
+        () => call("setKeySoundVolume", Number(event.target.value)), 250);
+});
+$("keyHapticStrength").addEventListener("change", event => call("setKeyHapticStrength", Number(event.target.value)));
+// 全局震动跟随系统（3.74.10）：切换即写桥，并立即置灰/放开强度选择器。
+$("keyHapticFollowSystem").addEventListener("change", event => {
+    const follow = event.target.checked;
+    const strengthSel = $("keyHapticStrength");
+    if (strengthSel) strengthSel.disabled = follow;
+    call("setKeyHapticFollowSystem", follow);
+});
+
+// 删除前确认（3.74.11）：切换即写桥。
+$("deleteConfirm").addEventListener("change", event => call("setDeleteConfirm", event.target.checked));
+
+// #30-2 音效风格：custom 但文件还没选过时先走选文件（native 拒绝无文件的
+// custom，state 回推会把 select 弹回实际生效值）。
+
+$("keySoundStyle").addEventListener("change", event => {
+    if (event.target.value === "custom") call("openKeySoundDocument");
+    else call("setKeySoundStyle", event.target.value);
+});
+$("btnPickKeySound").addEventListener("click", () => call("openKeySoundDocument"));
+$("btnClearKeySound").addEventListener("click", () => call("clearKeySoundFile"));
+$("keyHaptic").addEventListener("change", event => call("setKeyHaptic", event.target.checked));
+document.querySelectorAll("input[data-fuzzy-bit]").forEach(box => {
+    box.addEventListener("change", () => {
+        let mask = 0;
+        document.querySelectorAll("input[data-fuzzy-bit]").forEach(other => {
+            if (other.checked) mask |= Number(other.dataset.fuzzyBit);
+        });
+        call("setFuzzyPinyinMask", mask);
+    });
+});
+$("btnInstallZip").addEventListener("click", () => call("installZip", $("updateUrl").value));
+$("btnImportZip").addEventListener("click", () => call("openKeyboardDocument"));
+$("btnRestore").addEventListener("click", () => call("restoreBuiltInKeyboard"));
+
+// 备份（docs/design/userdata.md §1）：导出直接拉起系统“保存文件”；
+// 导入先弹覆盖确认，确认后才打开文件选择器。
+$("btnExportBackup").addEventListener("click", () => call("exportUserdata"));
+$("btnImportBackup").addEventListener("click", () => { $("backupConsent").hidden = false; });
+$("backupConsentCancel").addEventListener("click", () => { $("backupConsent").hidden = true; });
+$("backupConsentConfirm").addEventListener("click", () => {
+    $("backupConsent").hidden = true;
+    call("openBackupDocument");
+});
+
+// #43 WebDAV 云端备份（2026-10-09）：时间戳文件名不覆盖历史（native
+// 侧 PUT feelime-backup-*.json）；备份/恢复都走 bottom-sheet 弹窗——
+// 备份可改文件名、与云端重名时先警示（用户裁定：覆盖前必须提示），
+// 恢复列表选择（时间/大小分列）+ 确认后才 GET+换装（复用本地导入
+// 的覆盖确认语义）。
+let webdavCloudNames = null; // null=未知（没拉到列表/刚换服务器）；Set=已知名单
+let webdavPickedName = "";
+let webdavDupConfirmed = false; // 客户端警示或服务器 412 仲裁后，用户已确认覆盖
+let webdavFormInit = false; // 只在首次有效握手回填，防止切后台回来覆盖未保存输入
+
+function webdavFillConfig() {
+    try {
+        const raw = typeof BRIDGE.webdavGetConfig === "function"
+            ? BRIDGE.webdavGetConfig(token) : "";
+        const cfg = raw ? JSON.parse(raw) : {};
+        $("webdavUrl").value = cfg.url || "";
+        $("webdavDir").value = typeof cfg.subdir === "string" ? cfg.subdir : "feelime-backup";
+        $("webdavUser").value = cfg.user || "";
+        $("webdavPass").value = cfg.password || "";
+        webdavSyncProviderSelection();
+    } catch (error) { /* 旧壳无桥：保持空表单 */ }
+}
+
+/** 服务商下拉（#43 验收反馈）：预定义服务商选中即把地址填进
+ *  「服务器地址」（一眼可见用上了，不是暗自记着）；无固定地址的
+ *  只换占位示例并聚焦输入。地址手填/回显与已知服务商匹配时反向
+ *  同步下拉，否则回落「自定义…」。 */
+const WEBDAV_PROVIDERS = {
+    jg: { url: "https://dav.jianguoyun.com/dav/",
+        ph: "https://dav.jianguoyun.com/dav/" },
+    inf: { url: "", ph: "https://你的账号.infini-cloud.net/dav/" },
+    nc: { url: "", ph: "https://你的服务器/remote.php/dav/files/用户名/" },
+    custom: { url: "", ph: "https://dav.example.com/dav/" },
+};
+
+function webdavSyncProviderSelection() {
+    const value = $("webdavUrl").value.trim().replace(/\/+$/, "");
+    const key = Object.keys(WEBDAV_PROVIDERS).find(k =>
+        WEBDAV_PROVIDERS[k].url &&
+        WEBDAV_PROVIDERS[k].url.replace(/\/+$/, "") === value) || "custom";
+    $("webdavProvider").value = key;
+    $("webdavUrl").placeholder = (WEBDAV_PROVIDERS[key] || WEBDAV_PROVIDERS.custom).ph;
+}
+
+function webdavWireProviders() {
+    $("webdavProvider").addEventListener("change", () => {
+        const p = WEBDAV_PROVIDERS[$("webdavProvider").value] || WEBDAV_PROVIDERS.custom;
+        if (p.url) $("webdavUrl").value = p.url;
+        $("webdavUrl").placeholder = p.ph;
+        if (!p.url) $("webdavUrl").focus();
+    });
+    $("webdavUrl").addEventListener("input", webdavSyncProviderSelection);
+}
+
+/** feelime-backup-20261009-213905.json → 2026-10-09 21:39:05 */
+function webdavDisplayName(name) {
+    const m = /^feelime-backup-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.json$/.exec(name);
+    return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}` : name;
+}
+
+/** 默认文件名：与 native 侧 WebDavBackup.backupFileName 同格式（本地时区）。 */
+function webdavMakeName() {
+    const p = n => String(n).padStart(2, "0");
+    const d = new Date();
+    return "feelime-backup-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
+        + "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ".json";
+}
+
+/** 文件名白名单：须保持 feelime-backup- 前缀与 .json 后缀（恢复侧
+ *  native 同规则校验，丢了前缀这份备份将来就恢复不了）；不含路径字符、
+ *  空白与 +（URL 表单编码下空格与 + 无法可靠往返，发版 review P2）。 */
+function webdavNameValid(name) {
+    return name.length > "feelime-backup-.json".length && name.length <= 128
+        && name.startsWith("feelime-backup-") && name.endsWith(".json")
+        && !/[\s/+]/.test(name);
+}
+
+/** 输入校验 + 重名检测 → 警告行与底部按钮（重名换「覆盖」红色按钮）。
+ *  名单未知不拦上传（服务器 If-None-Match 412 兜底），但要告知用户。 */
+function webdavCheckDup() {
+    const name = $("webdavNameInput").value.trim();
+    const warn = $("webdavDupWarn");
+    const go = $("webdavBackupGo");
+    if (!webdavNameValid(name)) {
+        webdavDupConfirmed = false;
+        warn.hidden = false;
+        warn.textContent = t("webdav.backupModal.badName");
+        go.disabled = true;
+        go.textContent = t("webdav.backupModal.go");
+        go.className = "btn primary";
+        return;
+    }
+    const dup = webdavCloudNames !== null && webdavCloudNames.has(name);
+    webdavDupConfirmed = dup;
+    if (dup) {
+        warn.hidden = false;
+        warn.textContent = t("webdav.backupModal.dup");
+        go.textContent = t("webdav.backupModal.dupBtn");
+        go.className = "btn ck-btn-danger";
+    } else {
+        warn.hidden = webdavCloudNames !== null;
+        warn.textContent = t("webdav.backupModal.unknownDup");
+        go.textContent = t("webdav.backupModal.go");
+        go.className = "btn primary";
+    }
+    go.disabled = false;
+}
+
+function webdavOpenBackup() {
+    $("webdavNameInput").value = webdavMakeName();
+    $("webdavBackupGo").disabled = false;
+    $("webdavBackupModal").hidden = false;
+    setNote("webdavNote", "");
+    // 拉一次云端列表刷新重名集合（事件回来 webdavCheckDup 会重跑）。
+    call("webdavListBackups");
+    webdavCheckDup();
+}
+
+function webdavShowRestoreView(confirm) {
+    $("webdavPickView").hidden = confirm;
+    $("webdavFootPick").hidden = confirm;
+    $("webdavConfirmView").hidden = !confirm;
+    $("webdavFootConfirm").hidden = !confirm;
+}
+
+function webdavOpenRestore() {
+    webdavPickedName = "";
+    $("webdavRestoreGo").disabled = true;
+    $("webdavPickList").textContent = "";
+    $("webdavPickHint").hidden = false;
+    $("webdavPickHint").textContent = t("webdav.note.listing");
+    webdavShowRestoreView(false);
+    $("webdavRestoreModal").hidden = false;
+    setNote("webdavNote", "");
+    call("webdavListBackups");
+}
+
+function renderWebdavList(event) {
+    // 先更新共享重名集合（备份弹窗的重名检测也吃这份名单）。
+    if (event.ok) {
+        const items = Array.isArray(event.items) ? event.items : [];
+        webdavCloudNames = new Set(items.map(item => String(item.name)));
+    } else {
+        webdavCloudNames = null;
+        const mapped = t("webdav.err." + (event.code || "INTERNAL"));
+        setNote("webdavNote", mapped.startsWith("webdav.err.")
+            ? t("webdav.err.GENERIC") + "（" + (event.code || "INTERNAL") + "）" : mapped);
+    }
+    if (!$("webdavBackupModal").hidden) webdavCheckDup();
+    if ($("webdavRestoreModal").hidden || !event.ok) return;
+    const list = $("webdavPickList");
+    list.textContent = "";
+    const items = Array.isArray(event.items) ? event.items : [];
+    $("webdavPickHint").hidden = items.length > 0;
+    if (!items.length) {
+        $("webdavPickHint").textContent = t("webdav.empty");
+        return;
+    }
+    items.forEach(item => {
+        const name = String(item.name);
+        const row = document.createElement("li");
+        row.className = "webdav-pick-row";
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", "false");
+        const time = document.createElement("span");
+        time.className = "webdav-pick-time";
+        time.textContent = webdavDisplayName(name);
+        const size = document.createElement("span");
+        size.className = "webdav-pick-size";
+        size.textContent = t("webdav.size.kb",
+            [String(Math.max(1, Math.round(Number(item.size) / 1024)))]);
+        row.append(time, size);
+        row.addEventListener("click", () => {
+            webdavPickedName = name;
+            list.querySelectorAll(".webdav-pick-row").forEach(el =>
+                el.setAttribute("aria-selected", String(el === row)));
+            $("webdavRestoreGo").disabled = false;
+        });
+        list.append(row);
+    });
+}
+
+function renderWebdavStatus(event) {
+    const op = event.op || "";
+    if (event.ok) {
+        if (op === "test" || op === "save") setNote("webdavNote", t("webdav.note.ok"));
+        else if (op === "backup") {
+            $("webdavBackupModal").hidden = true;
+            $("webdavBackupGo").disabled = false;
+            setNote("webdavNote", t("webdav.note.backupOk", [webdavDisplayName(event.name || "")]));
+            call("webdavListBackups");
+        } else if (op === "restore") {
+            setNote("webdavNote", t("webdav.note.restoreOk", [webdavDisplayName(event.name || "")]));
+        }
+        return;
+    }
+    if (op === "backup" && event.code === "CONFLICT") {
+        // 服务器 If-None-Match 仲裁出重名（名单未知/过期时的最终裁判）：
+        // 弹窗回到前台翻覆盖确认，不默认覆盖。
+        $("webdavBackupModal").hidden = false;
+        $("webdavDupWarn").hidden = false;
+        $("webdavDupWarn").textContent = t("webdav.backupModal.dup");
+        const go = $("webdavBackupGo");
+        go.disabled = false;
+        go.textContent = t("webdav.backupModal.dupBtn");
+        go.className = "btn ck-btn-danger";
+        webdavDupConfirmed = true;
+        setNote("webdavNote", "");
+        return;
+    }
+    if (op === "backup") $("webdavBackupModal").hidden = true;
+    // 未知码（HTTP_301 这类）落到通用文案并带原始码，不再显示裸 key。
+    const mapped = t("webdav.err." + (event.code || "INTERNAL"));
+    const text = mapped.startsWith("webdav.err.")
+        ? t("webdav.err.GENERIC") + "（" + (event.code || "INTERNAL") + "）" : mapped;
+    setNote("webdavNote", text);
+}
+
+webdavWireProviders();
+$("btnWebdavSave").addEventListener("click", () => {
+    // 换了服务器配置，旧名单作废（上一台的名单拿来判这台的重名是错的）。
+    webdavCloudNames = null;
+    setNote("webdavNote", t("webdav.note.testing"));
+    call("webdavSaveConfig", $("webdavUrl").value.trim(), $("webdavUser").value.trim(), $("webdavPass").value, $("webdavDir").value.trim());
+});
+$("btnWebdavBackup").addEventListener("click", webdavOpenBackup);
+$("btnWebdavRestore").addEventListener("click", webdavOpenRestore);
+$("webdavNameInput").addEventListener("input", webdavCheckDup);
+$("webdavBackupX").addEventListener("click", () => { $("webdavBackupModal").hidden = true; });
+$("webdavBackupMask").addEventListener("click", () => { $("webdavBackupModal").hidden = true; });
+$("webdavBackupCancel").addEventListener("click", () => { $("webdavBackupModal").hidden = true; });
+$("webdavBackupGo").addEventListener("click", () => {
+    const name = $("webdavNameInput").value.trim();
+    if (!webdavNameValid(name)) return;
+    // 弹窗保持开：成功才收（失败/CONFLICT 都要在弹窗里给用户交代）。
+    // 覆盖必须显式确认：dup 态按钮已是「覆盖同名文件」才带 true，
+    // 名单未知/不重名都走 false，让服务器 If-None-Match 做最终仲裁。
+    const go = $("webdavBackupGo");
+    go.disabled = true;
+    go.textContent = t("webdav.backupModal.sending");
+    setNote("webdavNote", t("webdav.note.backing"));
+    call("webdavBackup", name, webdavDupConfirmed);
+});
+$("webdavRestoreX").addEventListener("click", () => { $("webdavRestoreModal").hidden = true; });
+$("webdavRestoreMask").addEventListener("click", () => { $("webdavRestoreModal").hidden = true; });
+$("webdavRestoreCancel").addEventListener("click", () => { $("webdavRestoreModal").hidden = true; });
+$("webdavRestoreGo").addEventListener("click", () => {
+    if (!webdavPickedName) return;
+    $("webdavConfirmName").textContent = webdavDisplayName(webdavPickedName);
+    webdavShowRestoreView(true);
+});
+$("webdavRestoreBack").addEventListener("click", () => webdavShowRestoreView(false));
+$("webdavRestoreConfirm").addEventListener("click", () => {
+    if (!webdavPickedName) return;
+    $("webdavRestoreModal").hidden = true;
+    setNote("webdavNote", t("webdav.note.restoring"));
+    call("webdavRestore", webdavPickedName);
+    webdavPickedName = "";
+});
+// 签名不符的确认导入（§3）：凭 confirmId 只对暂存的那一份包生效，
+// 取消/确认都会作废它，旧包残留不到下一次操作。
+let pendingKbSigId = "";
+$("kbSigConsentCancel").addEventListener("click", () => {
+    $("kbSigConsent").hidden = true;
+    if (pendingKbSigId) call("dismissKeyboardInstall", pendingKbSigId);
+    pendingKbSigId = "";
+});
+$("kbSigConsentConfirm").addEventListener("click", () => {
+    $("kbSigConsent").hidden = true;
+    if (pendingKbSigId) call("confirmKeyboardInstall", pendingKbSigId);
+    pendingKbSigId = "";
+});
+// #80 大字体确认：取消只收起；确认走桥带 allowLarge 重导。
+$("fontConsentCancel").addEventListener("click", () => {
+    $("fontConsent").hidden = true;
+});
+$("fontConsentConfirm").addEventListener("click", () => {
+    $("fontConsent").hidden = true;
+    call("confirmLargeFontImport");
+});
+
+function renderBackupStatus(event) {
+    const exporting = event.direction === "export";
+    if (event.ok) {
+        setNote("backupNote", t(exporting ? "backup.done.export" : "backup.done.import"));
+    } else {
+        setNote("backupNote", t(exporting ? "backup.failed.export" : "backup.failed.import") + " " +
+            t("backup.error." + String(event.code || "IO_ERROR")));
+    }
+}
+
+$("diagnosticsOn").addEventListener("change", event => {
+    call("setDiagnostics", event.target.checked);
+    setNote("diagNote", event.target.checked ? t("diag.on") : t("diag.off"));
+});
+$("btnExportDiagnostics").addEventListener("click", () => {
+    if (!lastState || !lastState.diagnosticsOn) {
+        setNote("diagNote", t("diag.off"));
+        return;
+    }
+    call("exportDiagnostics");
+    setNote("diagNote", t("diag.exported"));
+});
+$("btnAppStore").addEventListener("click", () => call("openAppStore"));
+// #29-4：关于页开源仓库/问题反馈入口（native 侧只认内置两址）。
+$("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
+// 关于页官方原版仓库入口（native 侧白名单另认上游一址）。
+$("btnGithubUpstream").addEventListener("click", () => call("openGithub", "upstream"));
+// #29-8：定制键盘 JSON 的官方说明文档（native 只认内置地址）。
+$("btnCustomDocs").addEventListener("click", () => call("openDocs"));
+
+/* ===== #39-12 定制按键编辑器（三级页，免 JSON）============================
+ * 数据：ckRows = [[cell,...],[],[]]（cell {t,tap,note,span?,color?}），进入
+ * 页面时从 state.custom.json 载入；保存条「保存」校验后走同一条 saveCustom
+ * 桥（JSON 兜底与编辑器共享真相源，textarea 同步刷新）。
+ * tap 的可视化构造：文本/单键/组合键/高级 DSL 四型；编辑已有键时按 tap
+ * 内容反猜型别（ckTapParse），切型重造。 */
+const CK_KEYS = [
+    ["esc", "Esc"], ["tab", "Tab"], ["enter", "Enter ⏎"], ["space", "Space"],
+    ["backspace", "退格 ⌫"], ["del", "Del"],
+    ["left", "←"], ["up", "↑"], ["down", "↓"], ["right", "→"],
+    ["home", "Home"], ["end", "End"], ["pgup", "PgUp"], ["pgdn", "PgDn"],
+].concat(Array.from({ length: 12 }, (_, i) => ["f" + (i + 1), "F" + (i + 1)]))
+    .concat(Array.from({ length: 26 }, (_, i) =>
+        [String.fromCharCode(97 + i), String.fromCharCode(65 + i)]))
+    .concat(Array.from({ length: 10 }, (_, i) => [String(i), String(i)]));
+const CK_KEY_NAME = Object.fromEntries(CK_KEYS);
+const CK_MODS = [["ctrl", "Ctrl"], ["alt", "Alt"], ["shift", "Shift"], ["win", "Win"]];
+/** #65 面板目标单一事实源：ckTapParse 反猜、编辑器下拉、保存校验、
+ *  长按空格摘要四处共用（此前各持一份枚举，扩 emoji/custom 时漏改过
+ *  保存白名单——新目标存不下提示「面板目标无效」）。与 keyboard.js
+ *  的 PANEL_STEPS 同源，两侧同步改。 */
+const CK_PANEL_TARGETS = [
+    ["clipboard", "voice.hold.clipboard"],
+    ["favorites", "voice.hold.favorites"],
+    ["emoji", "voice.hold.emoji"],
+    ["edit", "voice.hold.edit"],
+    ["control", "voice.hold.control"],
+    ["custom", "voice.hold.custom"],
+];
+const CK_PANEL_RE = new RegExp("^\\[panel:(" +
+    CK_PANEL_TARGETS.map(([value]) => value).join("|") + ")\\]$");
+const CK_COLORS = ["blue", "green", "orange", "red", "purple"];
+const CK_QUICK = [
+    { t: "Esc", tap: "[esc]" },
+    { t: "Tab", tap: "[tab]" },
+    { t: "⏎", tap: "[enter]" },
+    { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
+    { t: "←", tap: "[left]" }, { t: "→", tap: "[right]" },
+    { t: "↑", tap: "[up]" }, { t: "↓", tap: "[down]" },
+    { t: "Home", tap: "[home]" }, { t: "End", tap: "[end]" },
+    { t: "F5", tap: "[f5]" },
+    { t: "存", tap: "[ctrl+s]", color: "h210" },
+    { t: "复制", tap: "[ctrl+c]" }, { t: "粘贴", tap: "[ctrl+v]" },
+    { t: "剪切", tap: "[ctrl+x]" }, { t: "全选", tap: "[ctrl+a]" },
+    { t: "分享", tap: "[edit:share]", color: "purple", note: "把选中的文字分享给其他应用" },
+    { t: "撤销", tap: "[ctrl+z]" },
+    { t: "邮箱", tap: "me@example.com", span: 2 },
+    { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
+    { t: "豆包", tap: "[open:doubao://]", note: "打开豆包 App（需已安装）" },
+    { t: "扫一扫", tap: "[open:alipays://platformapi/startapp?saId=10000007]", color: "blue", note: "打开支付宝扫一扫（需已安装）" },
+    { t: "收付款", tap: "[open:alipays://platformapi/startapp?saId=20000056]", color: "green", note: "打开支付宝收付款（需已安装）" },
+];
+/** 「打开应用/链接」型的预设（下拉选即填 URI；自定义 scheme 未安装会
+ *  toast）。label=下拉里的完整文案（2026-10-04 用户裁定：按钮改下拉、
+ *  文案要完整），t=选后预填的短键面（键面 ≤12 字）。支付宝 saId 是
+ *  官方公开 scheme；微信 8.0.69 实测外部 scheme 不可用（scanqrcode
+ *  stub 自杀、dl/scan 落错误页，2026-10-03），不收录。 */
+const CK_OPEN_PRESETS = [
+    { label: "支付宝扫一扫", t: "扫一扫", uri: "alipays://platformapi/startapp?saId=10000007" },
+    { label: "支付宝收付款", t: "收付款", uri: "alipays://platformapi/startapp?saId=20000056" },
+    { label: "百度翻译", t: "翻译", uri: "https://fanyi.baidu.com" },
+    { label: "谷歌翻译", t: "翻译", uri: "https://translate.google.com" },
+    { label: "豆包", t: "豆包", uri: "doubao://" },
+    { label: "有道词典", t: "词典", uri: "youdaodict://" },
+    { label: "百度搜索", t: "搜索", uri: "https://www.baidu.com/s?wd=" },
+];
+let ckRows = null;
+// #50 三轮：编辑弹层的目标（cell=定制键 | space=长按空格虚拟键）与
+// 长按空格当前动作（归一后 "voice"|"none"|tap DSL 串）。
+let ckEditorTarget = "cell";
+let spaceHoldRaw = "voice";
+// 键面文案（非语音动作显示；语音恒 mic）——状态回填与编辑器预填用。
+let spaceHoldTextRaw = "";
+let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
+let ckDraft = null; // 表单草稿
+let ckDirty = false;
+// 语言键盘定制段（langKeys：{layout:{key:{alt,up,down}}}）：与 ckRows
+// 同一脏态草稿、保存条随子页各自触发提交（分页保存）。来源是 customJson
+// textarea 的 JSON（state 推送或用户粘贴），编辑器改动写回草稿。
+let ckLangKeys = {};
+// #112 符号栏草稿（T9/笔画/手写三栏）：null=未定制（用键盘内置默认）；
+// 数组=已定制。字段名与键盘端 sideCharsList 的映射一一对应。
+let ckStrips = { t9: null, stroke: null, ink: null };
+let ckLeaveTarget = null;   // 脏态离开确认的目标页
+
+/** 脏态驱动的保存条：变更必须让用户看得见（用户验收实录）。
+ *  dirty 时按钮高亮 + 提示文案；保存后回落。 */
+/** 编辑态/脏态上报壳侧（BACK 键分流用，2026-10-04）：变化点即时推，
+ *  壳侧桥字段只作 back 分支判断，不参与页面导航。 */
+function ckReportState() {
+    call("reportCkState", !!ckEditMode, !!ckDirty);
+}
+
+function ckMarkDirty(dirty) {
+    ckDirty = dirty;
+    ckReportState();
+    const bar = document.getElementById("ckSaveBar");
+    if (!bar) return;
+    document.getElementById("ckSave").classList.toggle("ck-save-dirty", dirty);
+    document.getElementById("ckDirtyHint").hidden = !dirty;
+}
+
+function ckOpenModal(isNew) {
+    const modal = document.getElementById("ckModal");
+    document.getElementById("ckModalTitle").textContent =
+        ckEditorTarget === "space" ? t("ck.spaceTitle") : t(isNew ? "ck.newTitle" : "ck.edit.title");
+    setNote("ckEditNote", "");
+    modal.hidden = false;
+}
+
+function ckCloseModal() {
+    document.getElementById("ckModal").hidden = true;
+    ckSel = null;
+}
+
+/** #51 定制按键「打开设置项」的锚点清单：遍历各页设置行，取行内首
+ *  个带 id 的控件（或行自身 id）作锚，label 带页名前缀便于长下拉里
+ *  找到。与 focusSetting 的 getElementById 口径一致。 */
+function ckSettingAnchors() {
+    const out = [];
+    document.querySelectorAll("[data-page]").forEach(page => {
+        const pageName = page.dataset.page;
+        const pageTitle = (page.querySelector("h2, .page-title")?.textContent || pageName).trim().slice(0, 10);
+        page.querySelectorAll(".row, label.row").forEach(row => {
+            const control = row.querySelector("select[id], input[id]:not([type=hidden]), button[id], [id]");
+            const id = (control && control.id) || row.id;
+            if (!id) return;
+            // 可选链要贯穿索引访问（x?.childNodes[0] 在 childNodes 缺失
+            // 时仍会炸 reading 0）：文本首子节点统一走安全取值。
+            const labelEl = row.querySelector(".row-label span:not(small), .row-label");
+            const labelText = labelEl && labelEl.childNodes && labelEl.childNodes[0]
+                ? labelEl.childNodes[0].textContent : "";
+            const label = (labelText || row.getAttribute("aria-label") || id).trim().slice(0, 16);
+            if (!label) return;
+            out.push([id, `${pageTitle} · ${label}`]);
+        });
+    });
+    return out;
+}
+
+/** tap 反猜型别 + 拆字段（编辑已有键时回填表单）。 */
+function ckTapParse(tap) {
+    // [open:URI] 在 lowercase 之前识别：URI 大小写敏感。
+    const open = /^\[open:(.+)\]$/.exec(String(tap || "").trim());
+    if (open) return { mode: "open", open: open[1].trim() };
+    // [setting:id]（#51 定制按键绑定设置项）在 lowercase 之前识别。
+    const setting = /^\[setting:([\w-]{1,64})\]$/.exec(String(tap || "").trim());
+    if (setting) return { mode: "setting", setting: setting[1] };
+    // [panel:x]（#50 打开键盘面板，与长按空格动作同域；目标集=
+    // CK_PANEL_TARGETS，#65 扩 emoji/custom）。
+    const panel = CK_PANEL_RE.exec(String(tap || "").trim().toLowerCase());
+    if (panel) return { mode: "panel", panel: panel[1] };
+    // [edit:x]（语言键盘定制/长按空格的「动作」类型：编辑操作枚举）。
+    const edit = /^\[edit:(\w+)\]$/.exec(String(tap || "").trim());
+    if (edit && CK_EDIT_OPS.some(([op]) => op === edit[1])) {
+        return { mode: "op", op: edit[1] };
+    }
+    const m = /^\[([a-z0-9+]+)\]$/.exec(String(tap || "").trim().toLowerCase());
+    if (m) {
+        const parts = m[1].split("+");
+        if (parts.length === 1 && CK_KEY_NAME[parts[0]]) {
+            return { mode: "single", single: parts[0] };
+        }
+        const key = parts[parts.length - 1];
+        const mods = parts.slice(0, -1);
+        const modNames = ["ctrl", "alt", "shift", "win"];
+        if (CK_KEY_NAME[key] && mods.every(x => modNames.includes(x))) {
+            return { mode: "combo", comboKey: key, mods: new Set(mods) };
+        }
+    }
+    if (!String(tap || "").includes("[")) return { mode: "text", text: tap || "" };
+    return { mode: "advanced", dsl: tap || "" };
+}
+
+/** 表单草稿 → tap 串。 */
+function ckTapFromDraft(d) {
+    if (d.mode === "text") return d.text || "";
+    if (d.mode === "open") {
+        const uri = (d.open || "").trim();
+        return uri ? "[open:" + uri + "]" : "";
+    }
+    if (d.mode === "setting") {
+        const id = (d.setting || "").trim();
+        return id ? "[setting:" + id + "]" : "";
+    }
+    if (d.mode === "panel") return "[panel:" + (d.panel || "clipboard") + "]";
+    if (d.mode === "op") return "[edit:" + (d.op || "copy") + "]";
+    if (d.mode === "single") return d.single ? "[" + d.single + "]" : "";
+    if (d.mode === "combo") {
+        const mods = CK_MODS.filter(([name]) => d.mods.has(name)).map(([name]) => name);
+        return d.comboKey ? "[" + mods.concat(d.comboKey).join("+") + "]" : "";
+    }
+    return d.dsl || "";
+}
+
+function ckLoad() {
+    let rows = null;
+    try {
+        const parsed = JSON.parse($("customJson").value || "null");
+        if (parsed && parsed.version === 1 && Array.isArray(parsed.rows)) rows = parsed.rows;
+        // 语言键盘定制段同步进草稿（rows 为空模板时 langKeys 仍独立生效）。
+        ckLangKeys = parsed && parsed.langKeys && typeof parsed.langKeys === "object"
+            && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
+        // #112 符号栏三段：数组才进草稿（null=未定制，用键盘内置默认）。
+        ckStrips = {
+            t9: parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null,
+            stroke: parsed && Array.isArray(parsed.strokeStrip) ? parsed.strokeStrip.slice() : null,
+            ink: parsed && Array.isArray(parsed.inkStrip) ? parsed.inkStrip.slice() : null,
+        };
+    } catch (_) { /* textarea 空/坏 JSON → 模板 */ }
+    if (!rows || !rows.some(row => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
+    ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
+    // 草稿来源就是本 textarea：对齐投影基准，进符号页时按草稿重新
+    // 投影（统一为缩进格式）而不是被当成「手上有更新」再吸收一遍。
+    ckJsonProjected = $("customJson").value;
+}
+
+/** 编辑器默认表（用户裁定 2026-10-03 二轮）：三行填满、大多数人打开
+ *  就能用、每颗键展示一种能力。行1 高频短语（text）；行2 编辑快捷键
+ *  （combo + 单键）；行3 支付宝扫码/收款 + 网页链接（[open:]，color）
+ *  + 邮箱（span2）+ ⌫ 行尾（与主键盘位置习惯一致），整行右对齐（行
+ *  对齐能力亮相，⌫ 贴右缘）。行宽以 390 级主流屏填满为准（DOM 实测
+ *  97/100/88%）；更窄屏（360-375）行1/行2 尾键进横滚可拖出（横滚条
+ *  设计内行为），⌫ 所在行3 全部主流屏完整可见。微信 8.0.69 实测：
+ *  scanqrcode stub 自杀无页面、dl/scan 与裸 scheme 落「页面无法访问」
+ *  错误页（收款 scheme 未测），故不放微信死链；支付宝 saId 是官方公
+ *  开 scheme。单键/混排等由「开发者模板」承载（btnCustomTemplateDev，
+ *  模板全覆盖验收 2026-09-24 归它管）。 */
+const CK_TEMPLATE = JSON.stringify({
+    version: 1,
+    rows: [
+        [
+            { t: "谢谢", tap: "谢谢", note: "点击直接上屏，可改成自己的高频用语" },
+            { t: "好的", tap: "好的" },
+            { t: "收到", tap: "收到" },
+            { t: "辛苦了", tap: "辛苦了" },
+            { t: "不客气", tap: "不客气" },
+            { t: "没问题", tap: "没问题" },
+        ],
+        [
+            { t: "撤销", tap: "[ctrl+z]" },
+            { t: "复制", tap: "[ctrl+c]" },
+            { t: "剪切", tap: "[ctrl+x]" },
+            { t: "粘贴", tap: "[ctrl+v]" },
+            { t: "全选", tap: "[ctrl+a]" },
+            { t: "保存", tap: "[ctrl+s]" },
+            { t: "换行", tap: "[enter]" },
+        ],
+        [
+            { t: "扫一扫", tap: "[open:alipays://platformapi/startapp?saId=10000007]", color: "blue", note: "打开支付宝扫一扫（需已安装）", align: "right" },
+            { t: "收付款", tap: "[open:alipays://platformapi/startapp?saId=20000056]", color: "green", note: "打开支付宝收付款（需已安装）" },
+            { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
+            { t: "邮箱", tap: "me@example.com", span: 2, note: "改成你自己的邮箱" },
+            { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
+        ],
+    ],
+}, null, 2);
+
+function ckEnter() {
+    if (!ckRows) ckLoad();
+    ckSel = null;
+    ckEditMode = false;
+    document.getElementById("ckEditBar").hidden = true;
+    ckCloseModal();
+    ckRenderRows();
+}
+
+/** 行对齐（2026-10-03 用户需求）：值挂在行内首键的 align 字段（键盘
+ *  渲染取行内第一个有效值）。挂 cell 而非改 rows 形状——旧版键盘校验
+ *  器忽略未知字段，热更错峰不炸整表。空行没有载体，不渲染控件。 */
+const CK_ALIGNS = ["left", "center", "right"];
+function ckRowAlign(row) {
+    const hit = (row || []).map(c => c && c.align).find(a => CK_ALIGNS.includes(a));
+    return hit || "left";
+}
+function ckSetRowAlign(r, align) {
+    const row = ckRows[r] || [];
+    row.forEach(c => { delete c.align; });
+    if (align !== "left" && row[0]) row[0].align = align;
+}
+
+/** 载体键离行（× 删除/拖走去别的行）时保住行对齐：被移除的键带着
+ *  align 且行内没有其他标记 → 转移给留下的新首键，行停靠不静默回左
+ *  （评审 P3-1；空行没载体，只能随键消失）。 */
+function ckKeepRowAlign(r, removed) {
+    const row = ckRows[r] || [];
+    if (!CK_ALIGNS.includes(removed && removed.align)) return;
+    // 被移除的键此刻还在行里：查其他标记要排除它自己。
+    if (!row.some(c => c !== removed && c.align === removed.align) && row.length > 1) {
+        row.find(c => c !== removed).align = removed.align;
+    }
+}
+
+/** 行内容整体缩放（2026-10-04 用户需求）：超宽不折行，按需缩字号塞进
+ *  一行；两轮迭代补偿 min-width/padding 不随字缩的误差。缩到下限仍
+ *  放不下就交还横向滚动兜底（用户裁定那属于用户自己的问题）。测试
+ *  环境（jsdom）无布局，clientWidth=0 直接跳过。 */
+function ckFitStrip(strip, minPct) {
+    strip.style.fontSize = "";
+    const avail = strip.clientWidth;
+    if (!avail) return;
+    // fit 只量键帽。绝对定位的 × 也计入 scrollWidth；右对齐时它始终
+    // 超出末键，缩字号无法消除，残差循环会误把整行缩到下限。
+    strip.classList.add("ck-fitting");
+    for (let round = 0; round < 3 && strip.scrollWidth > avail; round++) {
+        // 比例必须相对【当前字号】算（cur × avail / sw）：round 0 时
+        // cur=100 与绝对比值等价；之后 scrollWidth 已是缩小后的几何，
+        // avail/sw 是相对当前字号的倍率——直接当绝对百分比写会被单调
+        // 钳死，min-width/padding 不随字缩的残差永远补不掉（review P1，
+        // 实测 80% 仍溢出 19px 裁掉＋键）。min 只作 Math.round 抖动护栏。
+        const cur = parseInt(strip.style.fontSize, 10) || 100;
+        const pct = Math.round(cur * avail / strip.scrollWidth);
+        const clamped = Math.max(minPct, Math.min(pct, cur));
+        strip.style.fontSize = clamped + "%";
+        if (clamped <= minPct) break;
+    }
+    // 收敛残差（用户三轮实录"还有一点在容器外"）：乘法精化会卡在
+    // Math.round 粒度（pct==cur 不再下降），逐 1% 下调收掉最后几个
+    // 像素；min-width/padding 已 em 化，缩字号它们跟着缩，能收干净。
+    let cur = parseInt(strip.style.fontSize, 10) || 100;
+    while (strip.scrollWidth > avail && cur > minPct) {
+        cur = Math.max(minPct, cur - 1);
+        strip.style.fontSize = cur + "%";
+    }
+    strip.classList.remove("ck-fitting");
+}
+
+function ckRenderRows(skipFit) {
+    const host = $("ckRowList");
+    // 拖动重渲不重新量布局，但要保留各行已经算出的字号。
+    const fontSizes = skipFit ? [...host.querySelectorAll(".ck-row-strip")]
+        .map(strip => strip.style.fontSize) : [];
+    host.textContent = "";
+    const bar = document.getElementById("ckEditBar");
+    if (bar) bar.hidden = !ckEditMode;
+    const fitted = [];
+    ckRows.forEach((row, r) => {
+        const line = document.createElement("div");
+        line.className = "ck-row-line";
+        // 定制即预览（2026-10-04 用户裁定：预览与编辑合并）：行头常驻
+        // 行号；有键的行挂对齐按钮；strip 即预览键帽（data-align 停靠
+        // 与键盘同款 auto margin），缩放走 ckFitStrip。
+        const head = document.createElement("div");
+        head.className = "ck-row-head";
+        const label = document.createElement("span");
+        label.textContent = t("ck.row", { n: r + 1 });
+        head.append(label);
+        if (row.length) {
+            const seg = document.createElement("div");
+            seg.className = "ck-align";
+            seg.setAttribute("aria-label", t("ck.align.aria"));
+            const cur = ckRowAlign(row);
+            for (const a of CK_ALIGNS) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "ck-align-btn" + (cur === a ? " on" : "");
+                b.textContent = t("ck.align." + a);
+                b.addEventListener("click", () => {
+                    ckSetRowAlign(r, a);
+                    ckRenderRows();
+                    ckMarkDirty(true);
+                });
+                seg.append(b);
+            }
+            head.append(seg);
+        }
+        // 「＋」挂行头靠右（2026-10-04 用户裁定）：空行也能加键（无 strip
+        // 占位键），行尾不再挤一颗虚线键干扰预览观感。
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "ck-chip ck-add-chip ck-head-add";
+        add.textContent = t("ck.add");
+        add.setAttribute("aria-label", t("ck.add.aria", { n: r + 1 }));
+        add.addEventListener("click", () => ckOpenNew(r));
+        head.append(add);
+        line.append(head);
+        const strip = document.createElement("div");
+        strip.className = "ck-chips ck-row-strip";
+        if (skipFit) strip.style.fontSize = fontSizes[r] || "";
+        const align = ckRowAlign(row);
+        if (row.length && align !== "left") strip.dataset.align = align;
+        if (!row.length) {
+            const none = document.createElement("span");
+            none.className = "ck-none";
+            none.textContent = t("ck.none");
+            strip.append(none);
+        }
+        strip.dataset.ckRow = String(r);
+        row.forEach((cell, c) => {
+            // 触摸后续事件仍发给 touchstart 的原节点，重渲必须复用它。
+            const held = ckDrag && ckDrag.cell === cell && ckDrag.chip;
+            const chip = held || document.createElement("button");
+            chip.type = "button";
+            // #61：自定义色三种编码统一渲染——hN（存量，s 缺省 65）/
+            // hNsN（编辑器现行编码，此前这里不识别、走类名分支=没上色，
+            // codex #61 定位发现的存量不一致）/ #RRGGBB（新）。
+            const hueM = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color || "");
+            const hexM = /^#[0-9a-fA-F]{6}$/.test(cell.color || "");
+            const styled = hueM || hexM;
+            chip.className = "ck-chip" + (!styled && cell.color ? " ck-" + cell.color : "");
+            if (cell.span === 2 || cell.span === 3) chip.dataset.span = String(cell.span);
+            if (styled) {
+                if (hexM) {
+                    chip.style.background = cell.color;
+                    chip.style.borderColor = cell.color;
+                    chip.style.color = feelInkOn(cell.color);
+                }
+                else {
+                    const s = hueM[2] != null ? hueM[2] : 65;
+                    chip.style.background = "hsl(" + hueM[1] + ", " + s + "%, 45%)";
+                    chip.style.borderColor = "hsl(" + hueM[1] + ", " + s + "%, 35%)";
+                }
+                chip.style.color = "#fff";
+            }
+            chip.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
+            if (ckEditMode) {
+                // 长按编辑态：× 删除（二次确认，2026-10-04 用户裁定——
+                // 误触即真删太狠）；chip 本体被拖动接管（单击无动作）。
+                const x = document.createElement("span");
+                x.className = "ck-x";
+                x.textContent = "×";
+                x.addEventListener("click", event => {
+                    event.stopPropagation();
+                    ckConfirmDelete(cell);
+                });
+                chip.append(x);
+            } else {
+                if (!held) chip.addEventListener("click", () => {
+                    if (!ckEditMode) ckOpenChip(r, c);
+                });
+            }
+            if (!held) ckBindChipTouch(chip);
+            strip.append(chip);
+        });
+        line.append(strip);
+        host.append(line);
+        fitted.push(strip);
+    });
+    // 拖动中的重渲跳过 fit（skipFit）：fit 的 scrollWidth/clientWidth
+    // 读是强制布局，每帧跨键重渲再叠 3 行×多轮布局读，真机主线程爆掉
+    // 拖影卡成"没跟手"（用户三轮实录）。松手的最终渲染恢复 fit。
+    if (!skipFit) fitted.forEach(s => ckFitStrip(s, 55));
+}
+
+/** 长按 = 进入可移动模式并拖起该键（键盘工具栏编辑同款形态：× 删除、
+ *  跨行拖动排序；popup 只管属性——用户裁定）。 */
+let ckEditMode = false;
+/** 删除确认（2026-10-04）：× 点击先弹框，确认才真删。待删存 cell
+ *  引用而非坐标——确认期间行可能因拖动重排，引用稳定。 */
+let ckPendingDelete = null;
+function ckConfirmDelete(cell) {
+    ckPendingDelete = cell;
+    const modal = document.getElementById("ckDelModal");
+    const label = cell.t || (cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : "");
+    document.getElementById("ckDelText").textContent = t("ck.del.confirm", { t: label });
+    modal.hidden = false;
+}
+let ckDrag = null;   // {timer, fromR, fromC, dragging, startX, startY}
+// 拖动会话监听（全局唯一一套）：live reorder 每轮重渲
+// 都会重绑目标 chip——不先移除旧监听就是 N 套 handler 叠跑，同一颗键
+// 被 splice N 次（真机实录：一次拖动后行里冒出 4 个退格）。
+let ckDragHandlers = null;
+
+function ckUnbindDrag() {
+    if (!ckDragHandlers) return;
+    ckDragHandlers.target.removeEventListener("touchmove", ckDragHandlers.move);
+    ckDragHandlers.target.removeEventListener("touchend", ckDragHandlers.end);
+    ckDragHandlers.target.removeEventListener("touchcancel", ckDragHandlers.end);
+    ckDragHandlers = null;
+}
+
+/** 拖动会话收尾（松手/touchcancel/离开页面共用）：解绑、拖影清除、
+ *  会话状态清空。页面切换路径不重渲（目标页自己会渲）。 */
+function ckEndDragSession() {
+    ckUnbindDrag();
+    const dragging = document.querySelector(".ck-dragging");
+    if (dragging) dragging.classList.remove("ck-dragging");
+    if (ckDrag && ckDrag.ghost) {
+        ckDrag.ghost.remove();
+        ckDrag.ghost = null;
+    }
+    ckDrag = null;
+}
+
+function ckEnterEditMode(firstChip) {
+    ckEditMode = true;
+    document.getElementById("ckEditBar").hidden = false;
+    // 编辑态下浏览器不得把手势判给页面/行滚动（touch-action:none）：
+    // 否则拖动一启动 touchmove 就被滚动接管、发 touchcancel 打断——
+    // 真机"能起拖但拖两下就断"的根因（mock/chromium 桌面无手势判
+    // 定，测不出）。
+    document.body.classList.add("ck-editing");
+    // 先记 (r,c) 再重渲：真实触摸复用原节点；直调时按坐标找回活键，
+    // 避免对已脱离文档的 chip 量到 0×0，导致拖影尺寸和抓取点错误。
+    let anchor = null;
+    if (firstChip && firstChip.parentElement &&
+            firstChip.parentElement.dataset && firstChip.parentElement.dataset.ckRow != null) {
+        anchor = {
+            r: Number(firstChip.parentElement.dataset.ckRow),
+            c: [...firstChip.parentElement.children].indexOf(firstChip),
+        };
+    }
+    if (anchor && ckDrag) ckDrag.cell = ckRows[anchor.r][anchor.c];
+    ckRenderRows();
+    ckReportState();
+    let chip = firstChip;
+    if (anchor && ckRows[anchor.r] && ckRows[anchor.r][anchor.c] != null) {
+        const st = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")]
+            .find(s => Number(s.dataset.ckRow) === anchor.r);
+        chip = (st && [...st.children][anchor.c]) || chip;
+    }
+    if (chip) ckBindDrag(chip);
+}
+
+function ckExitEditMode() {
+    ckEditMode = false;
+    document.getElementById("ckEditBar").hidden = true;
+    document.body.classList.remove("ck-editing");
+    ckRenderRows();
+    ckReportState();
+}
+
+function ckBindChipTouch(chip) {
+    // Android WebView 长按 ~500ms 弹文本选择/callout 菜单，事件流直接
+    // 终止（无 touchend/cancel）——拖动会话悬挂、拖影冻结（AVD 系统
+    // 级注入取证，CDP 注入不复现）。contextmenu 拦掉 + CSS callout 禁用。
+    chip.addEventListener("contextmenu", event => event.preventDefault());
+    chip.addEventListener("touchstart", event => {
+        // × 徽章上的按下是删除意图：不起拖（ghost 闪现无意义）。
+        if (event.target && event.target.closest && event.target.closest(".ck-x")) return;
+        if (!ckRows) return;
+        // 后按让位（review P2）：上一拖动会话还活着（拖住不放时第二指
+        // 又按下一颗键）就直接覆盖了 ckDrag——旧 ghost 挂 body 无人清，
+        // 残屏到本页会话结束。与 keyboard.js 3.73.21 所有权移交同方向。
+        if (ckDrag) ckEndDragSession();
+        const t = event.touches[0];
+        if (ckEditMode) {
+            // 编辑态按下即拖（用户真实操作模型：长按进编辑态后往往已
+            // 松手，再长按另一颗键想拖——此前这里直接 return 短路，
+            // "进编辑态后不能拖动"的根因）。
+            ckDrag = { timer: null, dragging: false,
+                startX: t.clientX, startY: t.clientY, chip };
+            ckBindDrag(chip);
+            return;
+        }
+        ckDrag = { timer: null, dragging: false,
+            startX: t.clientX, startY: t.clientY, chip };
+        ckDrag.timer = setTimeout(() => {
+            ckEnterEditMode(ckDrag.chip);
+        }, 350);
+    }, { passive: true });
+    chip.addEventListener("touchmove", event => {
+        if (!ckDrag) return;
+        const t = event.touches[0];
+        // 长按等待期位移超阈 = 取消（那是滚动，不是长按）。
+        if (!ckDrag.dragging && !ckEditMode
+            && Math.hypot(t.clientX - ckDrag.startX, t.clientY - ckDrag.startY) > 10) {
+            clearTimeout(ckDrag.timer);
+        }
+    }, { passive: true });
+    chip.addEventListener("touchend", () => {
+        if (ckDrag && !ckDrag.dragging) clearTimeout(ckDrag.timer);
+    }, { passive: true });
+}
+
+/** 编辑态拖动（2026-10-04 跟手重做）：跟手拖影（ghost 跟手指，固定定
+ *  位、不参与布局）+ live reorder（落点行/列 splice 到位，流内那颗半
+ *  透明实时预览落位）。重渲换位后重绑 handlers，ghost 挂 body 存活到
+ *  松手——此前没有跟手元素，手指移、chip 在格位间跳，观感"没跟手"。
+ *  move 改 non-passive + 拖动中 preventDefault：拖动起手在 chip 上，
+ *  不拦会把页面竖滚带走。 */
+function ckBindDrag(chip) {
+    ckUnbindDrag();
+    const strip = chip.parentElement;
+    if (!strip) return;
+    const fromR = Number(strip.dataset.ckRow);
+    const fromC = [...strip.children].indexOf(chip);
+    const cell = ckRows[fromR] && ckRows[fromR][fromC];
+    if (!cell) return;
+    let lastX = 0;
+    let lastY = 0;
+    let rafPending = false;
+    const handlers = { target: null, move: null, end: null };
+    // 真实链上 ckDrag 由 touchstart 先建；直调（测试/异常时序）兜底：
+    // 以键中心为抓取点，读 startX 前不炸。
+    if (!ckDrag) ckDrag = { timer: null, dragging: false, chip };
+    ckDrag.cell = cell;
+    ckDrag.chip = chip;
+    if (!ckDrag.ghost) {
+        // 拖影从被拖键克隆（同尺寸同键色），固定在抓取点下方。
+        const rect = chip.getBoundingClientRect();
+        const fontSize = getComputedStyle(chip).fontSize;
+        if (!Number.isFinite(ckDrag.startX) || !Number.isFinite(ckDrag.startY)) {
+            ckDrag.startX = rect.left + rect.width / 2;
+            ckDrag.startY = rect.top + rect.height / 2;
+        }
+        const ghost = document.createElement("div");
+        ghost.className = "ck-ghost";
+        ghost.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
+        const ghHue = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color || "");
+        const ghHex = /^#[0-9a-fA-F]{6}$/.test(cell.color || "");
+        if (!ghHue && !ghHex && cell.color) ghost.classList.add("ck-" + cell.color);
+        else if (ghHue || ghHex) {
+            if (ghHex) {
+                ghost.style.background = cell.color;
+                ghost.style.borderColor = cell.color;
+                ghost.style.color = feelInkOn(cell.color);
+            }
+            else {
+                const s = ghHue[2] != null ? ghHue[2] : 65;
+                ghost.style.background = "hsl(" + ghHue[1] + ", " + s + "%, 45%)";
+                ghost.style.borderColor = "hsl(" + ghHue[1] + ", " + s + "%, 35%)";
+            }
+            ghost.style.color = "#fff";
+        }
+        if (cell.span === 2 || cell.span === 3) ghost.style.minWidth = rect.width + "px";
+        ghost.style.width = rect.width + "px";
+        ghost.style.height = rect.height + "px";
+        ghost.style.fontSize = fontSize;
+        ckDrag.ghost = ghost;
+        ckDrag.grabX = ckDrag.startX - rect.left;
+        ckDrag.grabY = ckDrag.startY - rect.top;
+        document.body.append(ghost);
+        ghost.style.left = (ckDrag.startX - ckDrag.grabX) + "px";
+        ghost.style.top = (ckDrag.startY - ckDrag.grabY) + "px";
+        // 位移全程走 transform（初始 0,0）：left/top 只在创建时定位一次，
+        // 之后每帧只写合成器属性，不触发布局。
+        ghost.style.transform = "translate(0px,0px) scale(1.06)";
+    }
+    // 量尺寸之后再缩占位键，避免把 scale(.94) 的尺寸带进拖影。
+    chip.classList.add("ck-dragging");
+    const onMove = event => {
+        // 编辑态已被别的路径收掉（BACK 放弃编辑等多指边缘）却还有触摸在
+        // 走：按松手收场，防止陈旧 handler 拿旧坐标继续重排（review P2-1）。
+        if (!ckEditMode) { onEnd(); return; }
+        const t = event.touches[0];
+        ckDrag.dragging = true;
+        // 拖影更新走 transform（合成器属性，不触发布局）：与重排解耦，
+        // 重排再卡也不拖累跟手（用户三轮实录"没做好"的性能根因：
+        // 每次跨键全量重渲+fit 强制布局串在 move 里）。
+        if (ckDrag.ghost) {
+            const dx = t.clientX - ckDrag.startX;
+            const dy = t.clientY - ckDrag.startY;
+            ckDrag.ghost.style.transform = "translate(" + dx + "px," + dy + "px) scale(1.06)";
+        }
+        if (event.cancelable) event.preventDefault();
+        lastX = t.clientX;
+        lastY = t.clientY;
+        if (!rafPending) {
+            rafPending = true;
+            requestAnimationFrame(() => {
+                rafPending = false;
+                // 会话已被重绑/收掉：这帧作废（守卫跨重绑安全）。
+                if (ckDragHandlers !== handlers) return;
+                reorder(lastX, lastY);
+            });
+        }
+    };
+    const reorder = (x, y) => {
+        const strips = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")];
+        let toR = fromR;
+        for (const st of strips) {
+            const rect = st.getBoundingClientRect();
+            if (y >= rect.top && y <= rect.bottom) {
+                toR = Number(st.dataset.ckRow);
+                break;
+            }
+        }
+        const target = strips.find(st => Number(st.dataset.ckRow) === toR);
+        if (!target) return;
+        let toC = ckRows[toR].length;
+        [...target.children].forEach((el, i) => {
+            if (el === chip) return;
+            const rect = el.getBoundingClientRect();
+            if (x < rect.left + rect.width / 2) { toC = Math.min(toC, i); }
+        });
+        if (toR === fromR && toC > fromC) toC -= 1;
+        if (toR === fromR && toC === fromC) return;
+        // 拖走的是源行对齐载体时，标记随键去目标行（渲染扫行内第一个
+        // 有效值），源行若再无标记则转移给留下的新首键。
+        ckKeepRowAlign(fromR, cell);
+        ckRows[fromR].splice(fromC, 1);
+        ckRows[toR].splice(toC, 0, cell);
+        ckMarkDirty(true);
+        ckRenderRows(true);
+        // 重渲后继续拖：新的同位键重新接管。
+        const stripNow = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")]
+            .find(st => Number(st.dataset.ckRow) === toR);
+        const chipNow = stripNow && [...stripNow.children][toC];
+        if (chipNow) ckBindDrag(chipNow);
+    };
+    const onEnd = () => {
+        ckEndDragSession();
+        // 收尾渲染带 fit：把拖动中跳过的行缩放一次补齐。
+        ckRenderRows();
+    };
+    handlers.move = onMove;
+    handlers.end = onEnd;
+    // touch 的目标在整段手势里固定不变，直接监听本次触摸目标，
+    // 不依赖重渲期间它向 document 冒泡。
+    handlers.target = ckDrag.chip;
+    handlers.target.addEventListener("touchmove", onMove, { passive: false });
+    handlers.target.addEventListener("touchend", onEnd, { passive: true });
+    // 系统手势打断（边缘滑/下拉通知栏）只发 touchcancel：不挂的话
+    // ghost 冻在指尖永久残留，onMove 还会被后续滚动触发
+    // 拿旧坐标乱重排（review P2-1）。
+    handlers.target.addEventListener("touchcancel", onEnd, { passive: true });
+    ckDragHandlers = handlers;
+}
+
+/** 编辑卡：isNew 时空白表单；否则按 cell 回填（tap 反猜型别）。 */
+function ckOpenChip(r, c) {
+    const cell = ckRows[r][c];
+    ckEditorTarget = "cell";
+    ckSel = { r, c, isNew: false };
+    // 全字段先兜底再让 parse 覆盖命中型：切到任何型都拿得到默认值
+    // （此前文本/组合键型缺 text/mods 字段，切换后输入框填 undefined、
+    // 组合键渲染直接中断——用户实录）。
+    ckDraft = {
+        t: cell.t,
+        text: "", single: "esc", comboKey: "s", mods: new Set(["ctrl"]),
+        setting: "", panel: "clipboard", dsl: "",
+        ...ckTapParse(cell.tap),
+        color: cell.color || "",
+        note: cell.note || "",
+        span: cell.span === 2 || cell.span === 3 ? cell.span : 0,
+    };
+    ckBuildForm();
+    ckOpenModal(false);
+}
+
+function ckOpenNew(r) {
+    ckEditorTarget = "cell";
+    ckSel = { r, c: ckRows[r].length, isNew: true };
+    ckDraft = { t: "", mode: "single", single: "esc", text: "", comboKey: "s",
+        mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard", dsl: "", color: "", note: "", span: 0 };
+    ckBuildForm();
+    ckOpenModal(true);
+}
+
+/** 语言键盘键的虚拟按键槽 draft 互转：槽值是 tap DSL 串（含新
+ *  [edit:x]），「键盘默认」= 未设置。 */
+function ckLangSlotParse(tap) {
+    // 三态：undefined/null=未设置（def）；""=显式关闭（none）；其余反猜型别。
+    if (tap === undefined || tap === null) return { mode: "def" };
+    if (tap === "") return { mode: "none" };
+    const parsed = ckTapParse(tap);
+    return { ...parsed, dsl: tap };
+}
+
+/** 语言键盘键编辑器表单（#60 定制按键升级）：固定行（单击/长按不可
+ *  改）+ 角标 + 上滑/下滑两小节。每槽类型集 = 键盘默认/关闭/动作/
+ *  CK_MODES；槽 draft 存 d.up/d.down（各是 ckTapParse 形态）。 */
+function ckBuildLangKeyForm(body, d) {
+    const isPunct = d.langKey === ".";
+    // 角标联动判定提函数体级：角标块（checkbox 挂点）与槽循环后的
+    // 手动编辑刷新点都要用（codex review P2：派生态只在重建时算，
+    // 手动编辑上滑文本后 checkbox/摘要停在旧态）。
+    const altUpLinked = () => d.up.mode === "text" && d.up.text === (d.alt || "");
+    const lock = document.createElement("div");
+    lock.className = "ck-row2 ck-row2-bare";
+    lock.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">'
+        + (isPunct ? "，" : d.langKey.toUpperCase())
+        + '</span><span>' + t(isPunct ? "ck.lang.lockPunct" : "ck.lang.lock")
+            .replace("{0}", d.langKey) + "</span></div>";
+    body.append(lock);
+
+    if (!isPunct) {
+        const alt = document.createElement("input");
+        alt.className = "ck-input";
+        alt.value = d.alt || "";
+        const defAlt = ckLangDefaultAlt(d.langLay, d.langKey);
+        alt.placeholder = t("ck.lang.altPlaceholder").replace("{0}", defAlt);
+        alt.maxLength = 3;
+        // 上滑=文本角标联动（2026-11-14 需求）：勾选即把上滑槽设为
+        // 文本模式输入角标内容，取消则回到键盘默认；勾着时改角标，
+        // 上滑文本跟随。勾选态派生自「上滑是文本且内容==角标」
+        // （altUpLinked 提在函数体级），不另存联动标志——手动把上滑
+        // 改成别的（或改文本内容），复选框自然弹起，联动解除。
+        alt.addEventListener("input", () => {
+            const wasLinked = altUpLinked(); // 以改前的角标判断是否联动中
+            d.alt = alt.value.trim();
+            if (!wasLinked) return;
+            // 原地改 d.up.text，不替换对象——ckBuildAction 的 text 输入
+            // 监听闭包捕获原对象，替换后手动编辑上滑文本会写进孤儿对象
+            // 丢失（codex review P2）。
+            d.up.text = d.alt;
+            // 上滑槽直通刷新，不 ckBuildForm 重建——角标框正在输入，
+            // 重建会清焦点打断输入（实测改角标后上滑文本框停在旧值）。
+            const upSec = body.querySelector(".ck-lang-sec");
+            const upText = upSec && upSec.querySelector("input.ck-input");
+            if (upText) upText.value = d.alt;
+            const upCur = upSec && upSec.querySelector(".ck-lang-sec-cur");
+            if (upCur) {
+                upCur.textContent = d.alt;
+                upCur.classList.add("set");
+            }
+        });
+        body.append(ckField(t("ck.lang.alt"), alt));
+        const altUp = document.createElement("input");
+        altUp.type = "checkbox";
+        altUp.className = "ck-check";
+        altUp.checked = altUpLinked();
+        altUp.addEventListener("change", () => {
+            d.up = altUp.checked ? { mode: "text", text: d.alt || "" } : { mode: "def" };
+            ckBuildForm();
+        });
+        body.append(ckField(t("ck.lang.altAsUp"), altUp, "ck-hint-option"));
+    }
+
+    for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
+        const sec = document.createElement("div");
+        sec.className = "ck-lang-sec";
+        const head = document.createElement("div");
+        head.className = "ck-lang-sec-t";
+        const title = document.createElement("span");
+        title.textContent = t(labelKey);
+        const cur = document.createElement("span");
+        cur.className = "ck-lang-sec-cur";
+        const refreshCur = () => {
+            // 三态摘要（codex review P2）：「关闭」序列化为空串，
+            // 只看串空会把显式关闭显示成「键盘默认」。
+            const m = d[slot].mode;
+            cur.textContent = m === "none" ? t("ck.f.mode.none")
+                : m === "def"
+                    ? t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
+                        .replace("{0}", d.langKey.toUpperCase())
+                    : ckTapFromDraft(d[slot]);
+            cur.classList.toggle("set", m !== "def");
+        };
+        head.append(title, cur);
+        sec.append(head);
+
+        const modeList = [["def", "ck.f.mode.def"], ["none", "ck.f.mode.none"],
+            ...CK_MODES];
+        const modeSel = document.createElement("select");
+        modeSel.className = "ck-input";
+        modeList.forEach(([value, labelKey2]) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = t(labelKey2);
+            modeSel.append(opt);
+        });
+        modeSel.value = modeList.some(([v]) => v === d[slot].mode) ? d[slot].mode : "def";
+        modeSel.addEventListener("change", () => {
+            const m = modeSel.value;
+            d[slot] = m === "def" ? { mode: "def" }
+                : m === "none" ? { mode: "none" }
+                : { mode: m, ...(m === "op" ? { op: "copy" }
+                    : m === "panel" ? { panel: "clipboard" }
+                    : m === "single" ? { single: "esc" }
+                    : m === "combo" ? { comboKey: "s", mods: new Set(["ctrl"]) }
+                    : m === "text" ? { text: "" }
+                    : m === "open" ? { open: "" }
+                    : m === "setting" ? { setting: "" }
+                    : m === "advanced" ? { dsl: "" }
+                    : {}) };
+            ckBuildForm(); // 整体重建（ckBuildForm 会清空 body 再走 langkey 分支）
+        });
+        sec.append(ckField(t("ck.f.kind"), modeSel));
+
+        if (d[slot].mode !== "def" && d[slot].mode !== "none") {
+            const holder = document.createElement("div");
+            sec.append(holder);
+            // 槽 draft 直通：ckBuildAction 的监听写到 d[slot] 上。
+            ckBuildAction(holder, d[slot]);
+        }
+        refreshCur(); // 存量死码激活：头部「当前值」摘要从未初始化过
+        body.append(sec);
+
+        if (slot === "up" && !isPunct && d.up.mode === "text") {
+            // 手动编辑上滑文本：派生勾选态与摘要原地刷新（codex review
+            // P2——派生只在重建时算，手改后 checkbox/摘要停在旧态）。
+            // text 型控件 id 恒 ckText（ckBuildAction）且 modal 内唯一，
+            // document 级取（fake DOM 的组合/id 选择器不可靠）。
+            const upText = document.getElementById("ckText");
+            if (upText) upText.addEventListener("input", () => {
+                const cb = [...body.querySelectorAll("input")]
+                    .find(el => el.type === "checkbox");
+                if (cb) cb.checked = altUpLinked();
+                refreshCur();
+            });
+        }
+    }
+}
+
+/** 打开语言键盘键编辑器（layout id + 键字符）。 */
+function openLangKeyEditor(lay, key) {
+    ckEditorTarget = "langkey";
+    ckSel = null;
+    const table = (ckLangKeys[lay] = ckLangKeys[lay] || {});
+    const cell = table[key] || {};
+    ckDraft = {
+        langLay: lay, langKey: key, alt: cell.alt || "",
+        up: ckLangSlotParse(cell.up), down: ckLangSlotParse(cell.down),
+        t: "", text: "", single: "esc", comboKey: "s",
+        mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard",
+        dsl: "", color: "", note: "", span: 0,
+    };
+    ckBuildForm();
+    ckOpenModal(false);
+    document.getElementById("ckModalTitle").textContent =
+        t("ck.lang.editTitle").replace("{0}", key === "." ? "，" : key.toUpperCase());
+}
+
+/** #50 长按空格=虚拟定制键：与定制键同一编辑器（类型+动作，无键面
+ *  /颜色/备注），保存走 setSpaceHoldTap 桥。 */
+function openSpaceHoldEditor() {
+    ckEditorTarget = "space";
+    ckSel = null;
+    const parsed = spaceHoldRaw === "voice" || spaceHoldRaw === "none"
+        ? { mode: spaceHoldRaw } : ckTapParse(spaceHoldRaw);
+    ckDraft = { t: "", text: "", single: "esc", comboKey: "s",
+        mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard",
+        dsl: "", color: "", note: "", span: 0, spaceFace: spaceHoldTextRaw, ...parsed };
+    ckBuildForm();
+    ckOpenModal(true);
+}
+
+/** 状态推送 → 摘要行（voice|none|dsl: 前缀归一，旧布尔回退）。 */
+function renderSpaceHold(state) {
+    spaceHoldTextRaw = typeof state.spaceHoldText === "string" ? state.spaceHoldText : "";
+    const raw = typeof state.spaceHoldTap === "string" && state.spaceHoldTap
+        ? state.spaceHoldTap
+        : (state.voiceOnSpace === false ? "none" : "voice");
+    spaceHoldRaw = raw === "voice" || raw === "none"
+        ? raw
+        : (raw.startsWith("dsl:") ? raw.slice(4) : "voice");
+    const el = document.getElementById("spaceHoldSummary");
+    if (el) el.textContent = spaceHoldSummary(spaceHoldRaw);
+}
+
+/** 动作 → 摘要文案：特殊类型直译，DSL 按反猜型别给「类型 · 预览」。 */
+function spaceHoldSummary(raw) {
+    if (raw === "voice") return t("voice.hold.voice");
+    if (raw === "none") return t("voice.hold.none");
+    const parsed = ckTapParse(raw);
+    if (parsed.mode === "panel") {
+        // 目标集与文案走 CK_PANEL_TARGETS（#65 单一事实源）。
+        const labels = Object.fromEntries(CK_PANEL_TARGETS);
+        return t(labels[parsed.panel] || "ck.f.mode.panel");
+    }
+    const keys = { text: "ck.f.mode.text", single: "ck.f.mode.single", combo: "ck.f.mode.combo",
+        open: "ck.f.mode.open", setting: "ck.f.mode.setting", advanced: "ck.f.mode.advanced" };
+    const key = keys[parsed.mode] || "ck.f.mode.advanced";
+    const preview = [...String(raw)].length > 16 ? [...String(raw)].slice(0, 15).join("") + "…" : String(raw);
+    return t(key) + " · " + preview;
+}
+
+/** 行式表单行：短标签在左、控件在右占满余宽（一行一个属性——空间
+ *  利用率优先，用户裁定）。 */
+function ckField(labelText, control, cls) {
+    const wrap = document.createElement("label");
+    wrap.className = "ck-row2" + (cls ? " " + cls : "");
+    if (labelText != null) {
+        const span = document.createElement("span");
+        span.className = "ck-row2-label";
+        span.textContent = labelText;
+        wrap.append(span);
+    } else {
+        wrap.classList.add("ck-row2-bare");
+    }
+    control.classList.add("ck-row2-ctl");
+    wrap.append(control);
+    return wrap;
+}
+
+/** 单选按钮组（类型/宽度/色板/修饰键共用同一形态）。 */
+function ckSegment(options, value, onPick) {
+    const row = document.createElement("div");
+    row.className = "ck-seg";
+    options.forEach(([v, label, cls]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ck-seg-btn" + (cls ? " " + cls : "") + (v === value ? " selected" : "");
+        b.textContent = label;
+        b.addEventListener("click", () => onPick(v));
+        row.append(b);
+    });
+    return row;
+}
+
+function ckBuildForm() {
+    const body = $("ckEditBody");
+    body.textContent = "";
+    const d = ckDraft;
+
+    // 新建时提供「常用」起点：默认收起，点开展开，选一颗预填。
+    if (ckSel && ckSel.isNew && ckEditorTarget === "cell") {
+        const common = document.createElement("div");
+        common.className = "ck-common";
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "ck-common-toggle";
+        toggle.textContent = t("ck.common") + " \u25be";
+        const list = document.createElement("div");
+        list.className = "ck-chips ck-common-list";
+        list.hidden = true;
+        CK_QUICK.forEach(item => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "ck-chip ck-common-chip" + (item.color ? " ck-" + item.color : "");
+            chip.textContent = item.t;
+            chip.title = item.note || item.tap;
+            chip.addEventListener("click", () => {
+                ckDraft.t = item.t;
+                ckDraft.note = item.note || "";
+                ckDraft.color = item.color || "";
+                ckDraft.span = item.span === 2 || item.span === 3 ? item.span : 0;
+                Object.assign(ckDraft, ckTapParse(item.tap));
+                ckBuildForm();
+            });
+            list.append(chip);
+        });
+        toggle.addEventListener("click", () => {
+            list.hidden = !list.hidden;
+            toggle.textContent = t("ck.common") + (list.hidden ? " \u25be" : " \u25b4");
+        });
+        common.append(toggle, list);
+        body.append(common);
+    }
+
+    // 顺序：键面文案 -> 类型下拉 -> 类型输入控件 -> 颜色 -> 备注。
+    // 长按空格是虚拟键（无键面/颜色/备注），只保留类型与动作。
+    // 语言键盘键（langkey）：固定行 + 角标 + 上滑/下滑两个虚拟按键
+    // 小节（每槽一套类型下拉+参数，类型集含「键盘默认」）。
+    if (ckEditorTarget === "langkey") {
+        ckBuildLangKeyForm(body, d);
+        return;
+    }
+    if (ckEditorTarget === "cell") {
+        const tInput = document.createElement("input");
+        tInput.id = "ckT";
+        tInput.className = "ck-input";
+        tInput.value = d.t;
+        tInput.placeholder = t("ck.f.t.hint");
+        tInput.addEventListener("input", () => { d.t = tInput.value; });
+        body.append(ckField(t("ck.f.t"), tInput));
+    }
+
+    // #50 三轮（用户裁定）：类型选择改下拉——枚举已到九项（含长按空格
+    // 的语音/关闭两个特殊类型），一字排开放不下。
+    const modeList = ckEditorTarget === "space"
+        ? [["voice", "voice.hold.voice"], ["none", "voice.hold.none"], ...CK_MODES]
+        : CK_MODES;
+    const modeSel = document.createElement("select");
+    modeSel.id = "ckMode";
+    modeSel.className = "ck-input";
+    modeList.forEach(([value, labelKey]) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = t(labelKey);
+        modeSel.append(opt);
+    });
+    modeSel.value = modeList.some(([value]) => value === d.mode) ? d.mode : modeList[0][0];
+    modeSel.addEventListener("change", () => { d.mode = modeSel.value; ckBuildForm(); });
+    body.append(ckField(t("ck.f.kind"), modeSel));
+
+    const holder = document.createElement("div");
+    holder.id = "ckActionHolder";
+    body.append(holder);
+    ckBuildAction(holder);
+
+    // 颜色：默认 / 自定义（自定义才展开 hue 滑块行）。cell.color 记
+    // "h<度数>"（0-359）渲染按 hsl 算；旧色板名兼容读。
+    if (ckEditorTarget !== "cell") {
+        // 键面文案（#59 验收延伸）：非语音动作显示在空格键上（emoji 可
+        // 当小图标）；语音恒画麦克风，不显示文案。
+        const faceRow = document.createElement("div");
+        faceRow.id = "ckSpaceFaceRow";
+        const faceInput = document.createElement("input");
+        faceInput.id = "ckSpaceFace";
+        faceInput.className = "ck-input";
+        faceInput.value = d.spaceFace || "";
+        faceInput.placeholder = t("ck.space.faceHint");
+        faceInput.maxLength = 16;
+        faceInput.addEventListener("input", () => { d.spaceFace = faceInput.value; });
+        faceRow.append(ckField(t("ck.space.face"), faceInput));
+        body.append(faceRow);
+        const faceVisible = () => {
+            faceRow.style.display = d.mode === "voice" ? "none" : "";
+        };
+        faceVisible();
+        modeSel.addEventListener("change", faceVisible);
+        // 虚拟键无颜色/备注：直接跳到表单尾部（见下方配对的 }）。
+        const noteSkip = document.createElement("p");
+        noteSkip.className = "hint";
+        noteSkip.textContent = t("ck.space.hint");
+        body.append(noteSkip);
+        return;
+    }
+    const HUE_RE = /^h\d{1,3}(?:s\d{1,3})?$/;
+    const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+    const isCustomHue = HUE_RE.test(d.color || "");
+    // #61：定制键色第三档「色号」——存 #RRGGBB（键盘侧直上 style），
+    // 亮色键帽不再被 hNsN 的固定 l=45 卡住。
+    const isCustomHex = HEX_RE.test(d.color || "");
+    const colorSeg = ckSegment([["", t("ck.color.default")],
+        ["custom", t("ck.color.custom")], ["hex", t("ck.color.hex")]],
+        isCustomHex ? "hex" : (isCustomHue ? "custom" : ""), v => {
+            if (v === "custom") {
+                if (!HUE_RE.test(d.color || "")) d.color = "h210s65";
+            } else if (v === "hex") {
+                if (!HEX_RE.test(d.color || "")) d.color = "#FF8A00";
+            } else d.color = "";
+            ckBuildForm();
+        });
+    body.append(ckField(t("ck.f.color"), colorSeg, "ck-row-color"));
+    if (isCustomHex) {
+        const hexWrap = document.createElement("div");
+        hexWrap.className = "hex-wrap";
+        const hexSwatch = document.createElement("span");
+        hexSwatch.className = "hex-swatch";
+        hexSwatch.style.background = d.color;
+        const hexInput = document.createElement("input");
+        hexInput.type = "text";
+        hexInput.className = "hex-input";
+        hexInput.value = d.color.toUpperCase();
+        hexInput.maxLength = 7;
+        hexInput.spellcheck = false;
+        hexInput.addEventListener("input", () => {
+            const v = hexInput.value.trim();
+            if (HEX_RE.test(v)) { d.color = v.toUpperCase(); hexSwatch.style.background = d.color; }
+        });
+        hexWrap.append(hexSwatch, hexInput);
+        body.append(ckField(t("ck.color.hexLabel"), hexWrap, "ck-row-hexcolor"));
+    }
+    if (isCustomHue) {
+        // 双滑块：色调（全谱渐变轨道）+ 饱和度（灰->纯色，色相联动）。
+        const parts = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(d.color) || [null, "210", "65"];
+        let hueVal = parseInt(parts[1], 10);
+        let satVal = parts[2] != null ? parseInt(parts[2], 10) : 65;
+        const encode = () => { d.color = "h" + hueVal + "s" + satVal; };
+        const hueWrap = document.createElement("div");
+        hueWrap.className = "ck-hue";
+        const hue = document.createElement("input");
+        hue.type = "range";
+        hue.className = "ck-hue-range";
+        hue.min = "0"; hue.max = "359";
+        hue.value = String(hueVal);
+        const satWrap = document.createElement("div");
+        satWrap.className = "ck-hue";
+        const sat = document.createElement("input");
+        sat.type = "range";
+        sat.className = "ck-sat-range";
+        sat.min = "0"; sat.max = "100";
+        sat.value = String(satVal);
+        const swatch = document.createElement("span");
+        swatch.className = "ck-hue-swatch";
+        const paint = () => {
+            const css = "hsl(" + hueVal + ", " + satVal + "%, 45%)";
+            swatch.style.background = css;
+            hue.style.setProperty("--thumb-hue", String(hueVal));
+            sat.style.background = "linear-gradient(90deg, hsl(" + hueVal + ", 0%, 45%), " + css + ")";
+        };
+        paint();
+        hue.addEventListener("input", () => { hueVal = parseInt(hue.value, 10) || 0; encode(); paint(); });
+        sat.addEventListener("input", () => { satVal = parseInt(sat.value, 10) || 0; encode(); paint(); });
+        hueWrap.append(hue, swatch);
+        body.append(ckField(t("ck.color.hue"), hueWrap, "ck-row-hue"));
+        satWrap.append(sat);
+        body.append(ckField(t("ck.color.sat"), satWrap, "ck-row-hue"));
+    }
+
+    const noteInput = document.createElement("input");
+    noteInput.id = "ckNote";
+    noteInput.className = "ck-input";
+    noteInput.value = d.note;
+    noteInput.placeholder = t("ck.f.note.hint");
+    noteInput.addEventListener("input", () => { d.note = noteInput.value; });
+    body.append(ckField(t("ck.f.note"), noteInput));
+}
+
+function ckBuildAction(holder, target) {
+    holder.textContent = "";
+    // target：虚拟按键槽（语言键盘的上滑/下滑各持一份独立 draft）；
+    // 缺省 ckDraft（定制键/长按空格）。
+    const d = target || ckDraft;
+    if (d.mode === "op") {
+        // 「动作」= 编辑操作枚举（[edit:x]）：与文本/组合等类型平级，
+        // 参数是一个语义下拉（撤销/复制/光标移动…），执行映射在
+        // keyboard.js runEditStep。
+        const sel = document.createElement("select");
+        sel.className = "ck-input";
+        CK_EDIT_OPS.forEach(([value, labelKey]) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = t(labelKey);
+            sel.append(opt);
+        });
+        sel.value = CK_EDIT_OPS.some(([v]) => v === d.op) ? d.op : "copy";
+        sel.addEventListener("change", () => { d.op = sel.value; });
+        holder.append(ckField(t("ck.f.op"), sel));
+    } else if (d.mode === "text") {
+        const input = document.createElement("input");
+        input.id = "ckText";
+        input.className = "ck-input";
+        input.value = d.text || "";
+        input.placeholder = t("ck.f.text");
+        input.addEventListener("input", () => { d.text = input.value; });
+        holder.append(ckField(t("ck.f.mode.text"), input));
+    } else if (d.mode === "single" || d.mode === "combo") {
+        if (d.mode === "combo") {
+            // 修饰键：标签在左、按钮组在右，一行放下（多选）。
+            const row = document.createElement("div");
+            row.className = "ck-seg";
+            CK_MODS.forEach(([name, label]) => {
+                const chip = document.createElement("button");
+                chip.type = "button";
+                chip.className = "ck-seg-btn" + (d.mods.has(name) ? " selected" : "");
+                chip.textContent = label;
+                chip.addEventListener("click", () => {
+                    d.mods.has(name) ? d.mods.delete(name) : d.mods.add(name);
+                    // 语言键盘槽位草稿必须传下去（#66）：漏传会回落到外层
+                    // 无 mode 的 langkey 外壳，参数区误渲染成「高级」。
+                    ckBuildAction(holder, d);
+                });
+                row.append(chip);
+            });
+            holder.append(ckField(t("ck.f.mods"), row));
+        }
+        const keySel = document.createElement("select");
+        keySel.id = "ckKey";
+        CK_KEYS.forEach(([value, label]) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = label;
+            keySel.append(opt);
+        });
+        keySel.value = d.mode === "single" ? (d.single || "esc") : (d.comboKey || "s");
+        keySel.addEventListener("change", () => {
+            if (d.mode === "single") d.single = keySel.value;
+            else d.comboKey = keySel.value;
+        });
+        holder.append(ckField(t("ck.f.key"), keySel));
+    } else if (d.mode === "open") {
+        // 打开应用/链接：URI 输入 + 常用预设下拉（2026-10-04 用户裁定：
+        // 一排按钮太挤改下拉，下拉文案要完整如「支付宝扫一扫」）。
+        const input = document.createElement("input");
+        input.id = "ckOpenUri";
+        input.className = "ck-input";
+        input.value = d.open || "";
+        input.placeholder = t("ck.f.open.placeholder");
+        input.addEventListener("input", () => { d.open = input.value; });
+        holder.append(ckField(t("ck.f.open.uri"), input));
+        const presetSel = document.createElement("select");
+        presetSel.id = "ckOpenPreset";
+        const mkOpt = (text, value) => {
+            const opt = document.createElement("option");
+            opt.textContent = text;
+            opt.value = value;
+            return opt;
+        };
+        presetSel.append(mkOpt(t("ck.f.open.presetPick"), ""));
+        CK_OPEN_PRESETS.forEach(p => presetSel.append(mkOpt(p.label, p.uri)));
+        presetSel.value = CK_OPEN_PRESETS.some(p => p.uri === (d.open || ""))
+            ? d.open : "";
+        presetSel.addEventListener("change", () => {
+            if (!presetSel.value) return;
+            d.open = presetSel.value;
+            if (typeof d.t === "string" && !d.t.trim()) {
+                d.t = (CK_OPEN_PRESETS.find(p => p.uri === presetSel.value) || {}).t || "";
+            }
+            ckBuildForm();
+        });
+        holder.append(ckField(t("ck.f.open.presets"), presetSel));
+        const hint = document.createElement("p");
+        hint.className = "hint";
+        hint.textContent = t("ck.f.open.hint");
+        holder.append(hint);
+    } else if (d.mode === "setting") {
+        // 打开设置项（#51）：从当前页面动态收集可直达的设置行锚点，
+        // 跳转经 openSetupPage（与键盘 tile 深链同通道）。
+        const sel = document.createElement("select");
+        sel.id = "ckSettingPick";
+        const anchors = ckSettingAnchors();
+        const placeholder = document.createElement("option");
+        placeholder.textContent = t("ck.f.setting.pick");
+        placeholder.value = "";
+        sel.append(placeholder);
+        anchors.forEach(([id, label]) => {
+            const opt = document.createElement("option");
+            opt.textContent = label;
+            opt.value = id;
+            sel.append(opt);
+        });
+        sel.value = anchors.some(([id]) => id === d.setting) ? d.setting : "";
+        sel.addEventListener("change", () => {
+            d.setting = sel.value;
+            if (typeof d.t === "string" && !d.t.trim()) {
+                const found = anchors.find(([id]) => id === sel.value);
+                if (found) d.t = found[1].slice(0, 6);
+            }
+        });
+        holder.append(ckField(t("ck.f.setting.pick"), sel));
+    } else if (d.mode === "panel") {
+        // #50 打开键盘面板：目标下拉与长按空格动作同域（#65 起走
+        // CK_PANEL_TARGETS 单一事实源，六目标含表情/定制键）。
+        const targets = CK_PANEL_TARGETS.map(([value, labelKey]) => [value, t(labelKey)]);
+        const sel = document.createElement("select");
+        sel.id = "ckPanelTarget";
+        sel.className = "ck-input";
+        targets.forEach(([value, label]) => {
+            const opt = document.createElement("option");
+            opt.textContent = label;
+            opt.value = value;
+            sel.append(opt);
+        });
+        sel.value = targets.some(([value]) => value === d.panel) ? d.panel : "clipboard";
+        sel.addEventListener("change", () => {
+            d.panel = sel.value;
+            // 键面文案联动只属定制键（语言键的槽 draft 无 t 字段）。
+            if (typeof d.t === "string" && !d.t.trim()) {
+                const found = targets.find(([value]) => value === sel.value);
+                if (found) d.t = found[1].slice(0, 6);
+            }
+        });
+        holder.append(ckField(t("ck.f.panel.pick"), sel));
+    } else {
+        // 高级：标签 + ? 帮助（点开 DSL 速查）+ 输入框，行式对齐。
+        const labelWrap = document.createElement("span");
+        labelWrap.className = "ck-dsl-label";
+        const labelText = document.createElement("span");
+        labelText.textContent = t("ck.f.mode.advanced");
+        const help = document.createElement("button");
+        help.type = "button";
+        help.className = "ck-help";
+        help.textContent = "?";
+        help.setAttribute("aria-label", t("ck.help.aria"));
+        const helpCard = document.createElement("div");
+        helpCard.className = "ck-help-card";
+        helpCard.hidden = true;
+        helpCard.innerHTML = t("ck.help.dsl");
+        help.addEventListener("click", () => {
+            helpCard.hidden = !helpCard.hidden;
+        });
+        labelWrap.append(labelText, help);
+        const input = document.createElement("input");
+        input.id = "ckDsl";
+        input.className = "ck-input";
+        input.value = d.dsl || "";
+        input.placeholder = t("ck.f.dsl");
+        input.addEventListener("input", () => { d.dsl = input.value; });
+        const row = ckField(null, input);
+        row.prepend(labelWrap);
+        labelWrap.classList.add("ck-row2-label");
+        labelWrap.style.display = "inline-flex";
+        labelWrap.style.gap = "6px";
+        labelWrap.style.alignItems = "center";
+        holder.append(row, helpCard);
+    }
+}
+
+$("ckApply").addEventListener("click", () => {
+    const d = ckDraft;
+    // 长按空格是虚拟键：无键面文案，标签必填只约束真实定制键。
+    if (ckEditorTarget === "cell" && !d.t.trim()) return setNote("ckEditNote", t("ck.err.t"));
+    // open 型先过本地校验（键盘侧 parseCustomKeys 是整表拒收，坏键
+    //  不该等保存才发现）：http(s) 或应用 scheme，拒绝空串/空白/方括号/
+    //  走私 scheme（与键盘 validateOpenUri、native openLink 同清单）。
+    if (d.mode === "open") {
+        const uri = (d.open || "").trim();
+        const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
+            !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
+        if (!ok) return setNote("ckEditNote", t("ck.err.open"));
+    }
+    // setting 型（#51）：锚 id 白名单字符 + 存在性（表单收集不到的
+    // 手输 id 直接拒，跳转必落空）。
+    if (d.mode === "setting") {
+        const id = (d.setting || "").trim();
+        if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
+            return setNote("ckEditNote", t("ck.err.setting"));
+        }
+    }
+    if (d.mode === "panel" && !CK_PANEL_TARGETS.some(([value]) => value === d.panel)) {
+        return setNote("ckEditNote", t("ck.err.panel"));
+    }
+    // 语言键的 tap 在分支内按槽自取（def/none 槽没有 tap 概念）。
+    const tap = ckEditorTarget === "langkey" ? " " : ckTapFromDraft(d);
+    if (!tap) return setNote("ckEditNote", t("ck.err.tap"));
+    // tap 长度与键盘侧 CUSTOM_LIMITS.tapChars 同限（128）：长链接是 open
+    //  型主用途，放行后键盘 hello 采纳时整表静默拒收=全部定制键消失。
+    if ([...tap].length > 128) return setNote("ckEditNote", t("ck.err.tapLong"));
+    // #50 长按空格虚拟键：tap 值域 voice|none|dsl:<tap>，保存即桥推。
+    if (ckEditorTarget === "space") {
+        const value = d.mode === "voice" ? "voice"
+            : d.mode === "none" ? "none" : "dsl:" + tap;
+        call("setSpaceHoldTap", value);
+        // 键面文案跟动作同存：语音清空（mic 恒定），其余动作存 ≤8 码位。
+        const face = d.mode === "voice" ? "" : [...(d.spaceFace || "").trim()].slice(0, 8).join("");
+        spaceHoldTextRaw = face;
+        call("setSpaceHoldText", face);
+        spaceHoldRaw = d.mode === "voice" || d.mode === "none" ? d.mode : tap;
+        const el = document.getElementById("spaceHoldSummary");
+        if (el) el.textContent = spaceHoldSummary(spaceHoldRaw);
+        ckCloseModal();
+        return;
+    }
+    // 语言键盘键：draft 两槽（up/down）+ 角标写进 langKeys 草稿。
+    // 槽「关闭」落空串（键盘侧 tap==="" 吞掉手势），「键盘默认」不落。
+    if (ckEditorTarget === "langkey") {
+        const lay = d.langLay, key = d.langKey;
+        for (const slot of ["up", "down"]) {
+            const s = d[slot] || {};
+            if (s.mode === "open") {
+                const uri = (s.open || "").trim();
+                const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
+                    !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
+                if (!ok) return setNote("ckEditNote", t("ck.err.open"));
+            }
+            if (s.mode === "setting") {
+                const id = (s.setting || "").trim();
+                if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
+                    return setNote("ckEditNote", t("ck.err.setting"));
+                }
+            }
+        }
+        const table = (ckLangKeys[lay] = ckLangKeys[lay] || {});
+        const cell = {};
+        if (d.alt) cell.alt = [...d.alt].slice(0, 3).join("");
+        for (const slot of ["up", "down"]) {
+            const m = d[slot] ? d[slot].mode : "def";
+            if (m === "def") continue;
+            const dsl = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            // 非空模式序列化出空串（text 空文本——角标联动勾了没填角标
+            // 的形态）当「未设置」不落，别降级成「关闭」语义。
+            if (m !== "none" && !dsl) continue;
+            cell[slot] = dsl;
+        }
+        if (Object.keys(cell).length) table[key] = cell;
+        else delete table[key];
+        if (!Object.keys(table).length) delete ckLangKeys[lay];
+        ckCloseModal();
+        renderLangKb(lay);
+        refreshLangCounts();
+        ckMarkDirty(true);
+        return;
+    }
+    const cell = { t: d.t.trim(), tap, note: d.note || "" };
+    if (d.color) cell.color = d.color;
+    // 宽键跨格（span）没有独立控件：编辑已有键时保留原值，误编辑不该
+    // 静默丢——默认样例的邮箱 span2 引导用户「改成自己的邮箱」（评审
+    // P3-4）；快捷库选中时从条目带入。
+    if (d.span === 2 || d.span === 3) cell.span = d.span;
+    // 行对齐标记（可能挂在这颗键上）：编辑重建时同样保留。
+    const prev = ckSel.isNew ? null : ckRows[ckSel.r][ckSel.c];
+    if (prev && CK_ALIGNS.includes(prev.align)) cell.align = prev.align;
+    if (ckSel.isNew) ckRows[ckSel.r].push(cell);
+    else ckRows[ckSel.r][ckSel.c] = cell;
+    ckCloseModal();
+    // 动作带来的变化必须在当前屏可见：合并视图立即刷新，脏态亮起。
+    ckRenderRows();
+    ckMarkDirty(true);
+});
+
+$("ckEditDone").addEventListener("click", () => ckExitEditMode());
+$("ckBackGo").addEventListener("click", () => {
+    document.getElementById("ckBackModal").hidden = true;
+    if (ckEditMode) ckExitEditMode();
+});
+$("ckBackStay").addEventListener("click", () => {
+    document.getElementById("ckBackModal").hidden = true;
+});
+$("ckBackModalMask").addEventListener("click", () => $("ckBackStay").click());
+$("ckDelCancel").addEventListener("click", () => {
+    ckPendingDelete = null;
+    document.getElementById("ckDelModal").hidden = true;
+});
+$("ckDelGo").addEventListener("click", () => {
+    document.getElementById("ckDelModal").hidden = true;
+    const cell = ckPendingDelete;
+    ckPendingDelete = null;
+    if (!cell || !ckRows) return;
+    // 引用定位：确认期间可能重排。找不到=已被别的路径删掉，静默收场。
+    for (let r = 0; r < ckRows.length; r++) {
+        const c = ckRows[r].indexOf(cell);
+        if (c < 0) continue;
+        ckKeepRowAlign(r, cell);
+        ckRows[r].splice(c, 1);
+        ckRenderRows();
+        ckMarkDirty(true);
+        return;
+    }
+});
+$("ckDelModalMask").addEventListener("click", () => $("ckDelCancel").click());
+$("ckModalCancel").addEventListener("click", () => ckCloseModal());
+$("ckModalMask").addEventListener("click", () => ckCloseModal());
+
+/* --- 语言键盘四级页（cklang）：布局预览 + 点键编辑 ---------------------- */
+
+// 当前打开的语言键盘 layout id（pinyin/dp/english/french/russian）。
+let ckLangCurrent = "pinyin";
+
+/** 角标默认值（LANG_KB 摘要；share 引用同布局的默认表）。 */
+function ckLangDefaultAlt(lay, key) {
+    const conf = LANG_KB[lay] || {};
+    const alts = conf.alts || (LANG_KB[conf.share] && LANG_KB[conf.share].alts) || {};
+    const v = alts[key];
+    return v == null ? "" : String(Array.isArray(v) ? v[0] : v);
+}
+
+/** 渲染语言键盘预览：三行字母 + 底行（锁定键仅展示），可定制键
+ *  （字母 + 逗号）点击进编辑器；已定制键描边 + 圆点标记。 */
+function renderLangKb(lay) {
+    ckLangCurrent = lay;
+    const host = document.getElementById("cklangKb");
+    if (!host) return;
+    const conf = LANG_KB[lay];
+    if (!conf) { host.textContent = ""; return; }
+    const title = document.getElementById("cklangTitle");
+    if (title) title.textContent = t(conf.title);
+    const table = ckLangKeys[lay] || {};
+    host.textContent = "";
+    const rows = conf.rows.map(String);
+    rows.forEach((rowKeys, idx) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "ck-lang-row" + (idx === 1 ? " ck-lang-indent" : "");
+        if (idx === 2) {
+            // 第三行左键复刻真实键盘（LANG_KB.leftKey）：中文键盘「分词」
+            // / 非中文键盘 Shift 图标（⇧ 近似 ICONS.shift）。
+            const shift = document.createElement("span");
+            shift.className = "ck-lang-key ck-lang-key-sp ck-lang-w15";
+            shift.textContent = conf.leftKey === "shift" ? "\u21e7" : t("ck.lang.shiftKey");
+            rowEl.append(shift);
+        }
+        [...rowKeys].forEach(key => rowEl.append(ckLangKeyEl(lay, key, table[key])));
+        if (idx === 2) {
+            const bs = document.createElement("span");
+            bs.className = "ck-lang-key ck-lang-key-sp ck-lang-w2";
+            bs.textContent = "⌫";
+            rowEl.append(bs);
+        }
+        host.append(rowEl);
+    });
+    // 底行：[123][，][空格+mic][中/英][⏎]——只有逗号键可定制。
+    const bottom = document.createElement("div");
+    bottom.className = "ck-lang-row";
+    const locked = (label, key) => {
+        const el = document.createElement("span");
+        el.className = "ck-lang-key ck-lang-key-sp" + (key || "");
+        el.textContent = label;
+        return el;
+    };
+    bottom.append(locked("123", " ck-lang-w2"));
+    bottom.append(ckLangKeyEl(lay, ".", table["."]));
+    bottom.append(locked("␣", " ck-lang-w3"));
+    bottom.append(locked(t("ck.lang.cnEn")));
+    bottom.append(locked("⏎", " ck-lang-w2"));
+    host.append(bottom);
+}
+
+function ckLangKeyEl(lay, key, cell) {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "ck-lang-key";
+    const isPunct = key === ".";
+    el.innerHTML = '<span class="ck-lang-sub"></span><span class="ck-lang-main"></span>';
+    el.querySelector(".ck-lang-main").textContent = isPunct ? "，" : key;
+    // 标点槽默认角标复刻真机中文态：主字「，」下沉 + 顶部居中角标「。」
+    // （上滑值）；字母键取布局 alts 默认表。定制值恒优先。
+    const sub = cell && cell.alt != null ? cell.alt
+        : (isPunct ? "。" : ckLangDefaultAlt(lay, key));
+    el.querySelector(".ck-lang-sub").textContent = sub;
+    if (cell && Object.keys(cell).length) el.classList.add("ck-lang-custom");
+    el.setAttribute("aria-label", t(isPunct ? "ck.lang.editPunct" : "ck.lang.editKey")
+        .replace("{0}", isPunct ? "，" : key.toUpperCase()));
+    el.addEventListener("click", () => openLangKeyEditor(lay, key));
+    return el;
+}
+
+/** 三级页入口行的已定制计数。 */
+function refreshLangCounts() {
+    for (const lay of Object.keys(LANG_KB)) {
+        const el = document.getElementById("cklangCount-" + lay);
+        if (!el) continue;
+        const n = ckLangKeys[lay] ? Object.keys(ckLangKeys[lay]).length : 0;
+        el.textContent = n ? t("ck.lang.count", { count: n }) : t("ck.lang.default");
+    }
+}
+
+/* 入口导航：语言键盘列表 / 符号页 / 整键盘恢复。 */
+document.querySelectorAll("[data-cklang]").forEach(row => {
+    row.addEventListener("click", () => {
+        ckLangCurrent = row.dataset.cklang;
+        showPage("cklang");
+        renderLangKb(ckLangCurrent);
+    });
+});
+document.getElementById("ckSymbolEntry").addEventListener("click", () => showPage("cksymbol"));
+document.getElementById("ckT9StripEntry").addEventListener("click", () => showPage("ckt9strip"));
+document.getElementById("ckStrokeStripEntry").addEventListener("click", () => showPage("ckstrokestrip"));
+document.getElementById("ckInkStripEntry").addEventListener("click", () => showPage("ckinkstrip"));
+
+/* ===== #112 键盘符号栏（2026-11-15 二轮：三键盘独立页面+拖动排序） =====
+ * 信息架构（codex 方案）：customkeys 三行入口 → 三个独立编辑页
+ * （ckt9strip/ckstrokestrip/ckinkstrip），路由映射 CK_STRIP_PAGES；
+ * 单 kind 渲染（不猜 currentKind）。排序=拖柄拖动（beginStripRowDrag：
+ * host capture+指针 y 落点直接映射+浮起 ghost+边缘自动滚动+中断回滚），
+ * 删除 ✕（最后一项禁删——键盘端空表=回默认的语义矛盾）、添加固定尾部、
+ * 恢复默认页内确认。草稿与保存沿用 ck 家族：编辑写 ckStrips[kind]+
+ * ckMarkDirty(true)，统一保存条提交整包（跨页未保存修改一并生效——
+ * CK 家族既有语义，不为此引入独立保存事务）。 */
+const T9_STRIP_DEFAULT = ['，', '。', '？', '！', '；', '：', '、',
+    '“', '”', '（', '）', '《', '》', '…', '·', '—'];
+const INK_STRIP_DEFAULT = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
+const T9_STRIP_MAX = 24;
+const STRIP_KINDS = [
+    { kind: "t9", page: "ckt9strip", field: "t9Strip",
+      titleKey: "ck.t9.pageTitleT9", hintKey: "ck.t9.hintT9", def: T9_STRIP_DEFAULT },
+    { kind: "stroke", page: "ckstrokestrip", field: "strokeStrip",
+      titleKey: "ck.t9.pageTitleStroke", hintKey: "ck.t9.hintStroke", def: T9_STRIP_DEFAULT },
+    { kind: "ink", page: "ckinkstrip", field: "inkStrip",
+      titleKey: "ck.t9.pageTitleInk", hintKey: "ck.t9.hintInk", def: INK_STRIP_DEFAULT },
+];
+const CK_STRIP_PAGES = {};
+STRIP_KINDS.forEach(cfg => { CK_STRIP_PAGES[cfg.page] = cfg.kind; });
+const stripCfg = kind => STRIP_KINDS.find(k => k.kind === kind);
+function stripDraft(kind) {
+    return ckStrips[kind] ? ckStrips[kind].slice() : stripCfg(kind).def.slice();
+}
+function sameStrip(a, b) {
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+function stripSummaryText(kind) {
+    const cur = ckStrips[kind];
+    if (!cur) return t("ck.t9.defaultSummary");
+    return sameStrip(cur, stripCfg(kind).def)
+        ? t("ck.t9.sameAsDefault") : `${cur.length}`;
+}
+function refreshStripSummary() {
+    for (const cfg of STRIP_KINDS) {
+        const el = document.getElementById(`ck${cfg.kind === "t9" ? "T9" : cfg.kind === "stroke" ? "Stroke" : "Ink"}StripSummary`);
+        if (el) el.textContent = stripSummaryText(cfg.kind);
+    }
+}
+function updateStripControls(kind) {
+    const count = document.getElementById(`ck${kind}Count`);
+    if (count) count.textContent = `${stripDraft(kind).length} / ${T9_STRIP_MAX}`;
+}
+/** 提交草稿；与现值相同不制造新脏态（拖回原位/恢复时已等于默认）。 */
+function commitStrip(kind, next) {
+    if (sameStrip(stripDraft(kind), next)) return false;
+    ckStrips[kind] = next.slice();
+    ckMarkDirty(true);
+    refreshStripSummary();
+    updateStripControls(kind);
+    return true;
+}
+function renderStripList(kind) {
+    const host = document.getElementById(`ck${kind}List`);
+    if (!host) return;
+    const cur = stripDraft(kind);
+    host.replaceChildren();
+    cur.forEach((sym, i) => {
+        const row = document.createElement("div");
+        row.className = "row ck-strip-row";
+        row.dataset.stripValue = sym;
+        // 拖柄（≈ 键盘选择页 ≡ 的形态，热区 44px）。
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "btn small kb-drag ck-strip-handle";
+        handle.textContent = "≡";
+        handle.setAttribute("aria-label", t("ck.t9.drag"));
+        handle.addEventListener("pointerdown", e => beginStripRowDrag(e, kind, row));
+        row.append(handle);
+        const label = document.createElement("span");
+        label.className = "row-label";
+        const big = document.createElement("span");
+        big.className = "strip-glyph";
+        big.textContent = sym;
+        label.append(big);
+        row.append(label);
+        // 删除：捕获 row 而非渲染下标（拖动后下标失效会删错项）。
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "btn";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("ck.t9.remove"));
+        del.addEventListener("click", () => removeStripRow(kind, row));
+        if (cur.length <= 1) {
+            del.disabled = true;   // 键盘端空表=回默认，删空会语义矛盾
+            del.setAttribute("title", t("ck.t9.lastOne"));
+        }
+        row.append(del);
+        host.append(row);
+    });
+    updateStripControls(kind);
+}
+function renderStripPage(kind) {
+    renderStripList(kind);
+    refreshStripSummary();
+}
+function removeStripRow(kind, row) {
+    if (stripDrag) return;
+    const host = row.parentElement;
+    const index = Array.from(host.children).indexOf(row);
+    const next = stripDraft(kind);
+    if (index < 0 || next.length <= 1) return;
+    next.splice(index, 1);
+    if (commitStrip(kind, next)) renderStripList(kind);
+}
+// 三页的添加与恢复（固定 id 前缀 ck<kind>）。
+for (const cfg of STRIP_KINDS) {
+    const kind = cfg.kind;
+    const addBtn = document.getElementById(`ck${kind}AddBtn`);
+    const input = document.getElementById(`ck${kind}AddInput`);
+    if (addBtn) addBtn.addEventListener("click", () => {
+        const v = (input.value || "").trim();
+        if (!v) return;
+        const d = stripDraft(kind);
+        if (d.length >= T9_STRIP_MAX) { setNote("ckSaveNote", t("ck.t9.limitHint")); return; }
+        d.push(v);
+        input.value = "";
+        if (commitStrip(kind, d)) renderStripList(kind);
+        // 添加后列表重建，输入框是静态 HTML 不受影响（焦点保留，连续添加）。
+        input.focus();
+    });
+    // Enter 提交；composition 会话中的 Enter（中文选词确认）不提交。
+    if (input) input.addEventListener("keydown", ev => {
+        if (ev.key !== "Enter" || ev.isComposing) return;
+        addBtn.click();
+    });
+    const reset = document.getElementById(`ck${kind === "t9" ? "t9" : kind}Reset`);
+    if (reset) reset.addEventListener("click", () => {
+        const cur = stripDraft(kind);
+        if (sameStrip(cur, cfg.def)) { setNote("ckSaveNote", t("ck.t9.sameAsDefault")); return; }
+        if (window.confirm(t("ck.t9.resetConfirm"))) {
+            if (commitStrip(kind, cfg.def.slice())) renderStripList(kind);
+            setNote("ckSaveNote", t("ck.lang.resetDone"));
+        }
+    });
+}
+
+/* ---- 拖动会话（codex 方案 2026-11-15：保留 beginKbRowDrag 两条经验——
+ * capture/move 挂不移动的 host；指针 y 落点直接映射跨多行。新增：6px
+ * 误触阈值、浮起 ghost+原行占位、main 边缘自动滚动、中断（cancel/丢
+ * capture/切页/resize）回滚到拖动前顺序、松手仅在顺序确有变化时提交。） */
+let stripDrag = null;
+function beginStripRowDrag(e, kind, row) {
+    if (stripDrag || e.isPrimary === false) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    const host = row.parentElement;
+    if (!host) return;
+    const s = stripDrag = {
+        kind, row, host,
+        scroller: row.closest("main") || document.body,
+        pid: e.pointerId,
+        startY: e.clientY,
+        y: e.clientY,
+        x: e.clientX,
+        originalRows: Array.from(host.children),
+        before: stripDraft(kind),
+        active: false,
+        done: false,
+        ghost: null,
+        raf: 0,
+        lastT: 0,
+    };
+    const move = ev => { if (ev.pointerId === s.pid) moveStripDrag(s, ev); };
+    const finish = ev => {
+        if (ev.pointerId !== s.pid && ev.type !== "lostpointercapture") return;
+        finishStripDrag(s, ev.type === "pointerup");
+    };
+    s.unbind = () => {
+        host.removeEventListener("pointermove", move);
+        host.removeEventListener("pointerup", finish);
+        host.removeEventListener("pointercancel", finish);
+        host.removeEventListener("lostpointercapture", finish);
+    };
+    host.addEventListener("pointermove", move);
+    host.addEventListener("pointerup", finish);
+    host.addEventListener("pointercancel", finish);
+    host.addEventListener("lostpointercapture", finish);
+    try { host.setPointerCapture(s.pid); }
+    catch (_) { finishStripDrag(s, false); }
+}
+function moveStripDrag(s, ev) {
+    if (s.done) return;
+    s.y = ev.clientY;
+    s.x = ev.clientX;
+    if (!s.active && Math.abs(s.y - s.startY) < 6) return;
+    if (!s.active) {
+        s.active = true;
+        s.row.classList.add("dragging");
+        // 浮起预览：只挂符号文本，不克隆按钮（避免重复焦点/aria）。
+        s.ghost = document.createElement("div");
+        s.ghost.className = "ck-strip-ghost";
+        s.ghost.textContent = s.row.dataset.stripValue;
+        document.body.append(s.ghost);
+        const rc = s.row.getBoundingClientRect();
+        s.ghostOffX = s.x - rc.left;
+        s.ghostOffY = s.y - rc.top;
+        startStripAutoScroll(s);
+    }
+    placeStripRow(s);
+    updateStripGhost(s);
+}
+function placeStripRow(s) {
+    const siblings = Array.from(s.host.children).filter(n => n !== s.row);
+    let anchor = null;
+    for (const sib of siblings) {
+        const rc = sib.getBoundingClientRect();
+        if (s.y < rc.top + rc.height / 2) { anchor = sib; break; }
+    }
+    const inPlace = anchor ? s.row.nextElementSibling === anchor
+        : s.host.lastElementChild === s.row;
+    if (!inPlace) s.host.insertBefore(s.row, anchor);
+}
+function updateStripGhost(s) {
+    if (!s.ghost) return;
+    s.ghost.style.left = (s.x - s.ghostOffX) + "px";
+    s.ghost.style.top = (s.y - s.ghostOffY) + "px";
+}
+// 边缘自动滚动：指针进入 main 上下 ~40px 区域时按帧推进；指针停住不动
+// 也要继续（无 pointermove 时的持续滚动），rAF 循环内自驱。
+function startStripAutoScroll(s) {
+    const EDGE = 40, SPEED = 480;
+    // sandbox（mock settings）无 performance：Date.now 兜底（dt<=0 防御
+    // 会让同步 rAF 环境的自动滚动自停，这里只是取初值）。
+    s.lastT = (typeof performance !== "undefined" && performance.now)
+        ? performance.now() : Date.now();
+    const tick = now => {
+        if (s.done) return;
+        const dt = Math.min(32, now - s.lastT);
+        // dt<=0 或 NaN（同步 rAF/回调参数与初值时钟不同源的测试环境）自停：
+        // 防 fake DOM 的立即执行 rAF 同步无限递归；真实浏览器 rAF 异步
+        // dt 恒为正不受影响。
+        if (!(dt > 0)) return;
+        s.lastT = now;
+        const rc = s.scroller.getBoundingClientRect();
+        let dy = 0;
+        if (s.y < rc.top + EDGE) dy = -SPEED * dt / 1000;
+        else if (s.y > rc.bottom - EDGE) dy = SPEED * dt / 1000;
+        if (dy) {
+            s.scroller.scrollTop += dy;
+            placeStripRow(s);
+        }
+        s.raf = requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+}
+function finishStripDrag(s, accept) {
+    if (!s || s.done) return;
+    s.done = true;   // 防 release 触发的 lostpointercapture 二次进入
+    if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(s.raf);
+    s.unbind();
+    try { s.host.releasePointerCapture(s.pid); } catch (_) { /* 无捕获 */ }
+    const next = Array.from(s.host.children).map(r => r.dataset.stripValue);
+    if (!accept) {
+        // 回滚：按拖动前顺序原样放回（originalRows 引用即原节点）。
+        s.originalRows.forEach(r => s.host.append(r));
+    }
+    s.row.classList.remove("dragging");
+    if (s.ghost) { s.ghost.remove(); s.ghost = null; }
+    stripDrag = null;
+    if (accept && s.active && !sameStrip(s.before, next)) {
+        // DOM 已是目标顺序，直接写草稿不重画。
+        ckStrips[s.kind] = next.slice();
+        ckMarkDirty(true);
+        refreshStripSummary();
+        updateStripControls(s.kind);
+    }
+}
+// 中断源：切页/页面隐藏/旋转（拖动中 DOM 重建会把状态打烂）。
+function cancelStripDrag() {
+    if (stripDrag) finishStripDrag(stripDrag, false);
+}
+document.addEventListener("visibilitychange", cancelStripDrag);
+window.addEventListener("resize", cancelStripDrag);
+document.getElementById("cklangReset").addEventListener("click", () => {
+    delete ckLangKeys[ckLangCurrent];
+    renderLangKb(ckLangCurrent);
+    refreshLangCounts();
+    ckMarkDirty(true);
+    setNote("ckSaveNote", t("ck.lang.resetDone"));
+});
+
+/* ===== 草稿的单一真相源与三条同源路径 ====================================
+ * 草稿（ckRows + ckLangKeys）是唯一真相：保存条「保存」「保存定制」、
+ * 「高级」textarea 的投影/吸收都走同一打包口径。此前「保存定制」直存
+ * textarea 内容不带 langKeys，会把语言键盘定制静默清掉；textarea 也不
+ * 随编辑器改动刷新，「高级」看到的不是当前实际（验收实录）。 */
+function ckPackJson() {
+    // rows 保底空数组：只定制语言键盘（rows 从未播种）时包是
+    // {"version":1,"rows":null,"langKeys":…}，native saveCustom 的
+    // rows==null 校验会整包拒绝（INVALID_CUSTOM_JSON，静默 toast 在
+    // 控制台看不到）——语言键盘定制在真机上保存假死。空数组与
+    // 「没有定制键行」同义。
+    const pack = { version: 1, rows: ckRows || [] };
+    if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
+    // #112 符号栏三段：null=未定制（键盘用内置默认）；空数组=显式清空
+    // 会退回默认（键盘端空表 fallback 默认，与「空 rows=无定制键行」同义）。
+    if (ckStrips.t9) pack.t9Strip = ckStrips.t9.slice();
+    if (ckStrips.stroke) pack.strokeStrip = ckStrips.stroke.slice();
+    if (ckStrips.ink) pack.inkStrip = ckStrips.ink.slice();
+    return pack;
+}
+/** 最近一次投影/保存写进 textarea 的串：区分「textarea 手上有更新」
+ *  （≠投影值 → 吸收进草稿）与「编辑器改了、textarea 是旧的」（==投影
+ *  值 → 投影新草稿）。 */
+let ckJsonProjected = "";
+function ckSyncJsonView() {
+    const ta = $("customJson");
+    if (document.activeElement === ta) return;
+    if (ta.value !== ckJsonProjected) { ckAbsorbJson(); return; }
+    ta.value = ckJsonProjected = JSON.stringify(ckPackJson(), null, 2);
+}
+/** textarea → 草稿吸收（input 防抖/进页/保存前调用）：能解析即更新
+ *  ckRows/ckLangKeys；坏 JSON 返回 false（保存时就地报错）。与 ckLoad
+ *  不同：rows 全空不回落模板——手改清空是显式意图。 */
+function ckAbsorbJson() {
+    try {
+        const parsed = JSON.parse($("customJson").value || "null");
+        if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rows)) return false;
+        ckRows = [0, 1, 2].map(i => Array.isArray(parsed.rows[i]) ? parsed.rows[i].slice() : []);
+        ckLangKeys = parsed.langKeys && typeof parsed.langKeys === "object"
+            && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
+        if (currentPage === "cksymbol") ckRenderRows();
+        return true;
+    } catch (_) { return false; }
+}
+let ckJsonAbsorbTimer = null;
+$("customJson").addEventListener("input", () => {
+    ckMarkDirty(true);
+    clearTimeout(ckJsonAbsorbTimer);
+    ckJsonAbsorbTimer = setTimeout(ckAbsorbJson, 250);
+});
+/** 统一保存链：序列化草稿 → saveCustom 桥 → 投影回 textarea（缩进
+ *  格式便于「高级」里阅读；桥参数同串，格式对 native 透明）。 */
+function ckSaveAll(noteId) {
+    const json = JSON.stringify(ckPackJson(), null, 2);
+    call("saveCustom", json, $("customEnabled").checked);
+    $("customJson").value = ckJsonProjected = json;
+    ckMarkDirty(false);
+    setNote(noteId, t("ck.note.saved"));
+}
+$("ckSave").addEventListener("click", () => ckSaveAll("ckSaveNote"));
+
+$("btnOpenCustomKeys").addEventListener("click", () => showPage("customkeys"));
+// 2026-09-30 验收拆分：模糊音/键盘选择收进三级页，input 页只留入口。
+$("btnOpenFuzzy").addEventListener("click", () => showPage("fuzzy"));
+$("btnOpenKeyboards").addEventListener("click", () => showPage("keyboards"));
+$("ckLeaveStay").addEventListener("click", () => {
+    ckLeaveTarget = null;
+    document.getElementById("ckLeaveModal").hidden = true;
+});
+$("ckLeaveGo").addEventListener("click", () => {
+    document.getElementById("ckLeaveModal").hidden = true;
+    ckMarkDirty(false);
+    const target = ckLeaveTarget;
+    ckLeaveTarget = null;
+    if (target) showPage(target);
+});
+$("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
+// 飞书交流群（浏览器打开内置邀请链接，native 侧固定白名单同 openGithub）。
+$("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
+
+// 关于页「检查更新」：Play 渠道跳商店详情页（版本/更新由商店管理）；
+// 直装渠道查本 fork（Kiwareu/feelime）的 GitHub Releases——ghproxy
+// 镜像先行（国内可达），直连回退（海外更快）。WebView 的 file://
+// origin 依赖目标端 ACAO:*（GitHub API 满足；镜像若拦截 CORS 则该源
+// 失败，两个源都挂才报错）。
+// 3.74.11 修正（之前四处全错，检测恒报“已是最新”）：
+// ① 查的是上游 feelime/feelime（从没发过键盘包），改成本 fork；
+// ② 拿 App 版本（1.4.10）比键盘版本，改成已装键盘版本
+//    （update.activeVersion，hello 下发）；③ tag 是 keyboard-3.74.10
+//    形态，须先剥掉 "keyboard-" 前缀再比，否则 [0,74,10] < [1,4,10]
+//    恒判已最新；④ fork 只发 Feelime-<版本>.apk（完整包），旧的
+//    /-(thin|full)\.apk$/ 永远匹配不上，下载按钮出不来。
+let latestReleaseAssets = null;
+/** fork 的 release tag 是 keyboard-3.74.11 形态：剥掉前缀再比版本
+ *  （直接比会把 tag 读成 [0,74,11]，恒判已是最新）。 */
+function normalizeReleaseTag(tag) {
+    return String(tag || "").replace(/^keyboard-/, "").replace(/^v/, "");
+}
+function newerVersion(latest, current) {
+    const norm = s => String(s || "").replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0);
+    const a = norm(latest), b = norm(current);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const d = (a[i] || 0) - (b[i] || 0);
+        if (d) return d > 0;
+    }
+    return false;
+}
+async function checkGithubUpdate() {
+    $("btnDlThin").hidden = true;
+    $("btnDlFull").hidden = true;
+    latestReleaseAssets = null;
+    setNote("aboutNote", t("update.checking"));
+    // 比的是已装键盘版本（VERSION），不是 App 版本（1.4.10）。
+    const current = lastState ? activeKeyboardVersion(lastState) : "?";
+    const endpoints = [
+        "https://gh-proxy.com/https://api.github.com/repos/Kiwareu/feelime/releases/latest",
+        "https://api.github.com/repos/Kiwareu/feelime/releases/latest",
+    ];
+    for (const url of endpoints) {
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 8000);
+            const res = await fetch(url, { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (!res.ok) continue;
+            const rel = await res.json();
+            // fork 的 tag 是 keyboard-3.74.11 形态：先剥前缀再比版本。
+            const tag = normalizeReleaseTag(rel.tag_name);
+            if (!tag) continue;
+            if (!newerVersion(tag, current)) {
+                setNote("aboutNote", t("update.upToDate", [tag]));
+                return;
+            }
+            setNote("aboutNote", t("update.available", [tag, current]));
+            latestReleaseAssets = {};
+            (rel.assets || []).forEach(asset => {
+                // fork 只发一个完整包 Feelime-<版本>.apk。
+                if (/^Feelime-.*\.apk$/.test(asset.name || "") && asset.browser_download_url) {
+                    latestReleaseAssets.full = asset.browser_download_url;
+                }
+            });
+            if (latestReleaseAssets.full) $("btnDlFull").hidden = false;
+            return;
+        } catch (_) { /* 下一个源 */ }
+    }
+    setNote("aboutNote", t("update.failed"));
+}
+$("btnAboutCheckUpdate").addEventListener("click", () => {
+    if (lastState && lastState.playDistribution) {
+        call("openAppStore");
+        return;
+    }
+    checkGithubUpdate();
+});
+// 下载确认即点击本身：浏览器打开 ghproxy 加速的资产地址（native 白名单
+// 校验后再跳）。
+function downloadRelease(kind) {
+    const raw = latestReleaseAssets && latestReleaseAssets[kind];
+    if (!raw) return;
+    call("openReleaseDownload", "https://gh-proxy.com/" + raw);
+}
+$("btnDlThin").addEventListener("click", () => downloadRelease("thin"));
+$("btnDlFull").addEventListener("click", () => downloadRelease("full"));
+$("btnCopyAbout").addEventListener("click", () => {
+    if (!lastState) return;
+    call("copyText", aboutRows(lastState, { forCopy: true }).map(([label, value]) => `${label}: ${value}`).join("\n"));
+    setNote("aboutNote", t("note.copied"));
+});
+
+document.querySelectorAll("[data-target]").forEach(entry => {
+    entry.addEventListener("click", () => {
+        showPage(entry.dataset.target);
+        const anchor = entry.dataset.anchor;
+        if (!anchor) return;
+        const node = document.getElementById(anchor);
+        if (node && typeof node.scrollIntoView === "function") {
+            requestAnimationFrame(() => node.scrollIntoView({ block: "start" }));
+        }
+    });
+});
+// #51 hashtag 直达：启动消费当前锚 + 外部改写监听。
+window.addEventListener("hashchange", applyLocationHash);
+applyLocationHash();
+
+document.querySelectorAll("[data-back]").forEach(back => {
+    back.addEventListener("click", () => showPage(back.dataset.back || "home"));
+});
+
+/* Apply browser fallback before the first bridge hello. Native state may
+ * immediately replace it with uiLocale/uiLanguage. */
+applyLocale();
+
+// #60：软键盘遮挡输入框——edge-to-edge 下 adjustResize 失效，键盘高度
+// 由 native 注入 --app-ime-bottom（body 底 padding 抬高），获焦元素滚
+// 进可视区（fixed 弹层内的输入靠 sheet 上移 + 容器自身滚动）。
+// #83：只对会弹键盘的文字控件滚动——checkbox/radio 等获焦不弹键盘，
+// 之前被当成输入框居中滚动（点开关页面跳到开关居中的实录）。白名单
+// 与 SetupActivity 注入尾部的重滚过滤保持同源（两份规则别再分叉）。
+const FOCUS_SCROLL_INPUT_TYPES = new Set([
+    "text", "search", "url", "password", "number", "email", "tel",
+]);
+document.addEventListener("focusin", (event) => {
+    const el = event.target;
+    if (el && el.tagName === "INPUT") {
+        if (!FOCUS_SCROLL_INPUT_TYPES.has(el.type) || el.readOnly) return;
+    } else if (!el || el.tagName !== "TEXTAREA" || el.readOnly) {
+        return;
+    }
+    if (typeof el.scrollIntoView !== "function") return;
+    // 同步滚一次即可：insets 落定后的补滚由 native 注入脚本尾部承担
+    // （SetupActivity 的 ime 去抖注入里带 activeElement 重滚）。这里
+    // 再挂 setTimeout 二次滚曾是「注入重滚」存在前的兜底，现在冗余，
+    // 且延迟滚动会跟自动化/用户的后续点按竞态——落点滚动后 tap 落空
+    // 会把焦点点丢（1.3.11 门禁 9l 定罪）。behavior 必须 instant：
+// smooth 依赖 rAF，键盘弹起窗口被挤压时 rAF 停摆——滚动静默不动。
+    el.scrollIntoView({ block: "center", behavior: "instant" });
+});
+
+// ---- #85 IME 手势直连：上滑删光标前全部 / 下滑恢复 ----
+// 设置页输入框聚焦在自家 WebView：Chromium IC 的文本查询不回（宿主
+// 路径先卡秒级再退化为 DEL 连发）、Ctrl+Z 键事件在浏览器里一次只撤
+// 一个字符。IME 服务经 ImeSettingsChannel 直调这里的处理器，同步
+// 读写输入框——快照语义与宿主路径一致（恢复落删除前位、无选中态）。
+function imeEditableTarget(el) {
+    if (!el) return false;
+    if (el.tagName === "INPUT") {
+        return FOCUS_SCROLL_INPUT_TYPES.has(el.type) && !el.readOnly;
+    }
+    return el.tagName === "TEXTAREA" && !el.readOnly;
+}
+// 手势能力谓词：滚动白名单不等于选区编辑能力——type=number 等输入
+// selectionStart 恒 null（Chromium 契约），按「删光标前」处理会清空
+// 整值且 setSelectionRange 抛 InvalidStateError（codex 复审 P1）。
+function imeGestureField(el) {
+    return imeEditableTarget(el) &&
+        typeof el.setSelectionRange === "function" &&
+        el.selectionStart !== null && el.selectionStart !== undefined;
+}
+// 表单重置/填充是直接赋值，不触发 input——快照必须显式清，否则跨
+// 表单残留把旧前缀写进新表单（codex 复审 P1）。
+function clearImeGestureSnapshots() {
+    document.querySelectorAll("input, textarea").forEach(el => {
+        el.__imeDeleteSnapshot = null;
+    });
+}
+window.Feelime = window.Feelime || {};
+window.Feelime.onImeGestureDeleteAll = function () {
+    const el = document.activeElement;
+    if (!imeGestureField(el)) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start !== end) return; // 选中段：与宿主路径同语义，不动
+    if (start === 0) return;   // 空删 no-op：保留既有快照（宿主路径同款）
+    el.__imeDeleteSnapshot = el.value.slice(0, start);
+    el.value = el.value.slice(start);
+    el.setSelectionRange(0, 0);
+    dispatchImeInput(el);
+};
+window.Feelime.onImeGestureRestore = function () {
+    const el = document.activeElement;
+    if (!imeGestureField(el)) return;
+    const snap = el.__imeDeleteSnapshot;
+    if (!snap) return;
+    // 现场校验：光标须仍停在删除后的 0 位且无选区——移位/改选后
+    // 旧快照不再可信（codex 复审 P2：选中段不得被恢复折叠）。
+    if (el.selectionStart !== 0 || el.selectionEnd !== 0) return;
+    el.__imeDeleteSnapshot = null;
+    el.value = snap + el.value;
+    el.setSelectionRange(snap.length, snap.length);
+    dispatchImeInput(el);
+};
+function dispatchImeInput(el) {
+    // 搜索框等控件靠 input 事件做实时过滤；打上手势标记，别触发快照
+    // 清理（fake DOM 无 Event/dispatchEvent，跳过即静默无过滤）。
+    if (typeof Event !== "function" || typeof el.dispatchEvent !== "function") return;
+    const ev = new Event("input", { bubbles: true });
+    ev.__imeGesture = true;
+    el.dispatchEvent(ev);
+}
+// 删除之后用户又输入过 → 快照过期，下滑不得恢复旧内容
+document.addEventListener("input", (event) => {
+    if (event.__imeGesture) return;
+    const el = event.target;
+    if (el && el.__imeDeleteSnapshot != null) el.__imeDeleteSnapshot = null;
+}, true);
+// 焦点上报：IME 服务据此决定手势是否路由进本页（原生 fixture 不置位）
+document.addEventListener("focusin", (event) => {
+    if (imeEditableTarget(event.target) && token) Native.imeInputFocused(true, token);
+});
+document.addEventListener("focusout", (event) => {
+    if (imeEditableTarget(event.target) && token) Native.imeInputFocused(false, token);
+});
+// 能力上报：服务只在本页声明过手势处理器后才走直连（旧页面缓存
+// 混搭新 APK 时回落宿主路径，不吞手势——codex 复审 P2）。
+function reportImeGestureSupport() {
+    if (token) Native.imeGestureSupport(token);
+}
+// Activity 返回/恢复：DOM 可能保留原焦点（无新 focusin），通道焦点
+// 态在 onPause 已被清——可见时按当前焦点重报（codex 复审 P2）。
+function resyncImeFocusReport() {
+    if (!token) return;
+    Native.imeInputFocused(imeEditableTarget(document.activeElement), token);
+}
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") resyncImeFocusReport();
+});
+window.addEventListener("pageshow", resyncImeFocusReport);
