@@ -546,6 +546,33 @@ object CustomPhraseStore {
         return combos.filter { it.length <= 48 }
     }
 
+    /** 首字母缩写（3.74.11，B 项）：全拼码 → 首字母序列。先把码切成音节
+     *  （与 speller 的 abbrev 规则同义：zh/ch/sh 取双字母声母，其余
+     *  取首字母），再拼合。切分不开（码不在音节表里）返回 null。
+     *  例：nihao → nh；zhongshan → zhsh；woxiangta → wxt。 */
+    fun abbrevOfCode(context: Context, code: String): String? {
+        if (code.isEmpty() || !code.all { it in 'a'..'z' }) return null
+        val table = codeTable(context) ?: return null
+        val syllables = HashSet<String>()
+        val keys = table.keys()
+        while (keys.hasNext()) syllables.add(keys.next())
+        val segmentations = syllableSegmentations(code, syllables)
+        if (segmentations.isEmpty()) return null
+        return abbrevOfSyllables(segmentations[0])
+    }
+
+    /** 纯函数：音节列 → 首字母序列（可单测）。zh/ch/sh 取双字母声母，
+     *  其余取首字母。 */
+    internal fun abbrevOfSyllables(syllables: List<String>): String {
+        return syllables.joinToString("") { syllable ->
+            when {
+                syllable.startsWith("zh") || syllable.startsWith("ch") ||
+                    syllable.startsWith("sh") -> syllable.substring(0, 2)
+                else -> syllable.substring(0, 1)
+            }
+        }
+    }
+
     /** 高频英文词表（assets/english-words.txt，google-10000 词频）：一行
      *  `Display\tcode`。不编译成 Kotlin 字面量——9000+ 对的 listOf 会
      *  生成超 JVM 65KB 方法体限制的巨型 clinit（编译 daemon 崩，

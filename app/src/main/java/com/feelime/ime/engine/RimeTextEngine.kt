@@ -30,6 +30,10 @@ class RimeTextEngine(
     // 翻译；插入/退格经 rimeProcessAt 瞬间落位、执行完回尾）。
     private var displayCaret = -1
     private var rawLen = 0
+    /** 当前组合的原始输入码（rime context 的 inputKeys，如 "nh" 或
+     *  "nihao"）。parseState 每轮更新；commitHarvest 上屏时传给
+     *  HabitLexicon，首字母记忆靠它认出用户打的是首字母序列。 */
+    private var lastInputKeys = ""
 
     override fun startNative() {
         // librime setup is process-global and must run exactly once: a second
@@ -341,7 +345,9 @@ class RimeTextEngine(
         // 习惯自动词库（3.74.10，design §2）：上屏词满阈值自动收入自造词；
         // 写后发广播走与手动「收入自造词」相同的重载路。计数失败绝不能
         // 影响本次提交（runCatching 兜住，词照常上屏）。
-        if (runCatching { HabitLexicon.recordCommit(appContext, word) }.getOrDefault(false)) {
+        // 3.74.11 B 项：把本次的原始输入码（lastInputKeys，如 "nh"）
+        // 一并传过去，首字母记忆靠它认出用户打的是首字母序列。
+        if (runCatching { HabitLexicon.recordCommit(appContext, word, lastInputKeys) }.getOrDefault(false)) {
             runCatching { HabitLexicon.broadcastChanged(appContext) }
         }
         return word
@@ -366,6 +372,7 @@ class RimeTextEngine(
         val preedit = json.optString("preedit")
         val inputKeys = json.optString("inputKeys", "")
         rawLen = inputKeys.length
+        lastInputKeys = inputKeys
         // 组合结束：中置态作废（下一次组合从正常尾部输入态开始）。
         if (preedit.isEmpty()) displayCaret = -1
         if (preedit != shownPreedit) {

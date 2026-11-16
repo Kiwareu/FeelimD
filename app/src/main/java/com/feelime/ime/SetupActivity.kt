@@ -139,11 +139,22 @@ class SetupActivity : AppCompatActivity() {
     }
 
     /** ACTION_OPEN_DOCUMENT for importing a rime .dict.yaml lexicon
-     * (issue #37: 叠加进 custom_phrase 通道的词表导入). */
+     * (issue #37: 叠加进 custom_phrase 通道的词表导入)。
+     * 3.74.11：同时接受 .scel/.qcel/.qpyd/.bdict/.txt——显示名传给桥，
+     * 由后缀/魔数分流（.scel/.qcel 另有魔数兜底；DISPLAY_NAME 查询与
+     * baseDict 同款语义）。 */
     private val dictOpenLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
-        if (uri != null) bridge.importDictFromUri(uri)
+        if (uri != null) {
+            val name = runCatching {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')
+            bridge.importDictFromUri(uri, name)
+        }
     }
 
     /** ACTION_OPEN_DOCUMENT for a custom key sound (#30-2): short audio

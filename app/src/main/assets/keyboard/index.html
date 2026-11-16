@@ -399,8 +399,12 @@
     <div id="itemMenu"></div>
 
  <!-- Confirm deleting a self-made word from the user
-         lexicon (long-press a candidate -> 删除自造词). -->
+         lexicon (long-press a candidate -> 删除自造词).
+         3.74.11：同一张卡通用为删除确认（剪贴板清空/单条删除/
+         常用语删除）。× 是一条取消路（只关卡，不执行），与取消/
+         框外点按/返回同义；只有点「删除」才执行。 -->
     <div id="confirmCard" hidden>
+        <button id="confirmClose" class="confirm-close" aria-label="关闭" data-i18n-aria-label="关闭">×</button>
         <div id="confirmText" aria-live="polite"></div>
         <div class="confirm-actions">
             <button id="confirmCancel" data-i18n="取消">取消</button>

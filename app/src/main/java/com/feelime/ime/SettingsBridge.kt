@@ -195,6 +195,14 @@ fun readKeyHapticFollowSystem(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_KEY_HAPTIC_FOLLOW_SYSTEM, false)
 
+/** 删除前确认（3.74.11）：开 = 剪贴板清空/单条删除/常用语删除先弹
+ *  确认卡，只有明确点「删除」才执行；关 = 直接删，不再问。默认开。 */
+const val PREF_DELETE_CONFIRM = "delete_confirm"
+
+fun readDeleteConfirm(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_DELETE_CONFIRM, true)
+
 /** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。
  *  #50 起由 space_hold_tap（虚拟定制键）接管，此布尔仅作读侧迁移源
  *  与旧键盘 JS（热更）的推送兼容。 */
@@ -786,6 +794,10 @@ const val KEY_SOUND_STYLE_KEYPRESS = "keypress"
 const val KEY_SOUND_STYLE_CUSTOM = "custom"
 private const val KEY_SOUND_MAX_BYTES = 2 * 1024 * 1024
 
+/** 词库导入文件上限（3.74.11）：整读进内存的 cap，超了直接报
+ *  DICT_TOO_LARGE；.scel 大文件通常 1-5MB，32MB 足够。 */
+private const val MAX_DICT_IMPORT_BYTES = 32 * 1024 * 1024
+
 fun keySoundStyle(context: Context): String {
     val prefs = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
     val style = prefs.getString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_DEFAULT) ?: KEY_SOUND_STYLE_DEFAULT
@@ -1074,6 +1086,7 @@ class SettingsBridge(
             .put("keySoundVolume", readKeySoundVolume(context))
             .put("keyHapticStrength", readKeyHapticStrength(context))
             .put("keyHapticFollowSystem", readKeyHapticFollowSystem(context))
+            .put("deleteConfirm", readDeleteConfirm(context))
             // 设备能力：无幅度马达的机型强度档按时长近似（hint 说明）。
             .put("keyHapticAmplitude", hapticAmplitudeSupported())
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
@@ -1589,6 +1602,17 @@ class SettingsBridge(
     fun setKeyHapticFollowSystem(follow: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_KEY_HAPTIC_FOLLOW_SYSTEM, follow).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 删除前确认（3.74.11）：开 = 删除先弹确认卡；关 = 直接删。 */
+    @JavascriptInterface
+    fun setDeleteConfirm(confirm: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_DELETE_CONFIRM, confirm).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -2649,23 +2673,95 @@ class SettingsBridge(
         pushState()
     }
 
-    /** 词库导入（issue #37）：SAF 选中的 rime .dict.yaml 解析后进
+    /** 词库导入（issue #37 + 3.74.11）：SAF 选中的词库文件解析后进
      *  CustomPhraseStore 的 imported 段（替换式——再导一次即换表）。
      *  与 saveCustomPhrases 同一重载链路（广播 + state 重推）。
-     *  Called by SetupActivity after ACTION_OPEN_DOCUMENT returns. */
-    fun importDictFromUri(uri: Uri) = synchronized(lifecycleLock) {
+     *  来源按内容/后缀分流（同一次导入只走一种）：
+     *  - .bdict（百度词库）：魔数 "biptbdsw" 认出，走 BdictImporter。
+     *  - .qpyd（QQ 分类词库）：后缀认出，走 QpydImporter（zlib 解压后
+     *    按 10 字节索引解析）。
+     *  - .qcel（QQ 细胞词库）：后缀认出，走 QcelImporter。
+     *  - .scel（搜狗细胞词库）：魔数 40 15 00 00 认出，走 ScelImporter
+     *    二进制解析（词条 + 拼音 + 词频）。与 .qcel 共用魔数：改了
+     *    后缀的 .qcel 在此解析失败时改试 QcelImporter 兜底。
+     *  - .txt（纯文本词表）：后缀认出，走 PlainTextDictImporter
+     *    （每行一词，可带拼音；无拼音时汉字→拼音推导）。
+     *  - 其他（.dict.yaml 等）：原 DictYamlImporter。
+     *  文件先整读进内存（上限 32MB，超了报 DICT_TOO_LARGE）；
+     *  各二进制格式结构损坏报 DICT_<FORMAT>_INVALID。Called by
+     *  SetupActivity after ACTION_OPEN_DOCUMENT returns. */
+    fun importDictFromUri(uri: Uri, displayName: String? = null) = synchronized(lifecycleLock) {
         if (closed) return
         worker.execute {
-            val result = runCatching {
-                context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
-                    val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
-                    com.feelime.ime.engine.DictYamlImporter.parse(
-                        it, existing = state.items.toSet(),
-                    )
+            val bytes = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val n = stream.read(buf)
+                        if (n < 0) break
+                        total += n
+                        if (total > MAX_DICT_IMPORT_BYTES) {
+                            return@execute pushDictImportedEvent(0, 0, "DICT_TOO_LARGE")
+                        }
+                        out.write(buf, 0, n)
+                    }
+                    out.toByteArray()
                 } ?: return@execute pushDictImportedEvent(0, 0, "DICT_READ_FAILED")
             }.getOrElse {
                 Log.w(TAG, "dict import read failed", it)
                 return@execute pushDictImportedEvent(0, 0, "DICT_READ_FAILED")
+            }
+            val existing = com.feelime.ime.engine.CustomPhraseStore.load(context).items.toSet()
+            val result = runCatching {
+                when {
+                    com.feelime.ime.engine.BdictImporter.isBdict(bytes) ->
+                        com.feelime.ime.engine.BdictImporter.parseBytes(bytes, existing = existing)
+                    displayName?.endsWith(".qpyd", ignoreCase = true) == true ->
+                        com.feelime.ime.engine.QpydImporter.parseBytes(bytes, existing = existing)
+                    displayName?.endsWith(".qcel", ignoreCase = true) == true ->
+                        com.feelime.ime.engine.QcelImporter.parseBytes(bytes, existing = existing)
+                    com.feelime.ime.engine.ScelImporter.isScel(bytes) ->
+                        runCatching {
+                            com.feelime.ime.engine.ScelImporter.parseBytes(bytes, existing = existing)
+                        }.getOrElse { scelError ->
+                            // .qcel 与 .scel 共用魔数：改了后缀或没后缀
+                            // 的 .qcel 走到这里时 .scel 解析失败，改试
+                            // .qcel；还不行报原来的 .scel 错。
+                            if (scelError is com.feelime.ime.engine.ScelImporter.ScelFormatException) {
+                                runCatching {
+                                    com.feelime.ime.engine.QcelImporter.parseBytes(
+                                        bytes, existing = existing,
+                                    )
+                                }.getOrElse { throw scelError }
+                            } else throw scelError
+                        }
+                    displayName?.endsWith(".txt", ignoreCase = true) == true ->
+                        com.feelime.ime.engine.PlainTextDictImporter.parse(
+                            bytes.inputStream().bufferedReader(Charsets.UTF_8),
+                            deriveCode = { text ->
+                                com.feelime.ime.engine.CustomPhraseStore
+                                    .autoPinyinCodes(context, text).firstOrNull()
+                            },
+                            existing = existing,
+                        )
+                    else ->
+                        com.feelime.ime.engine.DictYamlImporter.parse(
+                            bytes.inputStream().bufferedReader(Charsets.UTF_8),
+                            existing = existing,
+                        )
+                }
+            }.getOrElse { error ->
+                Log.w(TAG, "dict import parse failed", error)
+                val code = when (error) {
+                    is com.feelime.ime.engine.ScelImporter.ScelFormatException -> "DICT_SCEL_INVALID"
+                    is com.feelime.ime.engine.QcelImporter.QcelFormatException -> "DICT_QCEL_INVALID"
+                    is com.feelime.ime.engine.QpydImporter.QpydFormatException -> "DICT_QPYD_INVALID"
+                    is com.feelime.ime.engine.BdictImporter.BdictFormatException -> "DICT_BDICT_INVALID"
+                    else -> "DICT_READ_FAILED"
+                }
+                return@execute pushDictImportedEvent(0, 0, code)
             }
             if (result.items.isEmpty()) {
                 pushDictImportedEvent(0, result.skipped, "DICT_EMPTY")
@@ -2820,6 +2916,32 @@ class SettingsBridge(
         val message = when (warnCode) {
             "DICT_READ_FAILED" -> t(context, "读取文件失败", "Failed to read the file")
             "DICT_EMPTY" -> t(context, "没有可导入的词条", "No importable entries found")
+            // 3.74.11：各二进制词库结构损坏 / 文件超限，各报明原因。
+            "DICT_SCEL_INVALID" -> t(
+                context,
+                "这个 .scel 文件解析不了（不是有效的搜狗细胞词库）",
+                "This .scel file could not be parsed (not a valid Sogou cell dictionary)",
+            )
+            "DICT_QCEL_INVALID" -> t(
+                context,
+                "这个 .qcel 文件解析不了（不是有效的 QQ 拼音细胞词库）",
+                "This .qcel file could not be parsed (not a valid QQ Pinyin cell dictionary)",
+            )
+            "DICT_QPYD_INVALID" -> t(
+                context,
+                "这个 .qpyd 文件解析不了（不是有效的 QQ 拼音分类词库）",
+                "This .qpyd file could not be parsed (not a valid QQ Pinyin dictionary)",
+            )
+            "DICT_BDICT_INVALID" -> t(
+                context,
+                "这个 .bdict 文件解析不了（不是有效的百度词库）",
+                "This .bdict file could not be parsed (not a valid Baidu dictionary)",
+            )
+            "DICT_TOO_LARGE" -> t(
+                context,
+                "文件太大（超过 32MB），导不进来",
+                "The file is too large (over 32MB) to import",
+            )
             "DICT_TRUNCATED" -> t(
                 context,
                 "已导入 $count 条（超出上限的部分被截断，共跳过 $skipped 行）",

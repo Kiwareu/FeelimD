@@ -185,8 +185,8 @@ const I18N = {
         "page.dict": "词库",
         "dict.badge": "叠加",
         "dict.import.title": "导入词库",
-        "dict.import.enable": "rime 词库文件（.dict.yaml）",
-        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入，上限 5000 条。第三列（1-9 候选位次）默认只对纯符号词生效；要让全部词（汉字/字母/Emoji）都按第三列定位次，在文件头部加一行声明 columns: [text, code, rank]。注意未声明的 rime 词库第三列原本是权重——会被当作位置解释，超过 9 按 9 处理，建议导入前删掉或改写该列。",
+        "dict.import.enable": "词库文件（.dict.yaml / 搜狗 .scel / QQ .qcel / .qpyd / 百度 .bdict / 纯文本 .txt）",
+        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入，上限 5000 条。第三列（1-9 候选位次）默认只对纯符号词生效；要让全部词（汉字/字母/Emoji）都按第三列定位次，在文件头部加一行声明 columns: [text, code, rank]。注意未声明的 rime 词库第三列原本是权重——会被当作位置解释，超过 9 按 9 处理，建议导入前删掉或改写该列。搜狗 .scel、QQ .qcel/.qpyd、百度 .bdict 都直接导；纯文本 .txt 每行一词、可带拼音，无拼音时自动注音。雾凇/万象/白霜词库都是 .dict.yaml，直接导。",
         "dict.userwords.title": "自造词",
         "dict.userwords.enable": "手动维护的常用词",
         "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，或长按候选点「收入自造词」。也可以导入 rime 词库。适合名字和行话。只存在本机，最多 200 条。",
@@ -195,7 +195,7 @@ const I18N = {
         "dict.lexicon.correction": "拼音纠错",
         "dict.lexicon.correctionHint": "默认开启；打错拼音也能出候选（按编辑距离纠一格），纠错候选带「纠」标、排在候选后面，点选直接上屏",
         "dict.lexicon.habit": "习惯自动词库",
-        "dict.lexicon.habitHint": "默认开启；常打的词满 3 次自动收入自造词，只存在本机。关掉后不再自动收入，已收入的词保留",
+        "dict.lexicon.habitHint": "默认开启；常打的词满 3 次自动收入自造词，只存在本机；打首字母选定的句第一次就记下来，下次打同样首字母优先出现。关掉后不再自动收入，已收入的词保留",
         "dict.lexicon.autoWords": "自动收入的词",
         "dict.lexicon.autoWordsEmpty": "还没有自动收入的词，多打几次常用词就会出现在这里。",
         "dict.lexicon.autoWordsDeleted": "已删除",
@@ -923,6 +923,8 @@ const I18N = {
         "clip.title": "剪贴板与常用语",
         "clip.badge": "本机",
         "clip.note": "键盘工具栏里的剪贴板只保存在这台手机上，不上传，也不进云备份。条数不另设上限，全部正文大约 32MB。复制一段文字后，点键盘上的剪贴板图标就能贴回去。常用语和符号词在下面管理。",
+        "clip.deleteConfirm": "删除前确认",
+        "clip.deleteConfirmHint": "开 = 删剪贴板或常用语时先问一句，点「删除」才删；关 = 直接删，不再问。",
         "voice.asr.honest": "当前离线模型对较标准的普通话效果最好：语速放稳、环境安静，说完一句再点「说完了」。标点由本机标点模型自动补上（不是喊「逗号」），句尾句号可以在下面关掉。这里不会把声音传到网上，也不能靠换设置凭空提高识别率。",
         "privacy.title": "隐私与离线",
         "privacy.badge": "本机",
@@ -1104,8 +1106,8 @@ const I18N = {
         "page.dict": "Lexicon",
         "dict.badge": "Overlay",
         "dict.import.title": "Import a dictionary",
-        "dict.import.enable": "rime dictionary file (.dict.yaml)",
-        "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice. The optional 3rd column (candidate rank 1-9) only applies to symbol words unless the file header declares columns: [text, code, rank].",
+        "dict.import.enable": "Dictionary file (.dict.yaml / Sogou .scel / QQ .qcel / .qpyd / Baidu .bdict / plain-text .txt)",
+        "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice. The optional 3rd column (candidate rank 1-9) only applies to symbol words unless the file header declares columns: [text, code, rank]. Sogou .scel, QQ .qcel/.qpyd and Baidu .bdict import directly; plain-text .txt takes one word per line, optionally with pinyin (pinyin is auto-derived when missing). Community Rime dictionaries such as rime-ice, wanxiang and rime-frost are .dict.yaml and import directly.",
         "dict.userwords.title": "User words",
         "dict.userwords.enable": "Hand-maintained words",
         "dict.userwords.hint": "Add word + pinyin pairs, or long-press a candidate and choose Save to my words. Rime dictionaries can be imported on this page. On this phone only, up to 200 entries.",
@@ -1114,7 +1116,7 @@ const I18N = {
         "dict.lexicon.correction": "Pinyin typo correction",
         "dict.lexicon.correctionHint": "On by default. Mis-typed pinyin still offers candidates (one edit away); corrected candidates carry a “纠” mark, sit after the normal ones, and commit on tap.",
         "dict.lexicon.habit": "Habit auto-lexicon",
-        "dict.lexicon.habitHint": "On by default. Words you type often are saved to your words after 3 uses, on this phone only. Turning it off stops new saves; saved words stay.",
+        "dict.lexicon.habitHint": "On by default. Words you type often are saved to your words after 3 uses, on this phone only; a sentence picked by typing its initials is remembered the first time and comes first next time you type the same initials. Turning it off stops new saves; saved words stay.",
         "dict.lexicon.autoWords": "Auto-saved words",
         "dict.lexicon.autoWordsEmpty": "No auto-saved words yet. Type a common word a few times and it will show up here.",
         "dict.lexicon.autoWordsDeleted": "Deleted",
@@ -1832,6 +1834,8 @@ const I18N = {
         "clip.title": "Clipboard & phrases",
         "clip.badge": "On device",
         "clip.note": "The keyboard clipboard stays on this phone. It is not uploaded and is not part of cloud backup. There is no fixed item cap; about 32MB of text total is the on-device ceiling. After you copy text, tap the clipboard icon on the keyboard to paste it back. Phrases and symbol words are managed below.",
+        "clip.deleteConfirm": "Confirm before deleting",
+        "clip.deleteConfirmHint": "On = deleting clipboard items or phrases asks first; only tapping Delete deletes. Off = delete immediately, no prompt.",
         "voice.asr.honest": "The current offline model works best with fairly standard Mandarin: steady pace, a quiet room, then tap Done. Punctuation is added by the on-device model (saying the word “comma” does not insert one). Trailing periods can be stripped below. Audio is never uploaded, and no setting here can invent higher accuracy.",
         "privacy.title": "Privacy and offline",
         "privacy.badge": "On device",
@@ -3010,6 +3014,8 @@ function renderFeel(state) {
     // 选择器置灰禁用；关 = 手动三档。
     const followHaptic = state.keyHapticFollowSystem === true;
     setToggle("keyHapticFollowSystem", followHaptic);
+    // 删除前确认（3.74.11）：默认开；老版本 state 缺该键时也按开回读。
+    setToggle("deleteConfirm", state.deleteConfirm !== false);
     const strengthSel = $("keyHapticStrength");
     if (strengthSel) strengthSel.disabled = followHaptic;
     // #30-2 音效风格回读：custom 需文件在（native 已保证不悬空），文件行
@@ -4867,6 +4873,9 @@ $("keyHapticFollowSystem").addEventListener("change", event => {
     if (strengthSel) strengthSel.disabled = follow;
     call("setKeyHapticFollowSystem", follow);
 });
+
+// 删除前确认（3.74.11）：切换即写桥。
+$("deleteConfirm").addEventListener("change", event => call("setDeleteConfirm", event.target.checked));
 
 // #30-2 音效风格：custom 但文件还没选过时先走选文件（native 拒绝无文件的
 // custom，state 回推会把 select 弹回实际生效值）。
@@ -7171,10 +7180,23 @@ $("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"
 $("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
 
 // 关于页「检查更新」：Play 渠道跳商店详情页（版本/更新由商店管理）；
-// 直装渠道查 GitHub Releases——ghproxy 镜像先行（国内可达），直连回退
-// （海外更快）。WebView 的 file:// origin 依赖目标端 ACAO:*（GitHub
-// API 满足；镜像若拦截 CORS 则该源失败，两个源都挂才报错）。
+// 直装渠道查本 fork（Kiwareu/feelime）的 GitHub Releases——ghproxy
+// 镜像先行（国内可达），直连回退（海外更快）。WebView 的 file://
+// origin 依赖目标端 ACAO:*（GitHub API 满足；镜像若拦截 CORS 则该源
+// 失败，两个源都挂才报错）。
+// 3.74.11 修正（之前四处全错，检测恒报“已是最新”）：
+// ① 查的是上游 feelime/feelime（从没发过键盘包），改成本 fork；
+// ② 拿 App 版本（1.4.10）比键盘版本，改成已装键盘版本
+//    （update.activeVersion，hello 下发）；③ tag 是 keyboard-3.74.10
+//    形态，须先剥掉 "keyboard-" 前缀再比，否则 [0,74,10] < [1,4,10]
+//    恒判已最新；④ fork 只发 Feelime-<版本>.apk（完整包），旧的
+//    /-(thin|full)\.apk$/ 永远匹配不上，下载按钮出不来。
 let latestReleaseAssets = null;
+/** fork 的 release tag 是 keyboard-3.74.11 形态：剥掉前缀再比版本
+ *  （直接比会把 tag 读成 [0,74,11]，恒判已是最新）。 */
+function normalizeReleaseTag(tag) {
+    return String(tag || "").replace(/^keyboard-/, "").replace(/^v/, "");
+}
 function newerVersion(latest, current) {
     const norm = s => String(s || "").replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0);
     const a = norm(latest), b = norm(current);
@@ -7189,10 +7211,11 @@ async function checkGithubUpdate() {
     $("btnDlFull").hidden = true;
     latestReleaseAssets = null;
     setNote("aboutNote", t("update.checking"));
-    const current = (lastState && lastState.appVersion) || "?";
+    // 比的是已装键盘版本（VERSION），不是 App 版本（1.4.10）。
+    const current = lastState ? activeKeyboardVersion(lastState) : "?";
     const endpoints = [
-        "https://gh-proxy.com/https://api.github.com/repos/feelime/feelime/releases/latest",
-        "https://api.github.com/repos/feelime/feelime/releases/latest",
+        "https://gh-proxy.com/https://api.github.com/repos/Kiwareu/feelime/releases/latest",
+        "https://api.github.com/repos/Kiwareu/feelime/releases/latest",
     ];
     for (const url of endpoints) {
         try {
@@ -7202,7 +7225,8 @@ async function checkGithubUpdate() {
             clearTimeout(timer);
             if (!res.ok) continue;
             const rel = await res.json();
-            const tag = String(rel.tag_name || "").replace(/^v/, "");
+            // fork 的 tag 是 keyboard-3.74.11 形态：先剥前缀再比版本。
+            const tag = normalizeReleaseTag(rel.tag_name);
             if (!tag) continue;
             if (!newerVersion(tag, current)) {
                 setNote("aboutNote", t("update.upToDate", [tag]));
@@ -7211,10 +7235,11 @@ async function checkGithubUpdate() {
             setNote("aboutNote", t("update.available", [tag, current]));
             latestReleaseAssets = {};
             (rel.assets || []).forEach(asset => {
-                const m = /-(thin|full)\.apk$/.exec(asset.name || "");
-                if (m && asset.browser_download_url) latestReleaseAssets[m[1]] = asset.browser_download_url;
+                // fork 只发一个完整包 Feelime-<版本>.apk。
+                if (/^Feelime-.*\.apk$/.test(asset.name || "") && asset.browser_download_url) {
+                    latestReleaseAssets.full = asset.browser_download_url;
+                }
             });
-            if (latestReleaseAssets.thin) $("btnDlThin").hidden = false;
             if (latestReleaseAssets.full) $("btnDlFull").hidden = false;
             return;
         } catch (_) { /* 下一个源 */ }

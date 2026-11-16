@@ -248,7 +248,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u62D6\u52A8\u6392\u5E8F": "Drag to reorder",
     "\u6682\u65E0\u5355\u5B57": "No single-character candidates",
     "\u6682\u65E0\u5019\u9009": "No candidates",
-    "\u526A\u8D34\u677F\u53EA\u7559\u5728\u8FD9\u53F0\u624B\u673A\u4E0A\uFF0C\u4E0D\u4E0A\u4F20\u3001\u4E0D\u8FDB\u4E91\u5907\u4EFD\u3002\u6761\u6570\u4E0D\u53E6\u8BBE\u4E0A\u9650\uFF1B\u5168\u90E8\u6B63\u6587\u5927\u7EA6 32MB\uFF0C\u518D\u5927\u5C31\u5B58\u4E0D\u4E0B\u3002": "Clipboard stays on this phone. It is not uploaded and is not in cloud backup. There is no fixed item cap; about 32MB of text total is the on-device ceiling.",
     "\u6761": "clips",
     "\u52A0\u5165": "Add",
     "\u94FE\u63A5": "Link",
@@ -312,6 +311,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u6E05\u7A7A\u526A\u8D34\u677F": "Clear clipboard",
     "\u6E05\u7A7A": "Clear",
     "\u786E\u8BA4\u6E05\u7A7A": "Confirm clear",
+    // 删除确认（3.74.11）：模态确认卡文案。
+    "\u6E05\u7A7A\u5168\u90E8\u526A\u8D34\u677F\uFF1F": "Clear all clipboard items?",
+    "\u5220\u9664\u8FD9\u6761\u526A\u8D34\u677F\uFF1F": "Delete this clipboard item?",
+    "\u4ECE\u5E38\u7528\u8BED\u5220\u9664\u8FD9\u6761\uFF1F": "Delete this phrase from favorites?",
+    "\u5DF2\u52A0\u5230\u5E38\u7528\u8BED": "Added to favorites",
+    "\u52A0\u5230\u5E38\u7528\u8BED": "Add to favorites",
     "\uFF0B\u6DFB\u52A0": "\uFF0B Add",
     // 剪贴板/常用语搜索（2026-11-16）。
     "\u641C\u7D22\u526A\u8D34\u677F / \u5E38\u7528\u8BED": "Search clipboard / phrases",
@@ -382,7 +387,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.74.10";
+  const KEYBOARD_VERSION = "3.74.11";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1815,6 +1820,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.pinyinCorrection = true;
       this.correctionFor = "";
       this.correctionCandidates = [];
+      this.deleteConfirm = true;
       this.doubleShiftLock = true;
       this.popupSnap = 1;
       this.bottomPad = 0;
@@ -2161,12 +2167,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.getElementById("panelClose").addEventListener("click", () => this.closePanel());
       document.getElementById("panelClear").addEventListener("click", () => {
         if (this.panelTab !== "clipboard") return;
-        if (this.panelClearTimer) {
-          this.armPanelClear(false);
+        this.confirmDelete(t("\u6E05\u7A7A\u5168\u90E8\u526A\u8D34\u677F\uFF1F"), () => {
           this.call(() => Native.clearClipboard(this.token));
-        } else {
-          this.armPanelClear(true);
-        }
+        });
       });
       document.getElementById("panelManage").addEventListener("click", () => this.openPanelEditor(null));
       const editorInput = document.getElementById("panelEditorInput");
@@ -2203,6 +2206,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.getElementById("softKeyboard").addEventListener("touchstart", (event) => {
         const inLayer = /* @__PURE__ */ __name((id) => event.target && event.target.closest && event.target.closest(id), "inLayer");
         if (this.itemMenuOpen && !inLayer("#itemMenu")) this.closeItemMenu();
+        if (!document.getElementById("confirmCard").hidden && !inLayer("#confirmCard")) {
+          this.closeConfirmCard();
+        }
         if (this.comboGrid && !inLayer("#comboPopup")) {
           const anchor = this.comboAnchor;
           const onAnchor = anchor && event.target.closest && event.target.closest("[data-ctrl]") === anchor;
@@ -2223,15 +2229,20 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const searchInput = document.getElementById("panelSearchInput");
       const searchClear = document.getElementById("panelSearchClear");
       if (searchInput) {
-        searchInput.addEventListener("focus", () => this.setPanelInput(true));
+        searchInput.addEventListener("focus", () => {
+          this.setPanelInput(true);
+          this.reportPanelSelection();
+        });
         searchInput.addEventListener("blur", () => {
           if (!this.phraseCardOpen()) this.setPanelInput(false);
         });
         searchInput.addEventListener("input", () => {
           this.clipSearch = searchInput.value.trim();
           if (searchClear) searchClear.hidden = !this.clipSearch;
+          this.reportPanelSelection();
           this.renderPanel();
         });
+        ["select", "click", "keyup"].forEach((name) => searchInput.addEventListener(name, () => this.reportPanelSelection()));
       }
       if (searchClear) searchClear.addEventListener("click", () => {
         if (searchInput) searchInput.value = "";
@@ -2260,7 +2271,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.bindPressFeedback(document.getElementById("comboClose"));
       this.bindPressFeedback(document.getElementById("confirmCancel"));
       this.bindPressFeedback(document.getElementById("confirmOk"));
+      this.bindPressFeedback(document.getElementById("confirmClose"));
       this.bindHeightCard();
+      document.getElementById("confirmClose").addEventListener("click", () => this.closeConfirmCard());
       document.getElementById("confirmCancel").addEventListener("click", () => this.closeConfirmCard());
       document.getElementById("confirmOk").addEventListener("click", () => this.deleteHighlightedCandidate());
       if (typeof window.addEventListener === "function") {
@@ -2482,7 +2495,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       // this line every real touch on it fell through to the host
       // app (±/strip/cancel all dead under a finger; synthetic
       // clicks bypassed hit-testing, so every suite stayed green).
-      document.getElementById("heightCard").classList.contains("open");
+      document.getElementById("heightCard").classList.contains("open") || // 3.74.11：删除确认卡是居中浮层，同样要登记 native
+      // 触控区，否则剪贴板面板开着时卡上的点按收不到。
+      !document.getElementById("confirmCard").hidden;
       if (this._overlayOpen === open) return;
       this._overlayOpen = open;
       if (typeof Native.setOverlayOpen === "function") {
@@ -9924,7 +9939,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.panelTab = want;
       this.panelOpen = true;
       this.hwNotifyPanelHeight();
-      this.armPanelClear(false);
       this.panelReturnLayer = this.keyLayer === "letters" ? this.keyLayer : "letters";
       this.closeModeMenu();
       if (this.ctrlView) this.suspendCtrlView();
@@ -9991,7 +10005,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       list.append(grid);
     }
     closePanel() {
-      this.armPanelClear(false);
       this.closeClipSplit();
       if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
       this.panelOpen = false;
@@ -10003,22 +10016,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.auditToolbarTools();
       this.showKeyLayer(this.panelReturnLayer || "letters");
       this.maybeResumeCtrlView();
-    }
-    /** 面板头「清空」的两击确认态（#39）：on=红字「确认清空」并起
-     * 3s 定时，超时自动撤；off=恢复文案与样式。WebView 无原生
-     * confirm（WebChromeClient 未挂 onJsConfirm），确认只能自建。 */
-    armPanelClear(on) {
-      const btn = document.getElementById("panelClear");
-      clearTimeout(this.panelClearTimer);
-      this.panelClearTimer = null;
-      if (on) {
-        this.panelClearTimer = setTimeout(() => this.armPanelClear(false), 3e3);
-        btn.classList.add("danger");
-        btn.textContent = t("\u786E\u8BA4\u6E05\u7A7A");
-      } else {
-        btn.classList.remove("danger");
-        btn.textContent = t("\u6E05\u7A7A");
-      }
     }
     /** 剪贴板面板标题上的总数。工具栏图标不显示条数。 */
     syncClipTotal() {
@@ -10065,7 +10062,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (items.length) delete layer.dataset.empty;
       else layer.dataset.empty = "1";
       if (!items.length) {
-        empty.textContent = q ? t("\u6CA1\u6709\u627E\u5230\u5305\u542B\u300C{0}\u300D\u7684\u5185\u5BB9", q) : this.panelTab === "clipboard" ? t("\u526A\u8D34\u677F\u53EA\u7559\u5728\u8FD9\u53F0\u624B\u673A\u4E0A\uFF0C\u4E0D\u4E0A\u4F20\u3001\u4E0D\u8FDB\u4E91\u5907\u4EFD\u3002\u6761\u6570\u4E0D\u53E6\u8BBE\u4E0A\u9650\uFF1B\u5168\u90E8\u6B63\u6587\u5927\u7EA6 32MB\uFF0C\u518D\u5927\u5C31\u5B58\u4E0D\u4E0B\u3002") : t("\u6682\u65E0\u5E38\u7528\u8BED\uFF0C\u70B9\u53F3\u4E0A\u89D2\u300C\uFF0B\u6DFB\u52A0\u300D");
+        if (q) {
+          empty.hidden = false;
+          empty.textContent = t("\u6CA1\u6709\u627E\u5230\u5305\u542B\u300C{0}\u300D\u7684\u5185\u5BB9", q);
+        } else if (this.panelTab === "clipboard") {
+          empty.hidden = true;
+          empty.textContent = "";
+        } else {
+          empty.hidden = false;
+          empty.textContent = t("\u6682\u65E0\u5E38\u7528\u8BED\uFF0C\u70B9\u53F3\u4E0A\u89D2\u300C\uFF0B\u6DFB\u52A0\u300D");
+        }
         return;
       }
       items.forEach((item) => {
@@ -10099,7 +10105,19 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           remove.setAttribute("aria-label", t("\u5220\u9664"));
           remove.addEventListener("click", (event) => {
             event.stopPropagation();
-            this.call(() => Native.removeClipboard(item.id, this.token));
+            this.confirmDelete(t("\u5220\u9664\u8FD9\u6761\u526A\u8D34\u677F\uFF1F"), () => {
+              this.call(() => Native.removeClipboard(item.id, this.token));
+            });
+          });
+          const fav = document.createElement("button");
+          fav.type = "button";
+          fav.className = "clip-fav-btn";
+          fav.textContent = "\u2606";
+          fav.setAttribute("aria-label", t("\u52A0\u5230\u5E38\u7528\u8BED"));
+          fav.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.call(() => Native.favoritesAdd(item.text, "", 1, this.token));
+            this.showToast(t("\u5DF2\u52A0\u5230\u5E38\u7528\u8BED"));
           });
           const body = document.createElement("span");
           body.className = "clip-body";
@@ -10117,11 +10135,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
               event.stopPropagation();
               this.openClipSplit(item);
             });
-            row.append(body, expandBtn, remove);
+            row.append(body, expandBtn, fav, remove);
             this.bindItemLongPress(row, () => {
               longPressed2 = true;
               this.openClipSplit(item);
             });
+          } else if (!tooLong) {
+            row.append(body, fav, remove);
           } else {
             row.append(body, remove);
           }
@@ -10193,7 +10213,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     panelInputField() {
       const el = document.activeElement;
-      if (el && el.classList && el.classList.contains("phrase-input")) return el;
+      if (el && el.classList && (el.classList.contains("phrase-input") || el.id === "panelSearchInput")) return el;
       return this.settingsInputFocus ? this.panelTarget || null : null;
     }
     rememberPanelSelection(field) {
@@ -10248,6 +10268,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       } catch (_) {
       }
       this.rememberPanelSelection(field);
+      if (field.id === "panelSearchInput") {
+        try {
+          field.dispatchEvent(new Event("input", { bubbles: true }));
+        } catch (_) {
+        }
+      }
     }
     insertIntoPanelInput(text, field = this.panelInputField()) {
       var _a, _b;
@@ -10494,7 +10520,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }, "build");
       build(t("\u7F6E\u9876"), "", () => this.call(() => Native.favoritesMove(item.id, 0, this.token)));
       build(t("\u7F16\u8F91"), "", () => this.openPanelEditor(item));
-      build(t("\u5220\u9664"), "danger", () => this.call(() => Native.removeFavorite(item.id, this.token)));
+      build(t("\u5220\u9664"), "danger", () => (
+        // 3.74.11：常用语长按菜单里的删除也走同一套确认。
+        this.confirmDelete(t("\u4ECE\u5E38\u7528\u8BED\u5220\u9664\u8FD9\u6761\uFF1F"), () => {
+          this.call(() => Native.removeFavorite(item.id, this.token));
+        })
+      ));
       menu.classList.add("open");
       const rect = anchor.getBoundingClientRect();
       menu.style.left = Math.max(4, Math.min(
@@ -10574,16 +10605,44 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     confirmDeleteCandidate(candidate) {
       this.deleteTarget = candidate;
+      this.confirmCallback = null;
       document.getElementById("confirmText").textContent = t("\u4ECE\u81EA\u9009\u8BCD\u8BCD\u5E93\u5220\u9664\u300C{0}\u300D\uFF1F\uFF08\u56FA\u5B9A\u8BCD\u5E93\u7684\u8BCD\u5220\u4E0D\u6389\uFF09", candidate.text);
       document.getElementById("confirmCard").hidden = false;
+      this.syncOverlay();
+    }
+    /** 通用删除确认（3.74.11）：剪贴板清空/单条删除/常用语删除。
+     *  只有明确点「删除」才跑 onConfirm；×/取消/框外点按/返回
+     *  只关卡，不执行（closeConfirmCard 清掉回调）。 */
+    showConfirm(message, onConfirm) {
+      this.deleteTarget = null;
+      this.confirmCallback = typeof onConfirm === "function" ? onConfirm : null;
+      document.getElementById("confirmText").textContent = message;
+      document.getElementById("confirmCard").hidden = false;
+      this.syncOverlay();
     }
     closeConfirmCard() {
       this.deleteTarget = null;
+      this.confirmCallback = null;
       document.getElementById("confirmCard").hidden = true;
+      this.syncOverlay();
+    }
+    /** 删除门闸（3.74.11）：开关开 = 弹确认卡等明确点「删除」；
+     *  开关关 = 直接执行，不再问。清空/单条删除/常用语删除共用。 */
+    confirmDelete(message, onConfirm) {
+      if (this.deleteConfirm === false) {
+        onConfirm();
+        return;
+      }
+      this.showConfirm(message, onConfirm);
     }
     deleteHighlightedCandidate() {
+      const cb = this.confirmCallback;
       const candidate = this.deleteTarget;
       this.closeConfirmCard();
+      if (cb) {
+        cb();
+        return;
+      }
       if (!candidate) return;
       const head = (this.expandCandidates || [])[0];
       const isHead = head && head.id === candidate.id;
@@ -10730,7 +10789,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const pieces = this.clipPieces(item.text);
       if (!pieces.length) return;
       this.clipSplitItem = item;
-      textEl.textContent = item.text;
+      const shown = [...item.text];
+      textEl.textContent = shown.length > 200 ? shown.slice(0, 200).join("") + "\u2026" : item.text;
       chipsEl.replaceChildren();
       const full = document.createElement("button");
       full.type = "button";
@@ -10955,6 +11015,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           this.correctionFor = "";
           this.correctionCandidates = [];
         }
+      }
+      if (typeof payload.deleteConfirm === "boolean") {
+        this.deleteConfirm = payload.deleteConfirm;
       }
       this.applyGlass(payload);
       this.applyLandscapeChrome();

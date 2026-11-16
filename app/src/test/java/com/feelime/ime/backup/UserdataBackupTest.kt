@@ -388,6 +388,44 @@ class UserdataBackupTest {
     }
 
     @Test
+    fun habitLexiconRoundTripsStringSetsAndCounts() {
+        // 3.74.11：习惯词库账本（habit_lexicon）跟随备份走——计数
+        // （Int）与已收入/首字母集合（StringSet）都要原样回来，
+        // 否则恢复后词还在自造词里、设置页列表却丢了。
+        val prefs = FakePrefs()
+        prefs.put("habit_lexicon", "auto_added", setOf("你好", "今天晚上吃什么"))
+        prefs.put("habit_lexicon", "abbrev_added", setOf("今天晚上吃什么"))
+        prefs.put("habit_lexicon", "abbrev:今天晚上吃什么", setOf("jtwscm"))
+        prefs.put("habit_lexicon", "count:明天见", 2)
+        val json = UserdataBackup(prefs, newDir()).export().toString()
+
+        val target = FakePrefs()
+        val result = UserdataBackup(target, newDir()).restore(json.toByteArray())
+        assertTrue(result is UserdataBackup.RestoreResult.Ok)
+        assertEquals(setOf("你好", "今天晚上吃什么"), target.all("habit_lexicon")["auto_added"])
+        assertEquals(setOf("今天晚上吃什么"), target.all("habit_lexicon")["abbrev_added"])
+        assertEquals(setOf("jtwscm"), target.all("habit_lexicon")["abbrev:今天晚上吃什么"])
+        assertEquals(2, target.all("habit_lexicon")["count:明天见"])
+    }
+
+    @Test
+    fun habitLexiconRejectsNonStringArrayElements() {
+        // 习惯段的数组只收全串元素：混进数字/布尔 → 整包拒绝（与
+        // 其他段落的 SCHEMA 契约同款，不静默丢键）。
+        val bad = JSONObject()
+            .put("kind", UserdataBackup.KIND)
+            .put("version", UserdataBackup.VERSION)
+            .put("settings", JSONObject().put(
+                "habit_lexicon",
+                JSONObject().put("auto_added", JSONArray().put("你好").put(3)),
+            ))
+        val target = UserdataBackup(FakePrefs(), newDir())
+        val result = target.restore(bad.toString().toByteArray())
+        assertTrue(result is UserdataBackup.RestoreResult.Fail)
+        assertEquals("SCHEMA", (result as UserdataBackup.RestoreResult.Fail).code)
+    }
+
+    @Test
     fun statsSectionDelegatesToCallbackAndSkipsDirectPut() {
         // #71：带回调时统计段委托（InputStats 在统计锁内 flush→覆盖写→
         // 失效缓存），UserdataBackup 不再直接落该键——否则进程内旧缓存

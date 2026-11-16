@@ -38,36 +38,42 @@
     /* 面板通透度仍由设置控制。底板另有一层更厚的霜，避免页面文字穿透。 */
     --panel-alpha: 0.72;
     --glass-blur: 28px;
-    --sheet-top: hsl(var(--bg-hue) calc(36% * var(--bg-sat, 1)) 22% / .90);
-    --sheet-bottom: hsl(var(--bg-hue) calc(30% * var(--bg-sat, 1)) 12% / .94);
+    /* 3.74.11：饱和度设计系数上调——旧系数把滑杆顶格也压在
+     * 22%（键）/62%（accent），再鲜艳的主题都显淡；磨砂
+     * （--key-alpha 0.86 透底 + 28px 模糊）又冲掉一层。新系数
+     * 让滑杆拉满 = 鲜艳准确（键 55%/accent 85%），默认樱花粉
+     * （sat 52）也真正显粉；低饱和皮肤（墨/霜）仍映射得低，
+     * 层次不变。设置页预览系数同步对齐（见 settings.css）。 */
+    --sheet-top: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) 22% / .90);
+    --sheet-bottom: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 12% / .94);
     --bar-l: 18%;
     --glass-sheen: rgba(255, 255, 255, .55);
     --glass-edge: rgba(255, 255, 255, .28);
-    --glass-veil: hsl(var(--bg-hue) calc(28% * var(--bg-sat, 1)) 16% / .72);
-    --glass-veil-2: hsl(var(--bg-hue) calc(24% * var(--bg-sat, 1)) 10% / .82);
-    --bg: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--bg-lt, 0)));
-    --key: hsl(var(--key-hue) calc(22% * var(--key-sat, 1)) calc(34% + (100% - 34%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --special: hsl(var(--key-hue) calc(18% * var(--key-sat, 1)) calc(24% + (100% - 24%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --pressed: hsl(var(--key-hue) calc(22% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --glass-veil: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) 16% / .72);
+    --glass-veil-2: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) 10% / .82);
+    --bg: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--bg-lt, 0)));
+    --key: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(34% + (100% - 34%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --special: hsl(var(--key-hue) calc(48% * var(--key-sat, 1)) calc(24% + (100% - 24%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --pressed: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
     --text: #e8e8e8;
     --muted: #b0b0b0;
-    --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(48% + (100% - 48%) * 0.75 * var(--key-lt, 0)));
-    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
+    --accent: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(48% + (100% - 48%) * 0.75 * var(--key-lt, 0)));
+    --accent-strong: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
     --danger: #ff6b6b;
     --recording: #ff4d4d;
-    --panel: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(16% + (100% - 16%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-    --panel-a: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(16% + (100% - 16%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-    --pill: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(24% + (100% - 24%) * 0.35 * var(--bg-lt, 0)));
-    --logo-bg: hsl(var(--bg-hue) calc(8% * var(--bg-sat, 1)) calc(30% + (100% - 30%) * 0.35 * var(--bg-lt, 0)));
-    --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(60% + (100% - 60%) * 0.35 * var(--bg-lt, 0)));
-    --card-bg: hsl(var(--bg-hue) calc(9% * var(--bg-sat, 1)) calc(21% + (100% - 21%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --panel: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) calc(16% + (100% - 16%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --panel-a: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) calc(16% + (100% - 16%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --pill: hsl(var(--bg-hue) calc(38% * var(--bg-sat, 1)) calc(24% + (100% - 24%) * 0.35 * var(--bg-lt, 0)));
+    --logo-bg: hsl(var(--bg-hue) calc(15% * var(--bg-sat, 1)) calc(30% + (100% - 30%) * 0.35 * var(--bg-lt, 0)));
+    --icon: hsl(var(--bg-hue) calc(10% * var(--bg-sat, 1)) calc(60% + (100% - 60%) * 0.35 * var(--bg-lt, 0)));
+    --card-bg: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(21% + (100% - 21%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
     --card-text: #e8e8e8;
     --card-sub: #a2a2ac;
     --input-placeholder: #dedede;
     --key-subtext: #dedede;
-    --accent-text: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(66% + (100% - 66%) * 0.75 * var(--key-lt, 0)));
-    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
-    --line: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(28% + (100% - 28%) * 0.35 * var(--bg-lt, 0)));
+    --accent-text: hsl(var(--key-hue) calc(80% * var(--key-sat, 1)) calc(66% + (100% - 66%) * 0.75 * var(--key-lt, 0)));
+    --accent-ink: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
+    --line: hsl(var(--bg-hue) calc(32% * var(--bg-sat, 1)) calc(28% + (100% - 28%) * 0.35 * var(--bg-lt, 0)));
     --radius-key: 22px;
     --radius-card: 28px;
     --radius-sheet: 32px;
@@ -76,10 +82,12 @@
 
 html.theme-light {
     color-scheme: light;
-    --key: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(96% + (100% - 96%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --special: hsl(var(--key-hue) calc(32% * var(--key-sat, 1)) calc(90% + (100% - 90%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --pressed: hsl(var(--key-hue) calc(36% * var(--key-sat, 1)) calc(86% + (100% - 86%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
-    --bg: hsl(var(--bg-hue) calc(32% * var(--bg-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
+    /* 3.74.11：亮模式饱和度系数同步上调（同 dark 模式原因：滑杆
+     * 顶格键只有 38%，显淡；新系数键 65%/accent 85%。 */
+    --key: hsl(var(--key-hue) calc(65% * var(--key-sat, 1)) calc(96% + (100% - 96%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --special: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(90% + (100% - 90%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --pressed: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(86% + (100% - 86%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --bg: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
     --text: #181818;
     /* The old #b0b0b0 sat at ~2.1:1 on the light surfaces -
      * quick-settings text was effectively invisible. #5c616b keeps the
@@ -87,32 +95,32 @@ html.theme-light {
      * sits on (6.1 on --key, 5.7 on --panel, 4.9 on --bg; --special surfaces
      * carry --text, not muted). */
     --muted: #5c616b;
-    --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)));
-    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
+    --accent: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)));
+    --accent-strong: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
     --danger: #d93025;
     --recording: #e5484d;
-    --panel: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-    --panel-a: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
-    --pill: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
-    --logo-bg: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
-    --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(47% + (100% - 47%) * 0.35 * var(--bg-lt, 0)));
-    --card-bg: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(97% + (100% - 97%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --panel: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --panel-a: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
+    --pill: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+    --logo-bg: hsl(var(--bg-hue) calc(30% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+    --icon: hsl(var(--bg-hue) calc(10% * var(--bg-sat, 1)) calc(47% + (100% - 47%) * 0.35 * var(--bg-lt, 0)));
+    --card-bg: hsl(var(--bg-hue) calc(28% * var(--bg-sat, 1)) calc(97% + (100% - 97%) * 0.35 * var(--bg-lt, 0)) / var(--panel-alpha));
     --card-text: #1c1c24;
     --card-sub: #6a6a78;
     --input-placeholder: #5c616b;
     --key-subtext: #5c616b;
-    --accent-text: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(26% + (100% - 26%) * 0.75 * var(--key-lt, 0)));
-    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
-    --line: hsl(var(--bg-hue) calc(26% * var(--bg-sat, 1)) calc(82% + (100% - 82%) * 0.35 * var(--bg-lt, 0)));
+    --accent-text: hsl(var(--key-hue) calc(85% * var(--key-sat, 1)) calc(26% + (100% - 26%) * 0.75 * var(--key-lt, 0)));
+    --accent-ink: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
+    --line: hsl(var(--bg-hue) calc(38% * var(--bg-sat, 1)) calc(82% + (100% - 82%) * 0.35 * var(--bg-lt, 0)));
     --scrim: #ffffffb0;
-    --mod-active-bg: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(89% + (100% - 89%) * 0.75 * var(--key-lt, 0)));
+    --mod-active-bg: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(89% + (100% - 89%) * 0.75 * var(--key-lt, 0)));
     --bar-l: 96%;
-    --sheet-top: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 97% / .90);
-    --sheet-bottom: hsl(var(--bg-hue) calc(42% * var(--bg-sat, 1)) 90% / .84);
+    --sheet-top: hsl(var(--bg-hue) calc(60% * var(--bg-sat, 1)) 97% / .90);
+    --sheet-bottom: hsl(var(--bg-hue) calc(55% * var(--bg-sat, 1)) 90% / .84);
     --glass-sheen: rgba(255, 255, 255, .92);
     --glass-edge: rgba(255, 255, 255, .55);
-    --glass-veil: hsl(var(--bg-hue) calc(40% * var(--bg-sat, 1)) 96% / .78);
-    --glass-veil-2: hsl(var(--bg-hue) calc(36% * var(--bg-sat, 1)) 90% / .86);
+    --glass-veil: hsl(var(--bg-hue) calc(52% * var(--bg-sat, 1)) 96% / .78);
+    --glass-veil-2: hsl(var(--bg-hue) calc(48% * var(--bg-sat, 1)) 90% / .86);
 }
 
 /* ===== #31 预置色调：六预置=六个固定 --kb-hue（classic=默认绿 160），
@@ -743,13 +751,15 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
 .toolbox-spacer { flex: 1; min-width: 0; }
 /* 剪贴板条目右侧「展开」按钮（3.74.10）：小 chevron，不占正文区；
  * 点它或长按条目打开放大拆分视图，点条目本身仍整条上屏。 */
+/* 3.74.11：展开只是个纯符号指示（⌄），不要按钮底、不要圆形边框
+ * （用户反馈圆圈突兀）。触控区仍保留 28px，视觉只有符号本身。 */
 .clip-expand-btn {
     flex: none;
     width: 28px;
     height: 28px;
     border: 0;
-    border-radius: 50%;
-    background: var(--pill);
+    border-radius: 0;
+    background: transparent;
     color: var(--muted);
     font-size: 16px;
     line-height: 1;
@@ -757,7 +767,25 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     align-items: center;
     justify-content: center;
 }
-.clip-expand-btn:active { background: var(--pressed); }
+.clip-expand-btn:active { color: var(--text); }
+/* 3.74.11：☆ 加常用语按钮，与展开符号同款纯符号指示（无底、无
+ * 圆圈），28px 触控区。行内三符号（⌄ ☆ ×）各 flex:none、gap 8px，
+ * 正文 .clip-body flex:1 + min-width:0 收缩让位，横竖屏都不重叠。 */
+.clip-fav-btn {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.clip-fav-btn:active { color: var(--text); }
 /* 剪贴板/常用语搜索行（2026-11-16）：面板头下方、列表上方常驻；
  * 与候选条同材质（--pill 底），输入框透明占满，× 只在有字时出现。 */
 .panel-search {
@@ -3378,7 +3406,22 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
     box-shadow: 0 12px 32px #000a;
 }
 #confirmCard[hidden] { display: none; }
-#confirmText { font-size: 14px; line-height: 1.5; color: var(--text); }
+#confirmText { font-size: 14px; line-height: 1.5; color: var(--text); padding-right: 28px; }
+/* 3.74.11：× 是取消路（只关卡，不执行）。文案右留 28px，防长文案顶到 ×。 */
+.confirm-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+}
+.confirm-close:active, .confirm-close.active-touch { background: var(--pressed); }
 .confirm-actions {
     display: flex;
     justify-content: flex-end;

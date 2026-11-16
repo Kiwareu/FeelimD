@@ -42,6 +42,30 @@ object DictYamlImporter {
         val truncated: Int,
     )
 
+    /** 二进制词库导入的公共尾段（3.74.11，.bdict/.qcel/.qpyd 用；
+     *  .scel 保持自有内联实现不动）：去重（先出现者胜）+ 上限截断。
+     *  词频降序只在 sortByFreq 时做（.scel）；其余保持文件序。 */
+    internal fun finishBinaryImport(
+        entries: List<Triple<String, String, Int>>,
+        existing: Set<Pair<String, String>>,
+        sortByFreq: Boolean,
+        skipped: Int,
+    ): Result {
+        val seen = LinkedHashMap<Pair<String, String>, Unit>()
+        var truncated = 0
+        val ordered = if (sortByFreq) entries.sortedByDescending { it.third } else entries
+        for ((word, code, _) in ordered) {
+            val entry = word to code
+            if (entry in existing || entry in seen) continue
+            if (seen.size >= MAX_ENTRIES) {
+                truncated++
+                continue
+            }
+            seen[entry] = Unit
+        }
+        return Result(items = seen.keys.toList(), skipped = skipped, truncated = truncated)
+    }
+
     fun parse(reader: Reader, existing: Set<Pair<String, String>> = emptySet()): Result {
         val items = LinkedHashMap<Pair<String, String>, Unit>()
         val ranks = LinkedHashMap<String, Int>()

@@ -427,6 +427,15 @@ class FakeElement {
         // and invoke *every* listener (capture interceptors included).
         fakeDispatch(this, 'click', 0, 0);
     }
+    dispatchEvent(event) {
+        // Minimal DOM dispatch: keyboard.js fires a synthetic 'input' after
+        // programmatic value writes into the panel search box (3.74.11 —
+        // assignment alone never fires 'input' in a real browser either).
+        // fakeDispatch always bubbles; only bubbling events are dispatched
+        // this way in the code under test, so that is faithful here.
+        const dispatched = fakeDispatch(this, event && event.type, 0, 0);
+        return !dispatched.defaultPrevented;
+    }
     matches(selector) {
         return matchesSelector(this, selector);
     }
@@ -1142,6 +1151,18 @@ class KeyboardWorld {
             JSON,
             Math,
             RegExp,
+            // Minimal Event constructor (3.74.11): keyboard.js dispatches a
+            // synthetic 'input' after programmatic panel writes; without it
+            // the call throws and the filter never follows in the mock.
+            Event: class Event {
+                constructor(type, init = {}) {
+                    this.type = type;
+                    this.bubbles = !!init.bubbles;
+                    this.cancelable = !!init.cancelable;
+                    this.defaultPrevented = false;
+                }
+                preventDefault() { this.defaultPrevented = true; }
+            },
             Date: FakeDate,
             Object,
             Array,

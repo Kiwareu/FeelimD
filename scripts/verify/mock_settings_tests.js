@@ -125,6 +125,7 @@ class MockSettingsNative {
     setKeySoundVolume(...a) { this._rec('setKeySoundVolume', a); }
     setKeyHapticStrength(...a) { this._rec('setKeyHapticStrength', a); }
     setKeyHapticFollowSystem(...a) { this._rec('setKeyHapticFollowSystem', a); }
+    setDeleteConfirm(...a) { this._rec('setDeleteConfirm', a); } // 3.74.11
     // /R8: page reporting (BACK returns home first) + about-page
     // one-tap copy.
     reportPage(...a) { this._rec('reportPage', a); }
@@ -2575,6 +2576,56 @@ test('haptic follow-system greys out the strength selector and commits (3.74.10)
     toggle.listeners.find(l => l.type === 'change').handler({ target: { checked: true } });
     equal(world.lastCall('setKeyHapticFollowSystem').args, [true, world.token], 'toggle commits follow + token');
     equal(world.$('keyHapticStrength').disabled, true, 'selector greys out immediately on toggle');
+});
+
+test('delete-confirm switch defaults on and commits setDeleteConfirm with the token (3.74.11)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.$('deleteConfirm').checked, true, 'delete confirm default on when state has no key');
+    world.push({ ...BASE_STATE, deleteConfirm: false });
+    equal(world.$('deleteConfirm').checked, false, 'state off reflects on the switch');
+    const box = world.$('deleteConfirm');
+    const change = box.listeners.find(l => l.type === 'change');
+    assert(change, 'deleteConfirm has a change listener');
+    box.checked = false;
+    change.handler({ target: box });
+    equal(world.lastCall('setDeleteConfirm').args, [false, world.token], 'toggle posts setDeleteConfirm with the token');
+});
+
+test('dict import note lists every directly importable format (3.74.11)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const note = world.doc.querySelector('[data-i18n="dict.import.note"]');
+    assert(note, 'import note exists');
+    for (const fmt of ['.dict.yaml', '.scel', '.qcel', '.qpyd', '.bdict', '.txt']) {
+        assert(note.textContent.includes(fmt), `import note mentions ${fmt}`);
+    }
+    const enable = world.doc.querySelector('[data-i18n="dict.import.enable"]');
+    assert(enable, 'import enable line exists');
+    assert(enable.textContent.includes('.qcel') && enable.textContent.includes('.bdict'),
+        'enable line lists the binary formats');
+});
+
+test('update check compares the installed keyboard version against the fork tag (3.74.11)', () => {
+    const world = new SettingsWorld();
+    const sb = world.sandbox;
+    // fork 的 tag 是 keyboard-3.74.11 形态：剥掉前缀再比版本。
+    equal(sb.normalizeReleaseTag('keyboard-3.74.11'), '3.74.11', 'keyboard- prefix stripped');
+    equal(sb.normalizeReleaseTag('v3.74.11'), '3.74.11', 'v prefix stripped');
+    equal(sb.newerVersion('3.74.11', '3.74.10'), true, 'newer patch detected');
+    equal(sb.newerVersion('3.74.10', '3.74.10'), false, 'same version is not newer');
+    equal(sb.newerVersion('3.74.9', '3.74.10'), false, 'older tag is not newer');
+    // 比较对象是已装的键盘版本（热更 activeVersion），不是应用版本。
+    equal(sb.activeKeyboardVersion({ update: { activeVersion: '3.74.10' }, keyboardVersion: '3.74.9' }),
+        '3.74.10', 'active hot-update version wins');
+    equal(sb.activeKeyboardVersion({ update: {}, keyboardVersion: '3.74.9' }),
+        '3.74.9', 'falls back to the built-in keyboard version');
+    // 检查本身问的是 fork 的 releases/latest（fetch 在本套件里是桩，
+    // 这里断言发出的地址与 APK 文件名形态）。
+    const src = fs.readFileSync(JS_PATH, 'utf8');
+    assert(src.includes('repos/Kiwareu/feelime/releases/latest'), 'update check queries the fork releases');
+    assert(!src.includes('repos/feelime/feelime/releases/latest'), 'no upstream releases endpoint remains');
+    assert(src.includes('/^Feelime-.*\\.apk$/'), 'update check matches the fork APK name');
 });
 
 test('appearance no longer auto-pops the keyboard; skin page does (2026-10-13 裁定)', () => {

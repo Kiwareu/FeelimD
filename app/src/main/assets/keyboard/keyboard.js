@@ -257,7 +257,6 @@
         "拖动排序": "Drag to reorder",
         "暂无单字": "No single-character candidates",
         "暂无候选": "No candidates",
-        "剪贴板只留在这台手机上，不上传、不进云备份。条数不另设上限；全部正文大约 32MB，再大就存不下。": "Clipboard stays on this phone. It is not uploaded and is not in cloud backup. There is no fixed item cap; about 32MB of text total is the on-device ceiling.",
         "条": "clips",
         "加入": "Add",
         "链接": "Link",
@@ -321,6 +320,12 @@
         "清空剪贴板": "Clear clipboard",
         "清空": "Clear",
         "确认清空": "Confirm clear",
+        // 删除确认（3.74.11）：模态确认卡文案。
+        "清空全部剪贴板？": "Clear all clipboard items?",
+        "删除这条剪贴板？": "Delete this clipboard item?",
+        "从常用语删除这条？": "Delete this phrase from favorites?",
+        "已加到常用语": "Added to favorites",
+        "加到常用语": "Add to favorites",
         "＋添加": "＋ Add",
         // 剪贴板/常用语搜索（2026-11-16）。
         "搜索剪贴板 / 常用语": "Search clipboard / phrases",
@@ -391,7 +396,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.10';
+    const KEYBOARD_VERSION = '3.74.11';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1767,6 +1772,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.pinyinCorrection = true;
             this.correctionFor = '';
             this.correctionCandidates = [];
+            // 删除前确认（3.74.11，默认开）：真相源是 native pref
+            // delete_confirm，hello 下发；关 = 删除直接执行，不弹确认卡。
+            this.deleteConfirm = true;
             // #63 双击 Shift 锁定大写（与长按锁定共存；默认开，native
             // pref double_shift_lock 经 hello 下发）。
             this.doubleShiftLock = true;
@@ -2230,14 +2238,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('panelClose').addEventListener('click', () => this.closePanel());
             document.getElementById('panelClear').addEventListener('click', () => {
                 if (this.panelTab !== 'clipboard') return;
-                // 清空是破坏性操作（#39 补充建议）：首击进入确认态（红字
-                // 「确认清空」），3s 内再击才执行；超时或关面板恢复原样。
-                if (this.panelClearTimer) {
-                    this.armPanelClear(false);
+                // 3.74.11：清空走模态确认卡（替代旧的两击 arm 态）——
+                // 只有明确点「删除」才清；×/取消/框外/返回一律取消，
+                // 什么都不删。开关关时直接清，不再问。
+                this.confirmDelete(t("清空全部剪贴板？"), () => {
                     this.call(() => Native.clearClipboard(this.token));
-                } else {
-                    this.armPanelClear(true);
-                }
+                });
             });
             document.getElementById('panelManage').addEventListener('click', () => this.openPanelEditor(null));
             // The phrase editor input rides above the keyboard;
@@ -2296,6 +2302,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const inLayer = id => event.target && event.target.closest &&
                     event.target.closest(id);
                 if (this.itemMenuOpen && !inLayer('#itemMenu')) this.closeItemMenu();
+                // 3.74.11：删除确认卡是模态确认，框外点按 = 取消（只关
+                // 卡，不执行）。与 phraseCard 不同：确认卡没有键入通道，
+                // 框外点按不会误伤输入；关卡后本次点按仍落到原目标
+                // （与 itemMenu/modeMenu 的框外收起同款语义）。
+                if (!document.getElementById('confirmCard').hidden && !inLayer('#confirmCard')) {
+                    this.closeConfirmCard();
+                }
                 // Review: the phrase card deliberately has NO
                 // outside-tap dismissal - key taps are its INPUT channel
                 // (redirect typing, Semantics; picking a candidate
@@ -2325,19 +2338,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             // 剪贴板/常用语搜索（2026-11-16）：输入即过滤，不重建输入框
             // 本身（renderPanel 只重建 #panelList，焦点不丢）。focus 走
-            // setPanelInput(true)，与分组名输入同一套面板输入重定向。
+            // setPanelInput(true)，与常用语编辑框同一套面板输入重定向。
+            // 3.74.11：搜索框曾没接进重定向目标（panelInputField 只认
+            // .phrase-input，panelTarget 永远指不到它），按键提交进
+            // 了 onPanelCommit 却无处可写，表现为点搜索框打不出字。
+            // 这里按 phrase-input 同款接线：focus/input/select/click/
+            // keyup 都报选区，panelInputField 也认 #panelSearchInput。
             const searchInput = document.getElementById('panelSearchInput');
             const searchClear = document.getElementById('panelSearchClear');
             if (searchInput) {
-                searchInput.addEventListener('focus', () => this.setPanelInput(true));
+                searchInput.addEventListener('focus', () => {
+                    this.setPanelInput(true);
+                    this.reportPanelSelection();
+                });
                 searchInput.addEventListener('blur', () => {
                     if (!this.phraseCardOpen()) this.setPanelInput(false);
                 });
                 searchInput.addEventListener('input', () => {
                     this.clipSearch = searchInput.value.trim();
                     if (searchClear) searchClear.hidden = !this.clipSearch;
+                    this.reportPanelSelection();
                     this.renderPanel();
                 });
+                ['select', 'click', 'keyup'].forEach(name =>
+                    searchInput.addEventListener(name, () => this.reportPanelSelection()));
             }
             if (searchClear) searchClear.addEventListener('click', () => {
                 if (searchInput) searchInput.value = '';
@@ -2379,8 +2403,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // ...and for the delete-confirmation card's buttons .
             this.bindPressFeedback(document.getElementById('confirmCancel'));
             this.bindPressFeedback(document.getElementById('confirmOk'));
+            this.bindPressFeedback(document.getElementById('confirmClose'));
             this.bindHeightCard();
             // The delete-confirmation card.
+            // 3.74.11：× 是取消路（只关卡，不执行），与取消同义。
+            document.getElementById('confirmClose').addEventListener('click', () => this.closeConfirmCard());
             document.getElementById('confirmCancel').addEventListener('click', () => this.closeConfirmCard());
             document.getElementById('confirmOk').addEventListener('click', () => this.deleteHighlightedCandidate());
             // Orientation also arrives over the bridge hello,
@@ -2706,7 +2733,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // this line every real touch on it fell through to the host
                 // app (±/strip/cancel all dead under a finger; synthetic
                 // clicks bypassed hit-testing, so every suite stayed green).
-                document.getElementById('heightCard').classList.contains('open');
+                document.getElementById('heightCard').classList.contains('open') ||
+                // 3.74.11：删除确认卡是居中浮层，同样要登记 native
+                // 触控区，否则剪贴板面板开着时卡上的点按收不到。
+                !document.getElementById('confirmCard').hidden;
             if (this._overlayOpen === open) return;
             this._overlayOpen = open;
             if (typeof Native.setOverlayOpen === 'function') {
@@ -11854,8 +11884,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.panelTab = want;
             this.panelOpen = true;
             this.hwNotifyPanelHeight(); // #H 面板占满=完整高度
-            // 打开/切换面板时撤掉「清空」可能残留的确认态。
-            this.armPanelClear(false);
             // Remember the layer to restore on close (panel can open from the
             // symbol layer too). #39-5 互斥：数字/表情/符号视图被剪贴板
             // /常用语面板顶掉——关面板回字母层，不再层层套娃（用户实录
@@ -11962,8 +11990,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         closePanel() {
-            // 「清空」若停在确认态一并撤下，重开面板不能仍挂在确认态。
-            this.armPanelClear(false);
             // 拆分放大视图随面板关闭收起，重开从空白开始。
             this.closeClipSplit();
             // 编辑卡还开着时面板只是取材完毕回键盘：卡的输入重定向
@@ -11984,23 +12010,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The panel only borrowed the bar from the ctrl
             // view - hand the rows back if the switch is still on.
             this.maybeResumeCtrlView();
-        }
-
-        /** 面板头「清空」的两击确认态（#39）：on=红字「确认清空」并起
-         * 3s 定时，超时自动撤；off=恢复文案与样式。WebView 无原生
-         * confirm（WebChromeClient 未挂 onJsConfirm），确认只能自建。 */
-        armPanelClear(on) {
-            const btn = document.getElementById('panelClear');
-            clearTimeout(this.panelClearTimer);
-            this.panelClearTimer = null;
-            if (on) {
-                this.panelClearTimer = setTimeout(() => this.armPanelClear(false), 3000);
-                btn.classList.add('danger');
-                btn.textContent = t("确认清空");
-            } else {
-                btn.classList.remove('danger');
-                btn.textContent = t("清空");
-            }
         }
 
         /** 剪贴板面板标题上的总数。工具栏图标不显示条数。 */
@@ -12054,11 +12063,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (items.length) delete layer.dataset.empty;
             else layer.dataset.empty = '1';
             if (!items.length) {
-                empty.textContent = q
-                    ? t("没有找到包含「{0}」的内容", q)
-                    : this.panelTab === 'clipboard'
-                        ? t("剪贴板只留在这台手机上，不上传、不进云备份。条数不另设上限；全部正文大约 32MB，再大就存不下。")
-                        : t("暂无常用语，点右上角「＋添加」");
+                // 3.74.11：空剪贴板不留提示文案（用户反馈，那句「只留在
+                // 这台手机上…再大就存不下」整句去掉）；有查询词无结果时
+                // 仍报「没有找到」，常用语空态文案不变。
+                if (q) {
+                    empty.hidden = false;
+                    empty.textContent = t("没有找到包含「{0}」的内容", q);
+                } else if (this.panelTab === 'clipboard') {
+                    empty.hidden = true;
+                    empty.textContent = '';
+                } else {
+                    empty.hidden = false;
+                    empty.textContent = t("暂无常用语，点右上角「＋添加」");
+                }
                 return;
             }
             items.forEach(item => {
@@ -12102,7 +12119,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     remove.setAttribute('aria-label', t("删除"));
                     remove.addEventListener('click', event => {
                         event.stopPropagation();
-                        this.call(() => Native.removeClipboard(item.id, this.token));
+                        // 3.74.11：单条删除加二次确认——只有明确点
+                        // 「删除」才删；×/取消/框外/返回一律取消。
+                        this.confirmDelete(t("删除这条剪贴板？"), () => {
+                            this.call(() => Native.removeClipboard(item.id, this.token));
+                        });
+                    });
+                    // 3.74.11：剪贴板条目直加常用语（☆）。favoritesAdd
+                    // 已有桥方法；输入码留空自动生成，位次 1。点后 toast
+                    // 回执，面板不关（可连续加多条）。
+                    const fav = document.createElement('button');
+                    fav.type = 'button';
+                    fav.className = 'clip-fav-btn';
+                    fav.textContent = '☆';
+                    fav.setAttribute('aria-label', t("加到常用语"));
+                    fav.addEventListener('click', event => {
+                        event.stopPropagation();
+                        this.call(() => Native.favoritesAdd(item.text, '', 1, this.token));
+                        this.showToast(t("已加到常用语"));
                     });
                     const body = document.createElement('span');
                     body.className = 'clip-body';
@@ -12124,12 +12158,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             event.stopPropagation();
                             this.openClipSplit(item);
                         });
-                        row.append(body, expandBtn, remove);
+                        row.append(body, expandBtn, fav, remove);
                         this.bindItemLongPress(row, () => {
                             longPressed = true;
                             this.openClipSplit(item);
                         });
+                    } else if (!tooLong) {
+                        // 无拆分片段但能贴的条目：仍给 ☆ 加常用语入口。
+                        row.append(body, fav, remove);
                     } else {
+                        // 超长条目整条置灰：不能贴、不能拆，也加不进
+                        // 常用语（56KB 预算收不下），只留删除。
                         row.append(body, remove);
                     }
                     // Native clicks only: bindTouch's preventDefault would kill
@@ -12203,7 +12242,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         panelInputField() {
             const el = document.activeElement;
-            if (el && el.classList && el.classList.contains('phrase-input')) return el;
+            if (el && el.classList && (el.classList.contains('phrase-input') || el.id === 'panelSearchInput')) return el;
             return this.settingsInputFocus ? this.panelTarget || null : null;
         }
 
@@ -12258,6 +12297,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const caret = start + text.length;
             try { field.setSelectionRange(caret, caret); } catch (_) {}
             this.rememberPanelSelection(field);
+            // 3.74.11：程序化赋值不触发 input（浏览器契约）——键盘
+            // 重定向进搜索框的每一次提交/组合/删除，过滤都不会跟进，
+            // 看起来像「打了字但列表不动」。搜索框是唯一需要实时跟
+            // 进的面板输入：写完补一个合成 input 事件，让现成的过滤
+            // 监听跑起来；常用语编辑框不需要，不发。
+            if (field.id === 'panelSearchInput') {
+                try { field.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+            }
         }
 
         insertIntoPanelInput(text, field = this.panelInputField()) {
@@ -12558,7 +12605,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.call(() => Native.favoritesMove(item.id, 0, this.token)));
             build(t("编辑"), '', () => this.openPanelEditor(item));
             build(t("删除"), 'danger', () =>
-                this.call(() => Native.removeFavorite(item.id, this.token)));
+                // 3.74.11：常用语长按菜单里的删除也走同一套确认。
+                this.confirmDelete(t("从常用语删除这条？"), () => {
+                    this.call(() => Native.removeFavorite(item.id, this.token));
+                }));
             menu.classList.add('open');
             // Clamp above the anchor row (rows sit in a scrollable list).
             const rect = anchor.getBoundingClientRect();
@@ -12651,19 +12701,43 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         confirmDeleteCandidate(candidate) {
             this.deleteTarget = candidate;
+            this.confirmCallback = null;
             document.getElementById('confirmText').textContent =
                 t("从自选词词库删除「{0}」？（固定词库的词删不掉）", candidate.text);
             document.getElementById('confirmCard').hidden = false;
+            this.syncOverlay();
+        }
+
+        /** 通用删除确认（3.74.11）：剪贴板清空/单条删除/常用语删除。
+         *  只有明确点「删除」才跑 onConfirm；×/取消/框外点按/返回
+         *  只关卡，不执行（closeConfirmCard 清掉回调）。 */
+        showConfirm(message, onConfirm) {
+            this.deleteTarget = null;
+            this.confirmCallback = typeof onConfirm === 'function' ? onConfirm : null;
+            document.getElementById('confirmText').textContent = message;
+            document.getElementById('confirmCard').hidden = false;
+            this.syncOverlay();
         }
 
         closeConfirmCard() {
             this.deleteTarget = null;
+            this.confirmCallback = null;
             document.getElementById('confirmCard').hidden = true;
+            this.syncOverlay();
+        }
+
+        /** 删除门闸（3.74.11）：开关开 = 弹确认卡等明确点「删除」；
+         *  开关关 = 直接执行，不再问。清空/单条删除/常用语删除共用。 */
+        confirmDelete(message, onConfirm) {
+            if (this.deleteConfirm === false) { onConfirm(); return; }
+            this.showConfirm(message, onConfirm);
         }
 
         deleteHighlightedCandidate() {
+            const cb = this.confirmCallback;
             const candidate = this.deleteTarget;
             this.closeConfirmCard();
+            if (cb) { cb(); return; }
             if (!candidate) return;
             // Prefer the any-candidate channel; head-only natives
             // only know the head-only variant (the head is the only thing
@@ -12824,7 +12898,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const pieces = this.clipPieces(item.text);
             if (!pieces.length) return;
             this.clipSplitItem = item;
-            textEl.textContent = item.text;
+            // 3.74.11：全文特别长（约 200 字以上）只显示前 200 字加
+            // 省略号，不整段铺开；片段 chips 照常显示，点「全文」
+            // chip 仍贴整条（pasteClipPiece 用 item.text 全文）。
+            const shown = [...item.text];
+            textEl.textContent = shown.length > 200
+                ? shown.slice(0, 200).join('') + '…'
+                : item.text;
             chipsEl.replaceChildren();
             const full = document.createElement('button');
             full.type = 'button';
@@ -13103,6 +13183,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.correctionFor = '';
                     this.correctionCandidates = [];
                 }
+            }
+            // 删除前确认（3.74.11，默认开）：关 = 删除直接执行，不弹确认卡。
+            if (typeof payload.deleteConfirm === 'boolean') {
+                this.deleteConfirm = payload.deleteConfirm;
             }
             this.applyGlass(payload);
             this.applyLandscapeChrome();

@@ -4571,6 +4571,166 @@ test('clipboard split view: row tap pastes whole, expand/long-press open the car
     equal(bigRow.querySelector('.clip-expand-btn'), null, 'over-long row has no expand button');
 });
 
+test('clipboard search box: focus wires the panel redirect, commits land in the box and filter live (3.74.11)', {since: '3.74.11'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.clipboard([
+        { id: '1', time: 1, text: '快递单号 123456' },
+        { id: '2', time: 2, text: '会议纪要' },
+        { id: '3', time: 3, text: '快递地址 北京市' },
+    ]);
+    world.tap(world.$('clipboardButton'));
+    const input = world.document.getElementById('panelSearchInput');
+    const rows = () => [...world.document.querySelectorAll('.panel-item')];
+    equal(rows().length, 3, 'three rows before searching');
+    // 点搜索框获焦：重定向接通（native 收到 panelSelection，证明
+    // 后续按键提交有地方可写——这正是 3.74.10 之前断掉的一环）。
+    world.document.activeElement = input;
+    world.dispatch(input, 'focus');
+    const selections = world.native.of('panelSelection');
+    assert(selections.length >= 1, 'focus reports the selection to native');
+    const session = selections[selections.length - 1].args[2];
+    // 键盘提交经 onPanelCommit 写进搜索框；合成 input 让过滤跟进。
+    world.context.Feelime.onPanelCommit({ text: '快递', session });
+    equal(input.value, '快递', 'panel commit lands in the search box');
+    equal(rows().length, 2, 'filter follows the typed query live');
+    world.context.Feelime.onPanelCommit({ text: '单', session });
+    equal(input.value, '快递单', 'second commit appends');
+    equal(rows().length, 1, 'filter narrows to one row');
+});
+
+test('delete confirm intercepts: only an explicit Delete deletes; X / Cancel cancel; switch off deletes directly (3.74.11)', {since: '3.74.11'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.clipboard([
+        { id: '1', time: 1, text: '第一条' },
+        { id: '2', time: 2, text: '第二条' },
+    ]);
+    world.tap(world.$('clipboardButton'));
+    const row = world.document.querySelectorAll('.panel-item')[0];
+    const confirmCard = () => world.$('confirmCard');
+    // 单条删除：点 × 取消 → 什么都没删。
+    world.tap(row.querySelector('.panel-remove'));
+    assert(!confirmCard().hidden, 'confirm card opens for per-item delete');
+    world.tap(world.$('confirmClose'));
+    assert(confirmCard().hidden, 'X closes the card');
+    equal(world.native.of('removeClipboard').length, 0, 'X cancels: nothing deleted');
+    // 再点一次，点「取消」同样取消。
+    world.tap(row.querySelector('.panel-remove'));
+    world.tap(world.$('confirmCancel'));
+    assert(confirmCard().hidden, 'Cancel closes the card');
+    equal(world.native.of('removeClipboard').length, 0, 'Cancel cancels: nothing deleted');
+    // 第三次，点「删除」→ 恰好一次删除。
+    world.tap(row.querySelector('.panel-remove'));
+    world.tap(world.$('confirmOk'));
+    equal(world.native.of('removeClipboard').length, 1, 'Delete deletes exactly once');
+    equal(world.native.of('removeClipboard')[0].args[0], '1', 'the right item is deleted');
+    // 清空：点「取消」不删，点「删除」恰好清一次。
+    world.tap(world.$('panelClear'));
+    assert(!confirmCard().hidden, 'confirm card opens for clear-all');
+    world.tap(world.$('confirmCancel'));
+    equal(world.native.of('clearClipboard').length, 0, 'clear cancel deletes nothing');
+    world.tap(world.$('panelClear'));
+    world.tap(world.$('confirmOk'));
+    equal(world.native.of('clearClipboard').length, 1, 'clear confirm clears exactly once');
+    // 开关关（hello deleteConfirm: false）→ 直接删，不弹卡。
+    const off = fresh();
+    off.hello({ deleteConfirm: false });
+    off.clipboard([{ id: '9', time: 1, text: '直删' }]);
+    off.tap(off.$('clipboardButton'));
+    off.tap(off.document.querySelectorAll('.panel-item')[0].querySelector('.panel-remove'));
+    assert(off.$('confirmCard').hidden, 'no card when delete-confirm is off');
+    equal(off.native.of('removeClipboard').length, 1, 'switch off deletes directly');
+});
+
+test('clipboard split view truncates very long text to ~200 chars; full-text chip still pastes the whole item (3.74.11)', {since: '3.74.11'}, () => {
+    const world = fresh();
+    world.hello({});
+    const long = '前两百字的内容。'.repeat(25) + 'MARKER_AFTER_200' + '后面的内容。'.repeat(50);
+    world.clipboard([{ id: 'L', time: 1, text: long }]);
+    world.tap(world.$('clipboardButton'));
+    world.tap(world.document.querySelectorAll('.panel-item')[0].querySelector('.clip-expand-btn'));
+    const shown = world.$('clipSplitText').textContent;
+    assert(shown.length <= 201, 'split view shows at most ~200 chars plus an ellipsis');
+    assert(shown.endsWith('…'), 'truncated text ends with an ellipsis');
+    assert(!shown.includes('MARKER_AFTER_200'), 'text past the first ~200 chars is not shown');
+    // 点「全文」chip 仍贴整条。
+    const full = [...world.document.querySelectorAll('.clip-split-chip')].find(c => c.textContent.includes('全文'));
+    assert(full, 'full-text chip present');
+    world.tap(full);
+    equal(world.native.of('pasteText')[0].args[0], long, 'full-text chip pastes the whole item');
+});
+
+test('empty clipboard shows no privacy note anymore (3.74.11)', {since: '3.74.11'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.clipboard([]);
+    world.tap(world.$('clipboardButton'));
+    const empty = world.$('panelEmpty');
+    assert(empty.hidden, 'empty clipboard hides the empty hint');
+    equal(empty.textContent, '', 'no leftover empty-state text');
+    // 有查询词无结果时仍报「没有找到」。
+    world.clipboard([{ id: '1', time: 1, text: '会议纪要' }]);
+    world.tap(world.$('clipboardButton'));
+    const input = world.document.getElementById('panelSearchInput');
+    input.value = '不存在的词';
+    world.dispatch(input, 'input');
+    assert(!world.$('panelEmpty').hidden, 'no-result hint still shows with a query');
+    assert(world.$('panelEmpty').textContent.includes('没有找到'), 'no-result text kept');
+});
+
+test('clipboard expand glyph is a bare ⌄ with no circle or button background (3.74.11)', {since: '3.74.11'}, () => {
+    // The fake DOM has no style computation, so assert on the shipped CSS.
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    const block = css.match(/\.clip-expand-btn\s*\{[^}]*\}/);
+    assert(block, '.clip-expand-btn rule exists');
+    assert(!/border-radius:\s*50%/.test(block[0]), 'no circular border on the expand glyph');
+    assert(!/background:\s*var\(--pill\)/.test(block[0]), 'no pill background on the expand glyph');
+    assert(/background:\s*transparent/.test(block[0]), 'expand glyph is transparent');
+    const fav = css.match(/\.clip-fav-btn\s*\{[^}]*\}/);
+    assert(fav, '.clip-fav-btn rule exists');
+    assert(!/border-radius:\s*50%/.test(fav[0]), 'no circular border on the favorites glyph');
+    // And the row really carries all three glyphs without overlap by
+    // construction: body flexes, the three glyphs are fixed-width flex:none.
+    const world = fresh();
+    world.hello({});
+    world.clipboard([{ id: '1', time: 1, text: '验证码是 123456' }]);
+    world.tap(world.$('clipboardButton'));
+    const row = world.document.querySelectorAll('.panel-item')[0];
+    assert(row.querySelector('.clip-expand-btn'), 'expand glyph on the row');
+    assert(row.querySelector('.clip-fav-btn'), 'favorites glyph on the row');
+    assert(row.querySelector('.panel-remove'), 'delete glyph on the row');
+});
+
+test('clipboard row star adds the item to favorites and the panel stays open (3.74.11)', {since: '3.74.11'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.clipboard([{ id: '1', time: 1, text: '常用地址 北京市' }]);
+    world.tap(world.$('clipboardButton'));
+    const row = world.document.querySelectorAll('.panel-item')[0];
+    world.tap(row.querySelector('.clip-fav-btn'));
+    equal(world.native.of('favoritesAdd').length, 1, 'star calls favoritesAdd once');
+    equal(world.native.of('favoritesAdd')[0].args[0], '常用地址 北京市', 'the whole item text is added');
+    assert(!world.$('panelLayer').hidden, 'panel stays open after adding to favorites');
+});
+
+test('long initial sequence shows the whole sentence as a candidate and picking it commits the sentence (3.74.11)', {since: '3.74.11'}, () => {
+    const world = fresh();
+    world.hello({});
+    // 七八个首字母一口气打出一整句（用户场景：长句首字母连打）。
+    world.engineState({mode: 'pinyin', composing: true, rawInput: 'wjtwsxchg', revision: 1,
+        candidates: [
+            {id: 's1', text: '我今天晚上想吃火锅'},
+            {id: 's2', text: '我今天晚上想吃面'},
+        ], hasNextPage: false});
+    const bar = [...world.document.querySelectorAll('.candidate')];
+    assert(bar.some(el => el.textContent === '我今天晚上想吃火锅'), 'the whole sentence is a candidate for the long initial sequence');
+    world.tap(bar.find(el => el.textContent === '我今天晚上想吃火锅'));
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 's1',
+        'picking the sentence candidate commits the whole sentence');
+});
+
 test('layoutChrome budgets portrait 136+band / landscape 118+band (3.74.10)', {since: '3.74.10'}, () => {
     const world = fresh();
     const kb = world.context.window.Feelime;
@@ -5316,6 +5476,9 @@ test('phrase editor strip + item menu hit the bridge', {since: '3.21.0'},  ()=> 
     equal(JSON.stringify(moves[moves.length - 1]), JSON.stringify(['b2', 0]), 'pin moves to top');
     world.tap(rows()[0].querySelector('.panel-more'));
     world.tap([...world.document.getElementById('itemMenu').querySelectorAll('button')][2]);
+    // 3.74.11：菜单删除同样走确认卡——点「删除」才落桥。
+    assert(!world.$('confirmCard').hidden, 'menu delete opens the confirm card');
+    world.tap(world.$('confirmOk'));
     equal(world.native.of('removeFavorite').slice(-1)[0].args[0], 'a1', 'menu delete removes');
 });
 
@@ -5370,6 +5533,9 @@ test('panel editor strip + item menu hit the bridge (3.20.0 form)', {until: '3.2
     equal(JSON.stringify(moves[moves.length - 1]), JSON.stringify(['b2', 0]), 'pin moves to top');
     world.tap(rows()[0].querySelector('.panel-more'));
     world.tap([...world.document.getElementById('itemMenu').querySelectorAll('button')][2]);
+    // 3.74.11：菜单删除同样走确认卡——点「删除」才落桥。
+    assert(!world.$('confirmCard').hidden, 'menu delete opens the confirm card');
+    world.tap(world.$('confirmOk'));
     equal(world.native.of('removeFavorite').slice(-1)[0].args[0], 'a1', 'menu delete removes');
 });
 
@@ -8032,18 +8198,20 @@ test('remove and clear clipboard hit the bridge with hex ids', () => {
     world.tap(world.$('clipboardButton'));
     const row = world.document.querySelectorAll('.panel-item')[0];
     row.querySelector('.panel-remove').click();
+    // 3.74.11：删除走模态确认卡——点「删除」才落桥，之前不删。
+    assert(!world.$('confirmCard').hidden, 'delete opens the confirm card');
+    equal(world.native.of('removeClipboard').length, 0, 'no delete before confirming');
+    world.tap(world.$('confirmOk'));
     equal(world.native.of('removeClipboard').length, 1, 'removeClipboard called');
     equal(world.native.of('removeClipboard')[0].args[0], 'a1', 'id passed');
     // Tapping × must not also paste the row content.
     equal(world.native.of('commitText').length, 0, 'remove must not paste');
-    // 清空是两击确认（#39，键盘 3.71.0 起）：首击只进入确认态（红字），
-    // 再击才落桥；3.20.0 fixture 仍是一击直清。
+    // 清空走同一套确认卡（3.74.11 起替代 3.71.0 的两击 arm 态）：
+    // 首击只弹卡，再点「删除」才落桥。
     world.tap(world.$('panelClear'));
-    if (verAtLeast(KEYBOARD_VERSION, '3.71.0')) {
-        equal(world.native.of('clearClipboard').length, 0, 'first tap only arms the confirm');
-        assert(world.$('panelClear').classList.contains('danger'), 'armed state is visible');
-        world.tap(world.$('panelClear'));
-    }
+    equal(world.native.of('clearClipboard').length, 0, 'first tap only opens the confirm card');
+    assert(!world.$('confirmCard').hidden, 'confirm card opens for clear');
+    world.tap(world.$('confirmOk'));
     equal(world.native.of('clearClipboard').length, 1, 'clearClipboard called');
 });
 
@@ -8074,7 +8242,8 @@ test('empty panel collapses the list block instead of a blank slab', {since: '3.
     world.tap(world.$('clipboardButton'));
     assert(!world.$('panelLayer').hidden, 'panel open');
     equal(world.$('panelLayer').dataset.empty, '1', 'empty state marks the layer');
-    assert(!world.$('panelEmpty').hidden, 'hint line visible');
+    // 3.74.11：空剪贴板不留提示文案（hint 隐藏，只剩收起的列表块）。
+    assert(world.$('panelEmpty').hidden, 'no hint line for an empty clipboard');
     world.clipboard([{ id: 'a1', time: 1, text: '有内容了' }]);
     equal(world.$('panelLayer').dataset.empty, undefined, 'content clears the mark');
 });
@@ -8149,6 +8318,9 @@ test('favorites tab renders, pastes; menu deletes', () => {
     const del = [...world.document.getElementById('itemMenu').querySelectorAll('button')]
         .find(b => b.textContent === '删除');
     world.tap(del);
+    // 3.74.11：菜单删除走确认卡——点「删除」才落桥。
+    assert(!world.$('confirmCard').hidden, 'menu delete opens the confirm card');
+    world.tap(world.$('confirmOk'));
     equal(world.native.of('removeFavorite').slice(-1)[0].args[0], 'f1', 'menu delete removes');
     world.favorites([{ id: 'f2', time: 2, text: '常用语一条' }]);
     world.tap(world.document.querySelectorAll('.panel-item')[0].querySelector('.panel-text'));

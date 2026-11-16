@@ -8,10 +8,12 @@ import com.feelime.ime.PREF_ASSOCIATION
 import com.feelime.ime.PREF_BOTTOM_PAD_DP
 import com.feelime.ime.PREF_BOTTOM_PAD_DP_LANDSCAPE
 import com.feelime.ime.PREF_BOTTOM_PAD_DP_PORTRAIT
+import com.feelime.ime.PREF_DELETE_CONFIRM
 import com.feelime.ime.PREF_FEEL_HOLD_MS
 import com.feelime.ime.PREF_FEEL_POPUP_SNAP
 import com.feelime.ime.PREF_FEEL_SCRUB_SPEED
 import com.feelime.ime.PREF_KEY_HAPTIC
+import com.feelime.ime.PREF_KEY_HAPTIC_FOLLOW_SYSTEM
 import com.feelime.ime.PREF_KEY_SOUND
 import com.feelime.ime.PREF_PREEDIT_FRAME
 import org.json.JSONArray
@@ -179,12 +181,12 @@ class UserdataBackup(
                 for (key in section.keys()) {
                     val value = section.opt(key)
                     if (key == STATS_KEY && value is String) onStatsRestore(value)
-                    else prefs.put(name, key, value)
+                    else prefs.put(name, key, restoreValue(value))
                 }
                 continue
             }
             for (key in section.keys()) {
-                prefs.put(name, key, section.opt(key))
+                prefs.put(name, key, restoreValue(section.opt(key)))
             }
         }
         // FavoritesStore 同款上限（MAX_ITEMS=200），超出截断。空列表也写：
@@ -243,6 +245,20 @@ class UserdataBackup(
         return section
     }
 
+    /** 提交侧的值还原：JSONArray（只可能来自 habit_lexicon 的串集合
+     *  键，阶段一已校验全串元素）→ StringSet，落盘走 putStringSet；
+     *  其余值原样透传。 */
+    private fun restoreValue(value: Any?): Any? {
+        if (value !is JSONArray) return value
+        val out = LinkedHashSet<String>()
+        for (i in 0 until value.length()) {
+            val element = value.opt(i)
+            if (element !is String) return value // 不应发生（阶段一已校验）
+            out.add(element)
+        }
+        return out
+    }
+
     /** 导入侧的类型契约。返回 null = 键可忽略；抛 RestoreResult 之外用
      * Fail 表达（通过 [pending] 收集）。约定：
      * - INT_KEYS 的键必须是 Int 且在界内（读侧 getInt）；
@@ -265,6 +281,15 @@ class UserdataBackup(
         }
         if (prefsName in BOOL_KEYS && key in BOOL_KEYS.getValue(prefsName)) {
             if (value !is Boolean) throw RestoreException("SCHEMA", "$prefsName/$key")
+            return value
+        }
+        // 习惯词库段的 StringSet（auto_added/abbrev_added/abbrev:*）：
+        // 导出时编成字符串数组（encodePrefs），恢复时只收全串元素的
+        // 数组；其余段落仍按原契约（数组一律拒绝）。
+        if (prefsName == HABIT_PREFS && value is JSONArray) {
+            for (i in 0 until value.length()) {
+                if (value.opt(i) !is String) throw RestoreException("SCHEMA", "$prefsName/$key")
+            }
             return value
         }
         if (value is String || value is Boolean || value is Int) return value
@@ -392,6 +417,14 @@ class UserdataBackup(
 
         private const val FAVORITES_PREFS = "feelime_favorites"
         private const val UPDATE_PREFS = "keyboard_update"
+        /** 习惯自动词库 prefs 文件名（HabitLexicon.PREFS 同源，那边是
+         *  private，这里用字面量保持同源，与 FAVORITES_PREFS 同款）。
+         *  3.74.11 进备份：计数（count:* Int）与已收入/首字母集合
+         *  （auto_added/abbrev_added/abbrev:* StringSet）都要跟随，
+         *  否则恢复后词还在自造词里、设置页列表却丢了，删也删不掉。
+         *  StringSet 在 JSON 里是字符串数组——恢复契约见 checkValue
+         *  的 habit 分支（仅本段放行，全串元素才收）。 */
+        private const val HABIT_PREFS = "habit_lexicon"
         /** 输入统计 prefs 文件名与唯一键（InputStats.PREFS/KEY_JSON 同源，
          *  那边是 private，这里用字面量保持同源，与 FAVORITES_PREFS 同款）。 */
         private const val STATS_PREFS = "input_stats"
@@ -447,6 +480,10 @@ class UserdataBackup(
                 PREF_ASSOCIATION,
                 PREF_KEY_SOUND,
                 PREF_KEY_HAPTIC,
+                // 3.74.10 的跟随系统开关此前漏登记，备份后恢复会丢；
+                // 3.74.11 的删除前确认一并登记。
+                PREF_KEY_HAPTIC_FOLLOW_SYSTEM,
+                PREF_DELETE_CONFIRM,
                 PREF_PREEDIT_FRAME,
             ),
             UPDATE_PREFS to setOf("update_auto_check_enabled"),
@@ -459,6 +496,10 @@ class UserdataBackup(
             "feelime_asr",
             "feelime_custom_keys",
             "feelime_favorites",
+            // 习惯自动词库（3.74.11）：计数与已收入/首字母集合跟随备份
+            // 走——词本身在 userdb.rime 的 custom-phrases.json 里，
+            // 账本（habit_lexicon）不跟，恢复后设置页列表会丢。
+            HABIT_PREFS,
             // 输入统计（#41）：整段 JSON（total/keystrokes/daily/since）
             // 随备份走——换机/重装不丢「相伴天数」与累计字数。恢复为
             // 覆盖语义（整键替换），跨设备导入不会双计；#71 起恢复提交

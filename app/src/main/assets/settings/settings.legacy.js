@@ -271,8 +271,8 @@ const I18N = {
     "page.dict": "\u8BCD\u5E93",
     "dict.badge": "\u53E0\u52A0",
     "dict.import.title": "\u5BFC\u5165\u8BCD\u5E93",
-    "dict.import.enable": "rime \u8BCD\u5E93\u6587\u4EF6\uFF08.dict.yaml\uFF09",
-    "dict.import.note": "\u8BCD<TAB>\u7801<TAB>\u4F4D\u7F6E \u9010\u884C\u5BFC\u5165\uFF0C\u4E0A\u9650 5000 \u6761\u3002\u7B2C\u4E09\u5217\uFF081-9 \u5019\u9009\u4F4D\u6B21\uFF09\u9ED8\u8BA4\u53EA\u5BF9\u7EAF\u7B26\u53F7\u8BCD\u751F\u6548\uFF1B\u8981\u8BA9\u5168\u90E8\u8BCD\uFF08\u6C49\u5B57/\u5B57\u6BCD/Emoji\uFF09\u90FD\u6309\u7B2C\u4E09\u5217\u5B9A\u4F4D\u6B21\uFF0C\u5728\u6587\u4EF6\u5934\u90E8\u52A0\u4E00\u884C\u58F0\u660E columns: [text, code, rank]\u3002\u6CE8\u610F\u672A\u58F0\u660E\u7684 rime \u8BCD\u5E93\u7B2C\u4E09\u5217\u539F\u672C\u662F\u6743\u91CD\u2014\u2014\u4F1A\u88AB\u5F53\u4F5C\u4F4D\u7F6E\u89E3\u91CA\uFF0C\u8D85\u8FC7 9 \u6309 9 \u5904\u7406\uFF0C\u5EFA\u8BAE\u5BFC\u5165\u524D\u5220\u6389\u6216\u6539\u5199\u8BE5\u5217\u3002",
+    "dict.import.enable": "\u8BCD\u5E93\u6587\u4EF6\uFF08.dict.yaml / \u641C\u72D7 .scel / QQ .qcel / .qpyd / \u767E\u5EA6 .bdict / \u7EAF\u6587\u672C .txt\uFF09",
+    "dict.import.note": "\u8BCD<TAB>\u7801<TAB>\u4F4D\u7F6E \u9010\u884C\u5BFC\u5165\uFF0C\u4E0A\u9650 5000 \u6761\u3002\u7B2C\u4E09\u5217\uFF081-9 \u5019\u9009\u4F4D\u6B21\uFF09\u9ED8\u8BA4\u53EA\u5BF9\u7EAF\u7B26\u53F7\u8BCD\u751F\u6548\uFF1B\u8981\u8BA9\u5168\u90E8\u8BCD\uFF08\u6C49\u5B57/\u5B57\u6BCD/Emoji\uFF09\u90FD\u6309\u7B2C\u4E09\u5217\u5B9A\u4F4D\u6B21\uFF0C\u5728\u6587\u4EF6\u5934\u90E8\u52A0\u4E00\u884C\u58F0\u660E columns: [text, code, rank]\u3002\u6CE8\u610F\u672A\u58F0\u660E\u7684 rime \u8BCD\u5E93\u7B2C\u4E09\u5217\u539F\u672C\u662F\u6743\u91CD\u2014\u2014\u4F1A\u88AB\u5F53\u4F5C\u4F4D\u7F6E\u89E3\u91CA\uFF0C\u8D85\u8FC7 9 \u6309 9 \u5904\u7406\uFF0C\u5EFA\u8BAE\u5BFC\u5165\u524D\u5220\u6389\u6216\u6539\u5199\u8BE5\u5217\u3002\u641C\u72D7 .scel\u3001QQ .qcel/.qpyd\u3001\u767E\u5EA6 .bdict \u90FD\u76F4\u63A5\u5BFC\uFF1B\u7EAF\u6587\u672C .txt \u6BCF\u884C\u4E00\u8BCD\u3001\u53EF\u5E26\u62FC\u97F3\uFF0C\u65E0\u62FC\u97F3\u65F6\u81EA\u52A8\u6CE8\u97F3\u3002\u96FE\u51C7/\u4E07\u8C61/\u767D\u971C\u8BCD\u5E93\u90FD\u662F .dict.yaml\uFF0C\u76F4\u63A5\u5BFC\u3002",
     "dict.userwords.title": "\u81EA\u9020\u8BCD",
     "dict.userwords.enable": "\u624B\u52A8\u7EF4\u62A4\u7684\u5E38\u7528\u8BCD",
     "dict.userwords.hint": "\u9010\u6761\u6DFB\u52A0\u300C\u8BCD + \u5168\u62FC\u8F93\u5165\u7801\u300D\uFF0C\u6216\u957F\u6309\u5019\u9009\u70B9\u300C\u6536\u5165\u81EA\u9020\u8BCD\u300D\u3002\u4E5F\u53EF\u4EE5\u5BFC\u5165 rime \u8BCD\u5E93\u3002\u9002\u5408\u540D\u5B57\u548C\u884C\u8BDD\u3002\u53EA\u5B58\u5728\u672C\u673A\uFF0C\u6700\u591A 200 \u6761\u3002",
@@ -281,7 +281,7 @@ const I18N = {
     "dict.lexicon.correction": "\u62FC\u97F3\u7EA0\u9519",
     "dict.lexicon.correctionHint": "\u9ED8\u8BA4\u5F00\u542F\uFF1B\u6253\u9519\u62FC\u97F3\u4E5F\u80FD\u51FA\u5019\u9009\uFF08\u6309\u7F16\u8F91\u8DDD\u79BB\u7EA0\u4E00\u683C\uFF09\uFF0C\u7EA0\u9519\u5019\u9009\u5E26\u300C\u7EA0\u300D\u6807\u3001\u6392\u5728\u5019\u9009\u540E\u9762\uFF0C\u70B9\u9009\u76F4\u63A5\u4E0A\u5C4F",
     "dict.lexicon.habit": "\u4E60\u60EF\u81EA\u52A8\u8BCD\u5E93",
-    "dict.lexicon.habitHint": "\u9ED8\u8BA4\u5F00\u542F\uFF1B\u5E38\u6253\u7684\u8BCD\u6EE1 3 \u6B21\u81EA\u52A8\u6536\u5165\u81EA\u9020\u8BCD\uFF0C\u53EA\u5B58\u5728\u672C\u673A\u3002\u5173\u6389\u540E\u4E0D\u518D\u81EA\u52A8\u6536\u5165\uFF0C\u5DF2\u6536\u5165\u7684\u8BCD\u4FDD\u7559",
+    "dict.lexicon.habitHint": "\u9ED8\u8BA4\u5F00\u542F\uFF1B\u5E38\u6253\u7684\u8BCD\u6EE1 3 \u6B21\u81EA\u52A8\u6536\u5165\u81EA\u9020\u8BCD\uFF0C\u53EA\u5B58\u5728\u672C\u673A\uFF1B\u6253\u9996\u5B57\u6BCD\u9009\u5B9A\u7684\u53E5\u7B2C\u4E00\u6B21\u5C31\u8BB0\u4E0B\u6765\uFF0C\u4E0B\u6B21\u6253\u540C\u6837\u9996\u5B57\u6BCD\u4F18\u5148\u51FA\u73B0\u3002\u5173\u6389\u540E\u4E0D\u518D\u81EA\u52A8\u6536\u5165\uFF0C\u5DF2\u6536\u5165\u7684\u8BCD\u4FDD\u7559",
     "dict.lexicon.autoWords": "\u81EA\u52A8\u6536\u5165\u7684\u8BCD",
     "dict.lexicon.autoWordsEmpty": "\u8FD8\u6CA1\u6709\u81EA\u52A8\u6536\u5165\u7684\u8BCD\uFF0C\u591A\u6253\u51E0\u6B21\u5E38\u7528\u8BCD\u5C31\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002",
     "dict.lexicon.autoWordsDeleted": "\u5DF2\u5220\u9664",
@@ -1009,6 +1009,8 @@ const I18N = {
     "clip.title": "\u526A\u8D34\u677F\u4E0E\u5E38\u7528\u8BED",
     "clip.badge": "\u672C\u673A",
     "clip.note": "\u952E\u76D8\u5DE5\u5177\u680F\u91CC\u7684\u526A\u8D34\u677F\u53EA\u4FDD\u5B58\u5728\u8FD9\u53F0\u624B\u673A\u4E0A\uFF0C\u4E0D\u4E0A\u4F20\uFF0C\u4E5F\u4E0D\u8FDB\u4E91\u5907\u4EFD\u3002\u6761\u6570\u4E0D\u53E6\u8BBE\u4E0A\u9650\uFF0C\u5168\u90E8\u6B63\u6587\u5927\u7EA6 32MB\u3002\u590D\u5236\u4E00\u6BB5\u6587\u5B57\u540E\uFF0C\u70B9\u952E\u76D8\u4E0A\u7684\u526A\u8D34\u677F\u56FE\u6807\u5C31\u80FD\u8D34\u56DE\u53BB\u3002\u5E38\u7528\u8BED\u548C\u7B26\u53F7\u8BCD\u5728\u4E0B\u9762\u7BA1\u7406\u3002",
+    "clip.deleteConfirm": "\u5220\u9664\u524D\u786E\u8BA4",
+    "clip.deleteConfirmHint": "\u5F00 = \u5220\u526A\u8D34\u677F\u6216\u5E38\u7528\u8BED\u65F6\u5148\u95EE\u4E00\u53E5\uFF0C\u70B9\u300C\u5220\u9664\u300D\u624D\u5220\uFF1B\u5173 = \u76F4\u63A5\u5220\uFF0C\u4E0D\u518D\u95EE\u3002",
     "voice.asr.honest": "\u5F53\u524D\u79BB\u7EBF\u6A21\u578B\u5BF9\u8F83\u6807\u51C6\u7684\u666E\u901A\u8BDD\u6548\u679C\u6700\u597D\uFF1A\u8BED\u901F\u653E\u7A33\u3001\u73AF\u5883\u5B89\u9759\uFF0C\u8BF4\u5B8C\u4E00\u53E5\u518D\u70B9\u300C\u8BF4\u5B8C\u4E86\u300D\u3002\u6807\u70B9\u7531\u672C\u673A\u6807\u70B9\u6A21\u578B\u81EA\u52A8\u8865\u4E0A\uFF08\u4E0D\u662F\u558A\u300C\u9017\u53F7\u300D\uFF09\uFF0C\u53E5\u5C3E\u53E5\u53F7\u53EF\u4EE5\u5728\u4E0B\u9762\u5173\u6389\u3002\u8FD9\u91CC\u4E0D\u4F1A\u628A\u58F0\u97F3\u4F20\u5230\u7F51\u4E0A\uFF0C\u4E5F\u4E0D\u80FD\u9760\u6362\u8BBE\u7F6E\u51ED\u7A7A\u63D0\u9AD8\u8BC6\u522B\u7387\u3002",
     "privacy.title": "\u9690\u79C1\u4E0E\u79BB\u7EBF",
     "privacy.badge": "\u672C\u673A",
@@ -1192,8 +1194,8 @@ const I18N = {
     "page.dict": "Lexicon",
     "dict.badge": "Overlay",
     "dict.import.title": "Import a dictionary",
-    "dict.import.enable": "rime dictionary file (.dict.yaml)",
-    "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice. The optional 3rd column (candidate rank 1-9) only applies to symbol words unless the file header declares columns: [text, code, rank].",
+    "dict.import.enable": "Dictionary file (.dict.yaml / Sogou .scel / QQ .qcel / .qpyd / Baidu .bdict / plain-text .txt)",
+    "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice. The optional 3rd column (candidate rank 1-9) only applies to symbol words unless the file header declares columns: [text, code, rank]. Sogou .scel, QQ .qcel/.qpyd and Baidu .bdict import directly; plain-text .txt takes one word per line, optionally with pinyin (pinyin is auto-derived when missing). Community Rime dictionaries such as rime-ice, wanxiang and rime-frost are .dict.yaml and import directly.",
     "dict.userwords.title": "User words",
     "dict.userwords.enable": "Hand-maintained words",
     "dict.userwords.hint": "Add word + pinyin pairs, or long-press a candidate and choose Save to my words. Rime dictionaries can be imported on this page. On this phone only, up to 200 entries.",
@@ -1202,7 +1204,7 @@ const I18N = {
     "dict.lexicon.correction": "Pinyin typo correction",
     "dict.lexicon.correctionHint": "On by default. Mis-typed pinyin still offers candidates (one edit away); corrected candidates carry a \u201C\u7EA0\u201D mark, sit after the normal ones, and commit on tap.",
     "dict.lexicon.habit": "Habit auto-lexicon",
-    "dict.lexicon.habitHint": "On by default. Words you type often are saved to your words after 3 uses, on this phone only. Turning it off stops new saves; saved words stay.",
+    "dict.lexicon.habitHint": "On by default. Words you type often are saved to your words after 3 uses, on this phone only; a sentence picked by typing its initials is remembered the first time and comes first next time you type the same initials. Turning it off stops new saves; saved words stay.",
     "dict.lexicon.autoWords": "Auto-saved words",
     "dict.lexicon.autoWordsEmpty": "No auto-saved words yet. Type a common word a few times and it will show up here.",
     "dict.lexicon.autoWordsDeleted": "Deleted",
@@ -1920,6 +1922,8 @@ const I18N = {
     "clip.title": "Clipboard & phrases",
     "clip.badge": "On device",
     "clip.note": "The keyboard clipboard stays on this phone. It is not uploaded and is not part of cloud backup. There is no fixed item cap; about 32MB of text total is the on-device ceiling. After you copy text, tap the clipboard icon on the keyboard to paste it back. Phrases and symbol words are managed below.",
+    "clip.deleteConfirm": "Confirm before deleting",
+    "clip.deleteConfirmHint": "On = deleting clipboard items or phrases asks first; only tapping Delete deletes. Off = delete immediately, no prompt.",
     "voice.asr.honest": "The current offline model works best with fairly standard Mandarin: steady pace, a quiet room, then tap Done. Punctuation is added by the on-device model (saying the word \u201Ccomma\u201D does not insert one). Trailing periods can be stripped below. Audio is never uploaded, and no setting here can invent higher accuracy.",
     "privacy.title": "Privacy and offline",
     "privacy.badge": "On device",
@@ -2944,6 +2948,7 @@ function renderFeel(state) {
   setSelect("keyHapticStrength", String((_t = state.keyHapticStrength) != null ? _t : 1), ["0", "1", "2"]);
   const followHaptic = state.keyHapticFollowSystem === true;
   setToggle("keyHapticFollowSystem", followHaptic);
+  setToggle("deleteConfirm", state.deleteConfirm !== false);
   const strengthSel = $("keyHapticStrength");
   if (strengthSel) strengthSel.disabled = followHaptic;
   {
@@ -4620,6 +4625,7 @@ $("keyHapticFollowSystem").addEventListener("change", (event) => {
   if (strengthSel) strengthSel.disabled = follow;
   call("setKeyHapticFollowSystem", follow);
 });
+$("deleteConfirm").addEventListener("change", (event) => call("setDeleteConfirm", event.target.checked));
 $("keySoundStyle").addEventListener("change", (event) => {
   if (event.target.value === "custom") call("openKeySoundDocument");
   else call("setKeySoundStyle", event.target.value);
@@ -6733,6 +6739,10 @@ $("ckLeaveGo").addEventListener("click", () => {
 $("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
 $("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
 let latestReleaseAssets = null;
+function normalizeReleaseTag(tag) {
+  return String(tag || "").replace(/^keyboard-/, "").replace(/^v/, "");
+}
+__name(normalizeReleaseTag, "normalizeReleaseTag");
 function newerVersion(latest, current) {
   const norm = /* @__PURE__ */ __name((s) => String(s || "").replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0), "norm");
   const a = norm(latest), b = norm(current);
@@ -6748,10 +6758,10 @@ async function checkGithubUpdate() {
   $("btnDlFull").hidden = true;
   latestReleaseAssets = null;
   setNote("aboutNote", t("update.checking"));
-  const current = lastState && lastState.appVersion || "?";
+  const current = lastState ? activeKeyboardVersion(lastState) : "?";
   const endpoints = [
-    "https://gh-proxy.com/https://api.github.com/repos/feelime/feelime/releases/latest",
-    "https://api.github.com/repos/feelime/feelime/releases/latest"
+    "https://gh-proxy.com/https://api.github.com/repos/Kiwareu/feelime/releases/latest",
+    "https://api.github.com/repos/Kiwareu/feelime/releases/latest"
   ];
   for (const url of endpoints) {
     try {
@@ -6761,7 +6771,7 @@ async function checkGithubUpdate() {
       clearTimeout(timer);
       if (!res.ok) continue;
       const rel = await res.json();
-      const tag = String(rel.tag_name || "").replace(/^v/, "");
+      const tag = normalizeReleaseTag(rel.tag_name);
       if (!tag) continue;
       if (!newerVersion(tag, current)) {
         setNote("aboutNote", t("update.upToDate", [tag]));
@@ -6770,10 +6780,10 @@ async function checkGithubUpdate() {
       setNote("aboutNote", t("update.available", [tag, current]));
       latestReleaseAssets = {};
       (rel.assets || []).forEach((asset) => {
-        const m = /-(thin|full)\.apk$/.exec(asset.name || "");
-        if (m && asset.browser_download_url) latestReleaseAssets[m[1]] = asset.browser_download_url;
+        if (/^Feelime-.*\.apk$/.test(asset.name || "") && asset.browser_download_url) {
+          latestReleaseAssets.full = asset.browser_download_url;
+        }
       });
-      if (latestReleaseAssets.thin) $("btnDlThin").hidden = false;
       if (latestReleaseAssets.full) $("btnDlFull").hidden = false;
       return;
     } catch (_) {

@@ -953,6 +953,12 @@
     <section class="card" id="sec-clipboard" aria-labelledby="clipboardNoteTitle">
       <div class="section-heading"><h2 id="clipboardNoteTitle" data-i18n="clip.title">剪贴板与常用语</h2><span class="eyebrow" data-i18n="clip.badge">本机</span></div>
       <p class="hint block" data-i18n="clip.note">键盘工具栏里的剪贴板只保存在这台手机上，不上传，也不进云备份。条数不另设上限，全部正文大约 32MB。复制一段文字后，点键盘上的剪贴板图标就能贴回去。常用语和符号词在下面管理。</p>
+      <!-- 删除前确认（3.74.11）：开 = 剪贴板清空/单条删除/常用语删除
+           先弹确认，只有明确点「删除」才删；关 = 直接删，不再问。 -->
+      <label class="row switch-row" for="deleteConfirm">
+        <span class="row-label"><span data-i18n="clip.deleteConfirm">删除前确认</span><small data-i18n="clip.deleteConfirmHint">开 = 删剪贴板或常用语时先问一句，点「删除」才删；关 = 直接删，不再问。</small></span>
+        <input type="checkbox" id="deleteConfirm" class="toggle">
+      </label>
     </section>
     <!-- 基底词库（issue #23）：整库换装，设备端 librime maintenance 现场编译。
          与下方「导入词库」（叠加词条）是两个通道：换基底 vs 加词条。 -->
@@ -1010,7 +1016,7 @@
       <div class="section-heading"><h2 id="dictImportTitle" data-i18n="dict.import.title">导入词库</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
       <div class="row language-row no-rule">
         <span class="row-label">
-          <span data-i18n="dict.import.enable">rime 词库文件（.dict.yaml）</span>
+          <span data-i18n="dict.import.enable">词库文件（.dict.yaml / 搜狗 .scel / QQ .qcel / .qpyd / 百度 .bdict / 纯文本 .txt）</span>
           <small data-i18n="input.phrases.importHint">词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。</small>
         </span>
       </div>
@@ -1019,7 +1025,7 @@
         <button class="btn ghost-btn" id="btnClearImportedDict" type="button" hidden data-i18n="input.phrases.clearBtn">清空导入词</button>
         <span class="save-note" id="dictImportNote" role="status" aria-live="polite"></span>
       </div>
-      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码&lt;TAB&gt;位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；要让第三列对全部词（不只符号词）生效，文件头部声明 columns: [text, code, rank]；适合把 rime-ice 等社区词库里的自选词补进来。</p>
+      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码&lt;TAB&gt;位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；要让第三列对全部词（不只符号词）生效，文件头部声明 columns: [text, code, rank]；适合把 rime-ice 等社区词库里的自选词补进来。搜狗 .scel、QQ .qcel/.qpyd、百度 .bdict 都直接导；纯文本 .txt 每行一词、可带拼音，无拼音时自动注音。雾凇/万象/白霜词库都是 .dict.yaml，直接导。</p>
     </section>
 
     <!-- #54（2026-10-09 用户裁定·简化版）：候选符号词从输入页归位到
