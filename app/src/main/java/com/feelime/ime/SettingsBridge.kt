@@ -2367,8 +2367,6 @@ class SettingsBridge(
         )
         pushState()
     }
-        pushState()
-    }
 
     /** 「无」：删除该组背景图（回到纯色背景）。 */
     @JavascriptInterface
