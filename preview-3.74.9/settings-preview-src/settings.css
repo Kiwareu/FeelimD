@@ -1,0 +1,1543 @@
+/* Feelime settings tokens. Keep these values aligned with keyboard.css: the
+ * settings WebView is another surface of the same IME, not a separate app. */
+:root {
+    color-scheme: dark;
+    --bg: #202020;
+    --key: #5f5f5f;
+    --special: #414141;
+    --pressed: #6e6e6e;
+    --text: #e8e8e8;
+    --muted: #c1c4cc;
+    --accent: #23c890;
+    --accent-ink: #07180e;
+    --accent-text: #5cdeb0;
+    --danger: #ff8a8a;
+    --warning: #ffc477;
+    --panel: #2a2a2a;
+    --pill: #3d3d3d;
+    --card-bg: #2b2b31;
+    --card-text: #f0f1f4;
+    --card-sub: #c1c4cc;
+    --line: #484b55;
+    --focus-ring: #8ce8c9;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    /* 别名：定制按键段（#39-12）沿用的旧 var 名。此前从未定义，全部
+     * 回落到亮色硬编码 fallback——暗色下弹层白底配亮字/浅字配浅底，
+     * 基本不可读（2026-10-04 用户暗色实录）。别名指向主 token，三个
+     * 主题块同补。 */
+    --card: var(--card-bg);
+    --border: var(--line);
+    --card-line: var(--line);
+}
+
+html.theme-light {
+    color-scheme: light;
+    --bg: #e7e8ed;
+    --key: #fcfcfc;
+    --special: #c3c6ce;
+    --pressed: #e1e4ea;
+    --text: #181818;
+    --muted: #5c616b;
+    --accent: #23c890;
+    --accent-ink: #07180e;
+    --accent-text: #086d49;
+    --danger: #b42318;
+    --warning: #8a4b00;
+    --panel: #f4f5f7;
+    --pill: #ffffff;
+    --card-bg: #f8f8fb;
+    --card-text: #1c1c24;
+    --card-sub: #5c616b;
+    --line: #c9cdd6;
+    --focus-ring: #08764f;
+    --card: var(--card-bg);
+    --border: var(--line);
+    --card-line: var(--line);
+}
+
+@media (prefers-color-scheme: light) {
+    html:not(.theme-light):not(.theme-dark) {
+        color-scheme: light;
+        --bg: #e7e8ed;
+        --key: #fcfcfc;
+        --special: #c3c6ce;
+        --pressed: #e1e4ea;
+        --text: #181818;
+        --muted: #5c616b;
+        --accent: #23c890;
+        --accent-ink: #07180e;
+        --accent-text: #086d49;
+        --danger: #b42318;
+        --warning: #8a4b00;
+        --panel: #f4f5f7;
+        --pill: #ffffff;
+        --card-bg: #f8f8fb;
+        --card-text: #1c1c24;
+        --card-sub: #5c616b;
+        --line: #c9cdd6;
+        --focus-ring: #08764f;
+        --card: var(--card-bg);
+        --border: var(--line);
+        --card-line: var(--line);
+    }
+}
+
+* { box-sizing: border-box; }
+
+/* 安全区滚动遮罩（验收三轮）：页面背景在 statusbar/手势条下淡出，
+   滚动内容穿过时渐隐，不与系统图标硬碰。 */
+body::before {
+    content: "";
+    position: fixed;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: auto; left: 0;
+    /* 24px 下限：个别 WebView 在 edge-to-edge 下报 inset-top=0（AVD
+     *  实录），内容会顶进窗口顶部的系统触摸死区——按钮可见但点不动
+     *  （9j 门禁 tap 失灵的根因）。真机 inset>24 时无变化。
+     *  --app-inset-*（#60）：native 注入的真实 systemBars/cutout 值——
+     *  WebView 的 env(safe-area-inset-*) 只映射挖孔，三键导航栏不在
+     *  其中，避让不能只靠 env()。 */
+    height: calc(max(env(safe-area-inset-top), var(--app-inset-top, 0px), 24px) + 14px);
+    background: linear-gradient(var(--bg), transparent);
+    pointer-events: none;
+    z-index: 5;
+}
+body::after {
+    content: "";
+    position: fixed;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: auto; right: 0; bottom: 0; left: 0;
+    height: calc(max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)) + 10px);
+    background: linear-gradient(transparent, var(--bg));
+    pointer-events: none;
+    z-index: 5;
+}
+
+html { min-height: 100%; background: var(--bg); }
+
+body {
+    min-height: 100dvh;
+    margin: 0;
+    /* #60：--app-ime-bottom = 软键盘高度（adjustResize 在 edge-to-edge
+     *  下失效，native 注入兜底）——键盘弹起时底部 padding 抬高，配合
+     *  settings.js 的 focusin scrollIntoView 把输入框滚进可视区。 */
+    padding: 0 calc(16px + max(env(safe-area-inset-right), var(--app-inset-right, 0px))) calc(16px + max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)) + var(--app-ime-bottom, 0px)) calc(16px + max(env(safe-area-inset-left), var(--app-inset-left, 0px)));
+    background:
+        radial-gradient(90% 42% at 0% 0%, rgba(35, 200, 144, .22), transparent 62%),
+        radial-gradient(70% 48% at 100% 0%, rgba(77, 163, 255, .16), transparent 58%),
+        var(--bg);
+    color: var(--card-text);
+    font: 15px/1.5 system-ui, "Noto Sans CJK SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font: inherit; }
+button, select, input[type="checkbox"] { -webkit-tap-highlight-color: transparent; }
+
+button { cursor: pointer; }
+
+button:focus-visible, select:focus-visible, input:focus-visible,
+textarea:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* --- hero ------------------------------------------------------------- */
+
+.hero {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: calc(12px + max(env(safe-area-inset-top), var(--app-inset-top, 0px), 24px)) 4px 12px;
+}
+
+.hero-mark { display: flex; align-items: center; gap: 12px; }
+
+.hero-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 700 20px/44px var(--mono);
+    text-align: center;
+}
+.hero-logo img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 10px;
+}
+
+.hero-titles h1 {
+    margin: 0;
+    font-size: 24px;
+    letter-spacing: .02em;
+}
+
+.hero-tag {
+    margin: 0;
+    font-size: 12px;
+    color: var(--card-sub);
+    letter-spacing: .08em;
+}
+
+.hero-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 12px 2px 0;
+    min-height: 20px;
+    color: var(--muted);
+    font: 12px var(--mono);
+    letter-spacing: .02em;
+}
+
+.hero-status .ok { color: var(--accent-text); }
+.hero-status .warn { color: var(--warning); }
+
+/* --- pages ------------------------------------------------------------ */
+
+.page { display: block; }
+.page[hidden] { display: none; }
+/* 全局兜底：author 的 display:flex/grid 会盖过 [hidden]——元素「隐藏
+ * 了」却看得见（编辑完成条/常用区两轮实录）。 */
+[hidden] { display: none !important; }
+
+main { max-width: 680px; margin: 0 auto; }
+
+.page-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: calc(14px + max(env(safe-area-inset-top), var(--app-inset-top, 0px), 24px)) 4px 10px;
+}
+
+.page-back {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    /* 44px 触控标准（验收 2026-09-24：36px 太窄，误触率高）。 */
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 22px;
+    line-height: 1;
+    padding: 0 0 2px;
+}
+
+.page-back:hover { border-color: var(--accent-text); }
+.page-back:active { background: var(--pressed); }
+
+.page-title {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: .01em;
+}
+
+/* --- cards / headings ------------------------------------------------- */
+
+.card {
+    margin: 0 0 12px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--card-bg);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 10px 28px #0002;
+    animation: rise .26s ease both;
+}
+
+.section-heading {
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 8px;
+}
+
+h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 650;
+}
+
+h3 { margin: 0; font-size: 14px; font-weight: 650; }
+
+.eyebrow {
+    color: var(--accent-text);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+@keyframes rise {
+    from { transform: translateY(5px); }
+    to { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+}
+
+/* --- home entries ----------------------------------------------------- */
+
+.entries { padding: 4px 16px; }
+
+.entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+    padding: 8px 0;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    color: var(--card-text);
+    font: inherit;
+    text-align: left;
+}
+
+.entry:last-child { border-bottom: none; }
+.entry:hover .entry-label { color: var(--accent-text); }
+.entry:active { background: var(--pressed); }
+
+.entry-label {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    font-size: 15px;
+}
+
+.entry-label small {
+    color: var(--card-sub);
+    font-size: 11px;
+}
+
+.entry-chevron {
+    flex: 0 0 auto;
+    color: var(--accent-text);
+    font-size: 19px;
+    line-height: 1;
+}
+
+.entry-group {
+    margin: 12px 0 0;
+    padding-top: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    color: var(--accent-text);
+}
+.entry-group:first-child { margin-top: 2px; }
+
+.skin-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+.skin-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 68px;
+    padding: 8px 4px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--pill);
+    color: var(--card-text);
+    font-size: 12px;
+}
+.skin-card.active {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.skin-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--sw, var(--accent));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 4px 10px #0003;
+}
+
+/* --- rows / status ---------------------------------------------------- */
+
+/* #90 兼容：上四处 flex gap（84+）改子元素 margin 等价模拟——旧
+ * WebView 忽略 gap 声明后标题/行内控件/主副文字全部紧贴。 */
+.section-heading > * + * { margin-left: 8px; }
+.row > * + * { margin-left: 10px; }
+.row-label > * + * { margin-top: 1px; }
+.row.stack > * + * { margin-left: 0; margin-top: 8px; }
+
+.rows { display: block; }
+
+.row {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.row:last-child { border-bottom: none; }
+
+/* 键盘选择行排序（2026-09-26）：上下移按钮组在行首，label 占余宽；
+ * 行容器是 div，按钮在 label 外，点按钮不翻勾选框。 */
+.kb-order-btns { display: flex; gap: 4px; flex: none; }
+.kb-move { min-width: 32px; padding: 3px 6px; line-height: 1; }
+.kb-drag { min-width: 32px; padding: 3px 6px; line-height: 1; cursor: grab; touch-action: none; }
+.kb-drag:active { cursor: grabbing; }
+.kb-order-label { flex: 1; }
+.switch-row.dragging { opacity: .85; outline: 2px solid var(--accent, #4a90d9); outline-offset: -2px; }
+.kb-order-label { display: flex; align-items: center; gap: 10px; flex: 1; min-height: 48px; cursor: pointer; }
+/* 行后紧跟按钮（如候选符号词卡的「管理词条」）时，行底线会紧贴按钮
+ * 像一条黏住的分隔线——该行显式去线。 */
+.row.no-rule { border-bottom: none; }
+
+.row-label {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    font-size: 14px;
+}
+
+.row-label small {
+    color: var(--card-sub);
+    font-size: 11px;
+}
+
+.language-row { min-height: 58px; }
+
+.row-value {
+    flex: 0 1 auto;
+    max-width: 58%;
+    color: var(--card-sub);
+    font: 13px var(--mono);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.led {
+    flex: 0 0 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--pill);
+}
+
+.led.ok { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.led.warn { background: var(--warning); }
+.led.bad { background: var(--danger); }
+
+/* --- controls --------------------------------------------------------- */
+
+.btn {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 7px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--pill);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 550;
+}
+
+.btn:hover { border-color: var(--accent-text); }
+.btn:active { background: var(--pressed); }
+
+.btn.primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 700;
+}
+
+.btn.primary:hover { background: #5cdeb0; }
+.btn.primary:active { background: #18ad7c; }
+.btn.local { border-color: var(--accent-text); }
+.btn.small { min-height: 30px; padding: 3px 10px; font-size: 12px; }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
+.btn.link { border-color: transparent; background: transparent; color: var(--accent-text); }
+.btn.link:active { background: var(--pressed); }
+
+button:disabled, input:disabled, select:disabled, textarea:disabled {
+    cursor: not-allowed;
+    border-color: var(--line);
+    background: var(--special);
+    color: var(--muted);
+}
+
+input[type="url"], input[type="text"], input[type="password"], input[type="number"], textarea, .select {
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--key);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+}
+
+.select {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 108px;
+    margin-top: 0;
+    padding: 8px 28px 8px 10px;
+}
+
+input::placeholder, textarea::placeholder { color: #dedede; }
+html.theme-light input::placeholder, html.theme-light textarea::placeholder { color: #5c616b; }
+@media (prefers-color-scheme: light) {
+    html:not(.theme-dark) input::placeholder,
+    html:not(.theme-dark) textarea::placeholder { color: #5c616b; }
+}
+
+input:focus, textarea:focus, .select:focus { border-color: var(--accent-text); }
+input:active, textarea:active, .select:active { background: var(--pressed); }
+textarea { resize: vertical; min-height: 96px; font-family: var(--mono); font-size: 12.5px; }
+
+.field-label {
+    display: block;
+    margin-top: 12px;
+    color: var(--card-sub);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.toggle {
+    /* #90 旧 WebView：无前缀 appearance 是 84+，被忽略时原生 checkbox
+     * 方框勾号会叠画在 ::after 圆滑块上——webkit 前缀任意版本都在。 */
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 46px;
+    width: 46px;
+    height: 26px;
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    /* OFF 态轨道必须可辨：--pill 在浅色主题是纯白，白底白胶囊只剩一圈
+     * 细边，「看不出开还是关」（flickSwap 默认关，验收 2026-09-24 实录）。
+     * --line 两主题都是可见中性色。 */
+    background: var(--line);
+    position: relative;
+    transition: background .15s ease, border-color .15s ease;
+}
+
+.toggle::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--text);
+    transition: transform .15s ease;
+}
+
+.toggle:checked { border-color: var(--accent); background: var(--accent); }
+.toggle:checked::after { background: var(--accent-ink); transform: translateX(20px); }
+.toggle:active { background: var(--pressed); }
+.toggle:checked:active { background: #18ad7c; }
+
+/* 定制键编辑器里的紧凑勾选框（角标联动上滑）：.toggle 是 46×26 的
+   整行级滑块，塞进编辑器行又大又突兀（用户实测吐槽）；这里同款
+   appearance 方案（#90 旧 WebView 的 webkit 前缀教训同 toggle 注释）
+   收成 20×20 方块，选中态 accent 填底 + L 形勾（border 旋转画法，
+   不依赖字体字形）。 */
+.ck-check {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 6px;
+    background: var(--pill);
+    position: relative;
+    transition: background .15s ease, border-color .15s ease;
+}
+.ck-check:checked { border-color: var(--accent); background: var(--accent); }
+.ck-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 5.5px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.ck-check:active { background: var(--pressed); }
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.ime-actions { margin-top: 8px; }
+
+.save-note { color: var(--accent-text); font-size: 12px; }
+
+.hint {
+    margin: 8px 0 0;
+    color: var(--card-sub);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.hint.block { margin-top: 2px; }
+
+.status-block {
+    max-height: 180px;
+    margin: 10px 0 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--key);
+    color: var(--muted);
+    font: 11.5px/1.6 var(--mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+}
+
+.danger-note { margin: 8px 0 0; color: var(--danger); font-size: 12px; }
+
+.consent {
+    margin: 10px 0 2px;
+    padding: 12px;
+    border: 1px solid var(--accent-text);
+    border-radius: 5px;
+    background: var(--panel);
+}
+
+.consent .section-heading { margin-bottom: 4px; }
+.consent .actions { margin-top: 10px; }
+.model-note { display: block; min-height: 18px; margin-top: 8px; }
+.model-source-settings { margin-top: 10px; }
+.model-source-settings .field-label { margin-top: 10px; }
+.model-source-settings .actions { margin-top: 8px; }
+.source-head { gap: 10px; }
+.source-head .row-label small { display: block; margin-top: 2px; color: var(--card-sub); }
+.source-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    margin-top: 6px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--panel);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.source-row.active { border-color: var(--accent-text); }
+.source-row-label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
+.source-dot { font-style: normal; color: var(--card-sub); }
+.source-row.active .source-dot { color: var(--accent-text); }
+.source-fastest { font-style: normal; font-size: 11px; color: var(--accent-text); }
+.source-ms { color: var(--card-sub); font: 11px var(--mono); white-space: nowrap; }
+.source-fail { color: var(--danger); font-size: 11px; white-space: nowrap; }
+#modelSourceCustomBox input { margin-top: 6px; }
+
+/* --- model rows ------------------------------------------------------- */
+
+.model { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.model:last-child { border-bottom: none; }
+.model-head { display: flex; align-items: center; gap: 10px; }
+.model-name { flex: 1; min-width: 0; font-size: 14px; }
+.model-size { color: var(--card-sub); font: 11px var(--mono); white-space: pre-line; text-align: right; }
+.model-status { margin: 3px 0 0 18px; color: var(--muted); font-size: 12px; }
+.model-status.ok { color: var(--accent-text); }
+.model-status.warn { color: var(--warning); }
+.model-status.bad { color: var(--danger); }
+.model-actions { display: flex; gap: 8px; margin: 8px 0 0 18px; flex-wrap: wrap; }
+
+.progress {
+    height: 4px;
+    margin: 8px 0 0 18px;
+    border-radius: 999px;
+    background: var(--pill);
+    overflow: hidden;
+}
+
+.progress > i {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--accent);
+    transition: width .2s ease;
+}
+
+/* --- notices ---------------------------------------------------------- */
+
+details summary {
+    padding: 6px 0;
+    color: var(--accent-text);
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.notices {
+    max-height: 260px;
+    overflow-y: auto;
+    color: var(--card-sub);
+    font: 11px/1.6 var(--mono);
+    white-space: pre-wrap;
+}
+
+/* --- licenses page ----------------------------------------------------- */
+
+/* 组件行：名称加粗 + 许可证小徽章（用 eyebrow 的强调色系）。 */
+.license-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 14px;
+}
+
+.license-badge {
+    padding: 1px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--accent-text);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    white-space: nowrap;
+}
+
+/* 上游链接：整页只在这一页出现 <a>，外跳由壳转系统浏览器。 */
+.license-row a,
+#sec-license-self a {
+    color: var(--accent-text);
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+@media (max-width: 380px) {
+    body { padding-right: 12px; padding-left: 12px; }
+    .card { padding: 14px; }
+    .btn { padding-right: 11px; padding-left: 11px; }
+    .row-label { font-size: 13px; }
+}
+
+/* Double-pinyin key map (dp-data.js -> renderDoublePinyin): key layout
+ * like the keyboard, every row centered; two finals stack inside a key,
+ * the double initials sit bottom-right. */
+#dpKeymap .kmap-row { display: flex; justify-content: center; gap: 4px; margin: 4px 0; }
+#dpKeymap .kmap-key {
+    flex: none;
+    width: 9.2%;
+    background: var(--key);
+    border-radius: 10px;
+    padding: 6px 0;
+    text-align: center;
+    line-height: 1.3;
+}
+#dpKeymap .kmap-key b { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+#dpKeymap .kmap-key span { display: block; font-size: 9px; color: var(--muted); white-space: nowrap; }
+#dpKeymap .kmap-key i { font-style: normal; font-size: 9px; color: var(--accent-text); }
+
+
+/* 外观页滑块（按键不透明度 / 键盘高度）。 */
+/* #39 横屏三级页：滑杆读数（右对齐、等宽、弱化）。 */
+.range-out { font-variant-numeric: tabular-nums; color: var(--muted, #8a8f98);
+    font-size: 13px; min-width: 44px; text-align: right; }
+/* #42 行内滑杆组合：读数 + 滑杆横向并排（候选字号）。 */
+.range-group { display: flex; align-items: center; gap: 10px; flex: none; }
+.slider { flex: none; width: 150px; accent-color: var(--accent, #18ad7c); }
+.slider-with-action { display: flex; align-items: center; gap: 8px; flex: none; }
+.slider-with-action .slider { width: 120px; }
+.ghost-btn {
+    border: 1px solid var(--line, #d8d8d8);
+    background: transparent;
+    color: inherit;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+/* 外观页演示输入框：进入本页时桥接层让 IME 弹出真实键盘，本页窗口
+   被 adjustResize 压缩到键盘上方，设置调整实时反映在真键盘上。
+   预览行纵排（label 在上、输入框在下），别在 flex 行里被挤成竖条。 */
+#kbPreviewRow { display: block; }
+#previewEditor {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line, #d8d8d8);
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+/* --- custom phrases (issue #17) ----------------------------------------- */
+
+.phrase-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+.phrase-form .input { flex: 1 1 140px; min-width: 0; }
+/* #81 位置输入：窄定宽列（词条/输入码是弹性宽，位置只需 2 位数字），
+ * number spinner 在 WebView 里挤占文字空间，去掉。 */
+.phrase-form .input[type="number"]#phraseRank {
+    flex: 0 0 84px;
+    /* 基础外观由上方公共输入框规则统一（appearance 不清 UA 的
+     * 2px inset 边框声明，必须靠选择器命中）；此处关原生装饰，
+     * 下方伪元素规则去 spinner。 */
+    appearance: none;
+    -webkit-appearance: none;
+}
+.phrase-form .input[type="number"]#phraseRank::-webkit-outer-spin-button,
+.phrase-form .input[type="number"]#phraseRank::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.phrase-form .actions { display: flex; gap: 8px; }
+
+.phrase-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+/* #81 位置徽标「（候选#n）」：muted 小字，语义一眼可读。 */
+.phrase-rank {
+    color: var(--muted, #7a8195);
+    font-size: 12px;
+}
+.phrase-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+.phrase-row + .phrase-row { border-top: 1px solid var(--card-line); }
+.phrase-edit {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-height: 40px;
+    padding: 6px 4px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+}
+.phrase-edit:active { background: var(--pressed); }
+.phrase-text { font-size: 16px; }
+.phrase-row code {
+    color: var(--card-sub);
+    font-family: var(--mono);
+    font-size: 12.5px;
+}
+.phrase-del {
+    flex: 0 0 auto;
+    min-width: 36px;
+    min-height: 36px;
+    border: 0;
+    background: transparent;
+    color: var(--card-sub);
+    font-size: 14px;
+}
+.phrase-del:active { background: var(--pressed); border-radius: 8px; }
+
+/* 设置搜索（验收 2026-09-24）：hero 下的胶囊搜索框（卡片同源配色）+
+ * 下拉结果卡 + 跳转锚的呼吸灯提醒。 */
+.search-box { padding: 0 16px 6px; position: relative; max-width: 680px; margin: 0 auto; }
+.search-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card-bg);
+    box-shadow: 0 2px 9px #0002;
+}
+.search-field:focus-within { border-color: var(--focus-ring); }
+.search-icon { color: var(--card-sub); flex: none; }
+.search-field input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--card-text);
+    outline: none;
+}
+.search-field input::placeholder { color: var(--card-sub); }
+.search-field input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.search-results {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: calc(100% - 2px);
+    z-index: 30;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / .25);
+    overflow: hidden;
+}
+.search-hit {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+}
+.search-hit:active { background: var(--pressed); }
+.search-hit + .search-hit { border-top: 1px solid var(--line); }
+.search-hit small { color: var(--muted); flex: none; }
+/* 结果条目：左侧主列（标题 + 说明小注），右侧所属页。 */
+.search-hit-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.search-hit-desc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+.search-empty { padding: 10px 14px; margin: 0; color: var(--muted); }
+
+/* 跳转定位的呼吸灯：整个设置项背景呼吸三次（每次渐亮渐隐约 .6s），
+ * inset 描边勾出整行边界，比只亮文字区域醒目。 */
+@keyframes search-breathe {
+    0%, 100% { background: transparent; box-shadow: inset 0 0 0 2px transparent; }
+    50% {
+        background: rgb(35 200 144 / .30);
+        box-shadow: inset 0 0 0 2px rgb(35 200 144 / .40);
+    }
+}
+.search-flash { animation: search-breathe .62s ease-in-out 3; border-radius: 8px; }
+
+/* #31 键盘色调：预置色板（圆形 swatch）+ 自定义色相滑条（全谱渐变
+ * 轨道，松手生效——经 pref+广播重推 hello，不做拖动实时预览）。 */
+.preset-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+/* 色调/饱和度行上下两行布局（用户验收五轮）：文字全宽在上、滑条+色板
+ * 全宽在下——右侧竖排会把说明文案挤成窄条。 */
+.row.stack { flex-direction: column; align-items: stretch; }
+.row.stack .row-label { flex: none; }
+.row.stack .preset-wrap { align-items: stretch; }
+.row.stack .preset-wrap input[type="range"],
+.row.stack #themeHue, .row.stack #keyHue { width: 100%; }
+.row.stack .preset-swatches { align-self: flex-start; }
+/* 效果预览（用户验收五轮）：亮/暗两组板并排，每板两行键；--pv-* 由
+ * JS 本地驱动（拖动实时），色公式与 keyboard.css 令牌同源；板底无图=
+ * 纯色（暗 22%/12%、亮 32%/88%），选了背景图时 cover 叠在底色上，
+ * 键帽按 --pv-key-alpha 半透铺在图上（文字始终实色，与真键盘一致）。 */
+.theme-preview-duo { display: flex; gap: 12px; width: 100%; }
+.tp-group { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.tp-tag { font-size: 11px; color: var(--card-sub); }
+.tp-board { display: flex; flex-direction: column; gap: 5px; padding: 8px; border-radius: 8px;
+    background-size: cover; background-position: center; }
+.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--pv-bg-lt, 0)));
+    background-image: var(--pv-bg-img-dark, none); }
+.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--pv-bg-lt, 0)));
+    background-image: var(--pv-bg-img-light, none); }
+.tp-row { display: flex; gap: 5px; }
+.tp-key { display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 30px; border-radius: 5px; font-size: 14px; font-weight: 500; }
+/* 暗组键帽（/ 不透明度过底图）。 */
+.tp-board-dark .tp-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) calc(37% + (100% - 37%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: #e8e8e8; }
+.tp-board-dark .tp-accent-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(48% + (100% - 48%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + (100% - 95%) * 0.75 * var(--pv-key-lt, 0))); }
+.tp-board-dark .tp-special-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(26% + (100% - 26%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: #e8e8e8; }
+/* 亮组键帽：对齐 keyboard.css html.theme-light 公式（键 38%/97%、
+ * accent 62%/42%、special 42%/72%）。 */
+.tp-board-light .tp-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) calc(97% + (100% - 97%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: #181818; }
+.tp-board-light .tp-accent-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(42% + (100% - 42%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + (100% - 95%) * 0.75 * var(--pv-key-lt, 0))); }
+.tp-board-light .tp-special-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(72% + (100% - 72%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: #181818; }
+.preset-swatches { display: flex; gap: 10px; align-items: center; flex: none; }
+.preset-swatch {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--sw, #23c890);
+    border: 2px solid transparent;
+    box-shadow: inset 0 0 0 2px var(--bg, #1b1d22);
+    padding: 0; cursor: pointer;
+}
+.preset-swatch.active { border-color: var(--accent-text, #5cdeb0); transform: scale(1.12); }
+/* 色相滑条全谱轨道（键盘/键面同款取色）：与键盘 --kb-hue 同一坐标系
+ * （0=红 … 160=经典绿）。 */
+#themeHue, #keyHue {
+    width: 190px; height: 22px; margin: 0;
+    -webkit-appearance: none; appearance: none;
+    border-radius: 11px;
+    background: linear-gradient(90deg,
+        hsl(0,62%,48%), hsl(30,62%,48%), hsl(60,62%,48%), hsl(90,62%,48%),
+        hsl(120,62%,48%), hsl(150,62%,48%), hsl(180,62%,48%), hsl(210,62%,48%),
+        hsl(240,62%,48%), hsl(270,62%,48%), hsl(300,62%,48%), hsl(330,62%,48%),
+        hsl(360,62%,48%));
+    outline: none;
+}
+#themeHue::-webkit-slider-thumb, #keyHue::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: hsl(var(--thumb-hue, 160), 62%, 48%);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / .45);
+    cursor: pointer;
+}
+#themeHue.customized::-webkit-slider-thumb, #keyHue.customized::-webkit-slider-thumb {
+    border-color: var(--accent-text, #5cdeb0);
+    box-shadow: 0 0 0 2px var(--accent-text, #5cdeb0), 0 1px 4px rgb(0 0 0 / .45);
+}
+/* 键面色调「跟键盘」档：虚线空心底（区别于实色预置），未自定义(-1)时选中。 */
+.preset-swatch.follow {
+    background: transparent;
+    border: 2px dashed var(--card-sub, #8a8f98);
+    box-shadow: none;
+    color: var(--card-sub, #8a8f98);
+    font-size: 11px; line-height: 1;
+}
+.preset-swatch.follow::after { content: "跟"; }
+html[lang="en"] .preset-swatch.follow::after { content: "F"; }
+.preset-swatch.follow.active {
+    border-style: solid;
+    border-color: var(--accent-text, #5cdeb0);
+    color: var(--accent-text, #5cdeb0);
+}
+
+/* ===== #39-12 定制按键编辑器（三级页）===== */
+.nav-row { width: 100%; text-align: left; background: none; border: 0; padding: 10px 2px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.nav-row .chev { margin-left: auto; color: var(--muted, #999); font-size: 18px; }
+.ck-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.ck-chip {
+    border: 1px solid var(--border, #ccc); border-radius: 10px;
+    height: 38px; padding: 0 14px; background: var(--card, #fff); color: inherit;
+    /* em 化：行内容超宽时 ckFitStrip 缩 strip 的 font-size，chip 字号
+     * 跟着走（px 定死就缩不动，2026-10-04 用户需求：整行缩到放得下）。 */
+    font-size: 0.93em; cursor: pointer; min-width: 40px; text-align: center;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: border-color .12s, background .12s;
+}
+/* 行内键列不折行：超宽靠缩字号塞进一行（ckFitStrip），缩到下限仍
+ * 放不下再横向滚动兜底（用户裁定：那属于用户自己的问题）。chip 必须
+ * flex:none——默认 flex-shrink 会把键压进容器宽，scrollWidth 永不超
+ * clientWidth，缩放永远不触发（预览 .ck-prev-key 同款教训）。 */
+/* 纵向 padding 抵消滚动容器对 × 删除徽章（top:-7px）的裁顶（review
+ * P2 像素实测：无此补偿徽章顶部 7px 被 scrollport 切掉）；负 margin
+ * 保持行距视觉不变。纵向量不进 clientWidth/scrollWidth，ckFitStrip
+ * 数学不受影响。 */
+.ck-row-strip { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    padding-top: 7px; margin-top: -7px;
+    /* 与顶部同样给删除徽章留空间，右对齐时也不裁掉 ×。 */
+    padding-right: 7px; margin-right: -7px; }
+/* 编辑态 = 拖动独占手势（2026-10-04 真机"拖两下就断"根因）：浏览器
+ * 把首位移判给页面/行滚动后，后续 touchmove 变成滚动 + touchcancel
+ * 打断拖动。touch-action:none 从手势判定层面排除浏览器接管；click
+ * 照常合成（× 删除不受影响）。非编辑态不设——行横滚兜底要用。 */
+body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
+/* 长按上下文菜单禁用（2026-10-05 AVD input swipe/真手指级取证）：系
+ * 统长按 ~500ms 触发 WebView 文本选择/callout，事件流被直接终止
+ * （touchend/touchcancel 都不再发给 JS）——拖影冻结、会话悬挂的根
+ * 因；touch-action:none 管不到它。配合 JS 层 contextmenu preventDefault
+ * 双保险。 */
+#ckRowList { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.ck-row-strip.ck-fitting .ck-x { display: none; }
+.ck-row-strip::-webkit-scrollbar { display: none; }
+.ck-row-strip .ck-chip { flex: none; }
+/* 对齐停靠（定制即预览合并版，2026-10-04）：与键盘同款首键 auto
+ * margin——justify-content 在 overflow 容器会裁掉起点侧的键。 */
+.ck-row-strip[data-align="center"] > .ck-chip:first-child { margin-left: auto; margin-right: auto; }
+.ck-row-strip[data-align="right"] > .ck-chip:first-child { margin-left: auto; }
+/* 合并行键帽 = 旧预览键同款（2026-10-04 定制即预览）：min-width 32 而
+ * 非 chip 的 40——40px×N 会先于字号触顶，字号缩了行仍溢出，缩放形同
+ * 虚设（真机实录：模板第 2 行 7 键在 360dp 上 55% 后仍溢出 77px）。
+ * min-width/padding 必须 em 化：px 定死不随 strip 字号缩，是"缩放没到
+ * 位、行还剩一点在容器外"的第二元凶（用户三轮实录）。相对 chip 字号
+ * （0.87em@100%≈13px）：32px≈2.45em、7px≈0.54em。 */
+.ck-row-strip .ck-chip {
+    min-width: 2.45em; height: 30px; padding: 0 0.54em; border-radius: 7px;
+    font-size: 0.87em; font-weight: 550; white-space: nowrap;
+}
+.ck-row-strip .ck-chip[data-span="2"] { min-width: 7.05em; }
+.ck-row-strip .ck-chip[data-span="3"] { min-width: 10.7em; }
+.ck-chip.selected { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 1px var(--accent, #3b82f6); }
+.ck-chip[data-span="2"] { min-width: 72px; }
+.ck-chip[data-span="3"] { min-width: 108px; }
+.ck-add-chip { color: var(--muted, #999); border-style: dashed; }
+.ck-none { color: var(--muted, #999); font-size: 12px; padding: 2px; }
+.ck-row-line { margin: 0; padding: 8px 0; }
+.ck-row-line + .ck-row-line { border-top: 1px solid var(--border, #e7e7e7); }
+/* 行对齐（2026-10-03）：每行一个三段小控件，值写进行内首键的 align。
+ * 2026-10-04 用户验收：前置「第 N 行对齐方式：」说明，并与键列留间隔
+ * （此前控件与 chips 黏在一起）。 */
+.ck-row-head { display: flex; align-items: center; gap: 8px;
+    margin: 2px 0 7px; font-size: 12px; color: var(--muted, #999); }
+.ck-align { display: inline-flex; gap: 0;
+    border: 1px solid var(--border, #ccc); border-radius: 8px; overflow: hidden; }
+.ck-align-btn { border: 0; background: var(--card, #fff); color: var(--muted, #999);
+    font-size: 12px; padding: 3px 9px; cursor: pointer; }
+.ck-align-btn + .ck-align-btn { border-left: 1px solid var(--border, #e7e7e7); }
+.ck-align-btn.on { background: var(--accent, #3b82f6); color: var(--accent-ink, #fff); }
+/* 键面色板（与键盘侧 sym-custom-key 同 rgba，亮/暗底都可辨） */
+.ck-blue   { background: rgba(59, 130, 246, .32);  border-color: rgba(59, 130, 246, .60) !important; }
+.ck-green  { background: rgba(34, 197, 94, .30);   border-color: rgba(34, 197, 94, .55) !important; }
+.ck-orange { background: rgba(249, 115, 22, .32);  border-color: rgba(249, 115, 22, .55) !important; }
+.ck-red    { background: rgba(239, 68, 68, .30);   border-color: rgba(239, 68, 68, .55) !important; }
+.ck-purple { background: rgba(168, 85, 247, .30);  border-color: rgba(168, 85, 247, .55) !important; }
+.ck-color-chip { text-transform: capitalize; }
+.block { display: block; margin-top: 10px; }
+
+/* JSON 兜底折叠卡（#39-12 合成一页后收进页底） */
+.ck-json-fold { padding: 10px 14px; }
+.ck-json-fold > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.ck-json-fold[open] > summary { margin-bottom: 8px; }
+
+/* ===== #39-12 定制按键页布局：header + 滚动 main + 流内保存条 =====
+ * 保存条占用的空间从滚动区扣除（不 fixed 不遮挡——fixed+垫层会挡住
+ * 页底内容，用户两轮实录）。body 底 padding 兜 safe area。 */
+.page[data-page="customkeys"],
+.page[data-page="cksymbol"],
+.page[data-page="cklang"],
+.page[data-page="ckt9strip"],
+.page[data-page="ckstrokestrip"],
+.page[data-page="ckinkstrip"] {
+    display: flex; flex-direction: column;
+    height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
+}
+
+/* ===== 语言键盘定制页（cklang）：布局预览 ===== */
+.ck-lang-kb { display: flex; flex-direction: column; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 8px; }
+.ck-lang-row { display: flex; gap: 5px; justify-content: center; }
+/* 第二行 a–l 缩进对齐（复刻键盘 kb-indent）。 */
+.ck-lang-indent { padding-left: 4.9%; }
+/* 键面布局复刻真实键盘（keyboard.css #39-3）：角标钉键顶 3px 水平
+ * 居中（left:0/right:0 + text-align）、主字沉键底（flex-end + 4px
+ * padding）——两者分离到键的两端不重叠；验收实录预览角标靠右、主字
+ * 垂直居中与真机形态不符。 */
+.ck-lang-key { position: relative; flex: 1; min-width: 0; height: 46px;
+    border: 1px solid transparent; border-radius: 8px;
+    background: var(--pill); color: var(--card-text);
+    font: 500 18px/1 system-ui, sans-serif; cursor: pointer;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    align-items: center; padding-bottom: 4px; }
+.ck-lang-key:active { filter: brightness(.95); }
+.ck-lang-key-sp { background: transparent; color: var(--card-sub);
+    font-size: 13px; font-weight: 600; cursor: default; }
+.ck-lang-w15 { flex: 1.5; } .ck-lang-w2 { flex: 2.05; } .ck-lang-w3 { flex: 3.2; }
+/* #61 色号行：色块 + 等宽输入框（与滑条同一行式风格）。 */
+.hex-wrap { display: flex; align-items: center; gap: 10px; }
+.hex-swatch { width: 46px; height: 30px; border-radius: 8px;
+    border: 1px solid var(--line, #8884); flex: none; }
+.hex-wrap .hex-input { width: 84px; font: 600 14px/1 ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace; letter-spacing: .5px;
+    padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #8884);
+    background: var(--pill, #8882); color: inherit; text-transform: uppercase; }
+.ck-lang-sub { position: absolute; left: 0; right: 0; top: 3px;
+    text-align: center;
+    font-size: 9.5px; color: var(--card-sub); font-weight: 400; }
+.ck-lang-custom { border-color: var(--accent); }
+.ck-lang-custom::after { content: ""; position: absolute; left: 4px; top: 4px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+/* 编辑弹层：语言键固定行 + 上滑/下滑小节 */
+.ck-lang-lock { display: flex; align-items: center; gap: 10px;
+    background: var(--panel); border-radius: 10px; padding: 9px 12px;
+    font-size: 13.5px; color: var(--card-sub); }
+.ck-lang-lock .ck-lang-k { background: var(--pill); color: var(--card-text);
+    border-radius: 6px; min-width: 30px; height: 30px;
+    display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.ck-lang-sec { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.ck-lang-sec-t { display: flex; align-items: center; gap: 8px;
+    font-size: 13.5px; font-weight: 650; margin: 2px 0 4px; }
+.ck-lang-sec-cur { margin-left: auto; font-weight: 400; font-size: 12px;
+    color: var(--card-sub); max-width: 60%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+.ck-lang-sec-cur.set { color: var(--accent-text); font-weight: 600; }
+/* flex 列容器会吞掉 page-head 的块级宽度（shrink-to-fit 后整体右移，
+ * 与其他页左对齐不一致——用户实录）：显式拉满。 */
+.page[data-page="customkeys"] > .page-head,
+.page[data-page="cksymbol"] > .page-head,
+.page[data-page="cklang"] > .page-head,
+.page[data-page="ckt9strip"] > .page-head,
+.page[data-page="ckstrokestrip"] > .page-head,
+.page[data-page="ckinkstrip"] > .page-head { width: 100%; }
+.page[data-page="customkeys"] > main,
+.page[data-page="cksymbol"] > main,
+.page[data-page="cklang"] > main,
+.page[data-page="ckt9strip"] > main,
+.page[data-page="ckstrokestrip"] > main,
+.page[data-page="ckinkstrip"] > main {
+    flex: 1; min-height: 0; overflow-y: auto;
+    width: 100%; max-width: 680px; margin: 0 auto;
+    padding-bottom: 4px;
+}
+/* ===== #39-12 编辑 popup（bottom sheet）+ 保存条 + 统一控件 ===== */
+.ck-modal { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 60; }
+.ck-modal[hidden] { display: none; }
+.ck-modal-mask { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0, 0, 0, .45); }
+.ck-modal-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--card, #fff); color: inherit;
+    border-radius: 16px 16px 0 0; padding: 4px 16px 0;
+    /* #60：键盘弹起时 sheet 抬到键盘上方（fixed 布局不吃 body 的
+     *  --app-ime-bottom padding，要自己挪）。 */
+    bottom: var(--app-ime-bottom, 0px);
+    max-height: calc(84dvh - var(--app-ime-bottom, 0px));
+    /* 头固定、内容可滚（滚出渐隐让用户感知下方还有内容）、按钮吸底。 */
+    display: flex; flex-direction: column;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, .18);
+}
+.ck-modal-head { flex: none; display: flex; align-items: center; padding: 12px 0 8px;
+    font-weight: 650; font-size: 17px; }
+#ckEditBody { flex: 1; min-height: 0; overflow-y: auto;
+    padding: 2px 0 10px; overscroll-behavior: contain; }
+.ck-modal-x { margin-left: auto; border: 0; background: none; font-size: 22px; line-height: 1; padding: 4px 8px; color: inherit; cursor: pointer; }
+.ck-modal-foot { flex: none; display: flex; align-items: center; gap: 10px;
+    padding: 10px 0 calc(12px + max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px))); }
+.ck-modal-foot .btn { flex: 1; height: 50px; border-radius: 13px;
+    font-size: 16px; font-weight: 600; justify-content: center; }
+.ck-modal-foot .save-note { position: absolute; left: 16px; right: 16px;
+    bottom: calc(66px + max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px))); text-align: center; }
+#ckModal { overflow: visible; }
+.ck-btn-danger { color: var(--danger, #dc2626); border-color: color-mix(in srgb, var(--danger, #dc2626) 45%, transparent); background: transparent; }
+
+/* ===== #43 WebDAV 备份/恢复弹窗（复用 ck-modal 骨架）===== */
+#webdavBackupBody { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 0 10px;
+    overscroll-behavior: contain; }
+#webdavNameInput { margin-top: 6px; font-family: var(--mono); font-size: 13px; }
+#webdavDupWarn { margin: 8px 0 0; }
+#webdavRestoreBody { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 0 10px;
+    overscroll-behavior: contain; }
+.webdav-pick-list { list-style: none; margin: 2px 0 8px; padding: 0; }
+.webdav-pick-row {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 13px 4px; border-bottom: 1px solid var(--card-line);
+    font-size: 16px; cursor: pointer;
+}
+.webdav-pick-row:last-child { border-bottom: 0; }
+.webdav-pick-time { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.webdav-pick-size { flex: none; color: var(--card-sub);
+    font-size: 13px; font-variant-numeric: tabular-nums; }
+.webdav-pick-row[aria-selected="true"] { color: var(--accent-text); font-weight: 600; }
+.webdav-pick-row[aria-selected="true"] .webdav-pick-time::before { content: "✓ "; }
+.ck-save-bar {
+    flex: none; display: flex; flex-direction: column; gap: 7px;
+    padding: 10px 0 2px; margin-top: 8px;
+    border-top: 1px solid var(--border, #e5e5e5);
+    background: transparent;
+}
+.ck-save-bar #ckSave { width: 100%; height: 50px; border-radius: 13px;
+    font-size: 16px; font-weight: 600; }
+.ck-dirty-hint { color: var(--warning, #d97706); font-size: 13px; text-align: center; }
+#ckSave.ck-save-dirty {
+    background: linear-gradient(135deg, #3b82f6, #2563eb); border-color: transparent;
+    color: #fff; box-shadow: 0 4px 14px rgba(37, 99, 235, .45);
+    animation: ck-dirty-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ck-dirty-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.015); }
+}
+/* 统一表单行/按钮组/输入 */
+/* 行式属性行：短标签左、控件右占满余宽（一行一个属性） */
+.ck-row2 { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+.ck-row2-label { flex: none; width: 84px; font-size: 13px; color: var(--muted, #888); }
+.ck-row2-bare .ck-row2-ctl { width: 100%; }
+.ck-row2-ctl { flex: 1; min-width: 0; display: flex; }
+.ck-row2-ctl.ck-input { padding: 9px 10px; border: 1px solid var(--border, #ccc);
+    border-radius: 9px; background: var(--card, #fff); color: inherit; font-size: 15px; }
+/* select 与 input 同外观（复合选择器：control 本身就是 .ck-row2-ctl，
+ * 写成「.ck-row2-ctl select」会一个都匹配不上——select 退回浏览器默认
+ * 样式，用户实录）。appearance 去原生轮廓，右侧留箭头空间。 */
+select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
+    border: 1px solid var(--border, #ccc); border-radius: 9px;
+    background: var(--card, #fff); color: inherit; font-size: 15px;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; }
+/* 角标字段下面的附属选项行（「上滑直接输入角标内容」）：
+   根因是 ckField 给控件挂 .ck-row2-ctl（flex:1，本文件后定义同优先级
+   覆盖 .ck-check 的 flex），checkbox 被拉成全宽长条——真机观感即绿长条。
+   方案 A（codex 2026-11-15）：整行浅底选项行、18×18 方框靠左、整行可点
+   （ckField 本就生成 label，点文字/空白即切换），min-height 44px，
+   长文案不再挤 84px 标签列。控件尺寸用高优先级选择器钉死。 */
+.ck-row2.ck-hint-option {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-height: 44px;
+    margin: 4px 0 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel);
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.ck-hint-option > .ck-row2-label {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--card-text);
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+/* 显式覆盖 ckField 添加的伸展规则 */
+.ck-hint-option > .ck-check.ck-row2-ctl {
+    -webkit-appearance: none;
+    appearance: none;
+    order: -1;
+    display: block;
+    flex: 0 0 18px;
+    box-sizing: border-box;
+    width: 18px;
+    min-width: 18px;
+    max-width: 18px;
+    height: 18px;
+    margin: 0 10px 0 0;
+    padding: 0;
+    border: 1.5px solid var(--muted);
+    border-radius: 4px;
+    background: var(--pill);
+    position: relative;
+    cursor: pointer;
+    transition: none;
+}
+.ck-hint-option > .ck-check:checked {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+.ck-hint-option > .ck-check:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    box-sizing: content-box;
+    width: 5px;
+    height: 9px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.ck-hint-option:active {
+    background: var(--pressed);
+}
+.ck-hint-option:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+.ck-hint-option > .ck-check:focus {
+    outline: none;
+}
+.ck-mode-seg { margin: 4px 0 10px; }
+/* 「常用」起点区（新建 popup 顶部，点开展开） */
+.ck-common { margin: 2px 0 8px; }
+.ck-common-toggle { border: 1px dashed var(--border, #bbb); border-radius: 9px;
+    background: none; color: var(--accent-text, #2563eb); font-size: 14px;
+    padding: 7px 14px; cursor: pointer; }
+.ck-common-list { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border, #ddd); }
+.ck-seg { display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; }
+.ck-seg-btn {
+    border: 1px solid var(--border, #ccc); border-radius: 9px;
+    min-height: 34px; padding: 0 10px; background: var(--card, #fff); color: inherit;
+    font-size: 13.5px; cursor: pointer; flex: 1 1 0; min-width: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: border-color .12s, background .12s, color .12s;
+}
+.ck-seg-btn.selected { border-color: var(--accent, #3b82f6);
+    background: var(--accent, #3b82f6); color: var(--accent-ink, #fff); font-weight: 600; }
+.ck-seg-btn.ck-blue   { background: rgba(59, 130, 246, .32); border-color: rgba(59, 130, 246, .60); }
+.ck-seg-btn.ck-blue.selected   { background: rgba(59, 130, 246, .85); color: #fff; }
+.ck-seg-btn.ck-green.selected  { background: rgba(34, 197, 94, .85); color: #fff; }
+.ck-seg-btn.ck-orange.selected { background: rgba(249, 115, 22, .85); color: #fff; }
+.ck-seg-btn.ck-red.selected    { background: rgba(239, 68, 68, .85); color: #fff; }
+.ck-seg-btn.ck-purple.selected { background: rgba(168, 85, 247, .85); color: #fff; }
+.ck-seg-btn.ck-green  { background: rgba(34, 197, 94, .30); border-color: rgba(34, 197, 94, .55); }
+.ck-seg-btn.ck-orange { background: rgba(249, 115, 22, .32); border-color: rgba(249, 115, 22, .55); }
+.ck-seg-btn.ck-red    { background: rgba(239, 68, 68, .30); border-color: rgba(239, 68, 68, .55); }
+.ck-seg-btn.ck-purple { background: rgba(168, 85, 247, .30); border-color: rgba(168, 85, 247, .55); }
+
+.ck-leave-text { margin: 4px 0 8px; font-size: 15px; line-height: 1.6;
+    text-align: center; color: var(--muted, #888); }
+#ckLeaveModal .ck-modal-head { justify-content: center; }
+#ckLeaveModal .ck-modal-foot { padding-top: 10px; }
+#ckLeaveModal .ck-modal-foot .btn { height: 50px; }
+
+/* 长按可移动模式：提示条 + × 徽章 + 拖动态 */
+.ck-edit-bar { display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; margin-bottom: 8px; border-radius: 10px;
+    background: rgba(59, 130, 246, .10); border: 1px dashed rgba(59, 130, 246, .45);
+    font-size: 13px; color: var(--accent-text, #2563eb); }
+.ck-edit-bar #ckEditDone { margin-left: auto; min-height: 34px; padding: 0 16px;
+    border-radius: 9px; }
+.ck-x { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: #ef4444; color: #fff; font-size: 13px;
+    line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.ck-chip { position: relative; }
+.ck-chip.ck-dragging { opacity: .45; transform: scale(.94); }
+/* 跟手拖影（2026-10-04 用户验收"没跟手"）：克隆被拖键、固定定位跟
+ * 手指，不参与布局/命中；位移由 JS 写 transform（合成器属性），
+ * left/top 只在创建时定位一次。 */
+.ck-ghost {
+    position: fixed; z-index: 50; pointer-events: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 7px; font-size: 0.87em; font-weight: 550; white-space: nowrap;
+    background: var(--card, #fff); border: 1px solid var(--border, #ccc);
+    color: inherit; opacity: .95; will-change: transform;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .30);
+}
+/* 行头「＋」（2026-10-04 用户裁定：与对齐钮同行、靠右）。 */
+.ck-head-add { margin-left: auto; flex: none; height: 26px; min-width: 26px;
+    padding: 0 9px; border-radius: 7px; font-size: 0.8em; }
+
+/* 长按 chips 不触发文字选择/呼出菜单（用户实录）：交互元素禁选，
+ * JSON textarea/input 保持可选可输。 */
+.page[data-page="customkeys"],
+.page[data-page="cksymbol"],
+.page[data-page="cklang"] {
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+}
+.page[data-page="customkeys"] input,
+.page[data-page="customkeys"] textarea,
+.page[data-page="cksymbol"] input,
+.page[data-page="cksymbol"] textarea,
+.page[data-page="cklang"] input,
+.page[data-page="cklang"] textarea {
+    -webkit-user-select: text; user-select: text;
+}
+
+/* DSL 帮助（「高级」旁的 ?）：行内展开说明卡 */
+.ck-help-card { margin: 4px 0 10px; padding: 10px 12px; border-radius: 10px;
+    background: var(--bg, #f5f5f5); font-size: 13px; line-height: 1.7; }
+.ck-help-card code { background: rgba(127, 127, 127, .15); border-radius: 4px;
+    padding: 0 4px; font-size: 12px; }
+
+.ck-help { flex: none; width: 18px; height: 18px; border-radius: 50%;
+    border: 1px solid var(--border, #bbb); background: none;
+    color: var(--muted, #888); font-size: 12px; line-height: 1; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.ck-help-card[hidden] { display: none !important; }
+
+/* 颜色行：色圈需要呼吸感（逼仄实录） */
+.ck-row-color { min-height: 48px; }
+
+/* 自定义色调/饱和度滑块（外观页色调滑块同款形态：光谱渐变轨道）。 */
+.ck-hue { display: flex; align-items: center; gap: 12px; width: 100%; }
+.ck-hue-swatch { flex: none; width: 30px; height: 30px; border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, .15); }
+.ck-row-hue { min-height: 48px; }
+.ck-hue-range, .ck-sat-range {
+    flex: 1; min-width: 0; height: 22px; margin: 0;
+    -webkit-appearance: none; appearance: none;
+    border-radius: 11px; outline: none;
+}
+.ck-hue-range {
+    background: linear-gradient(90deg,
+        hsl(0,62%,48%), hsl(30,62%,48%), hsl(60,62%,48%), hsl(90,62%,48%),
+        hsl(120,62%,48%), hsl(150,62%,48%), hsl(180,62%,48%), hsl(210,62%,48%),
+        hsl(240,62%,48%), hsl(270,62%,48%), hsl(300,62%,48%), hsl(330,62%,48%),
+        hsl(360,62%,48%));
+}
+.ck-hue-range::-webkit-slider-thumb, .ck-sat-range::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: hsl(var(--thumb-hue, 210), 62%, 48%);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / .45);
+    cursor: pointer;
+}
+/* 饱和度轨道由 JS 按当前色相实时铺（灰 -> 纯色）。 */
+
+/* #7 已导入词库列表：radio 行（选择激活）+ 删除 */
+.dict-slots { display: flex; flex-direction: column; margin: 6px 0 10px; }
+.dict-slot { display: flex; align-items: center; gap: 10px; padding: 10px 6px; }
+.dict-slot + .dict-slot { border-top: 1px solid var(--border, #e7e7e7); }
+.dict-slot input[type="radio"] { flex: none; }
+.dict-slot .slot-label { flex: 1; min-width: 0; }
+.dict-slot .slot-label span { display: block; }
+.dict-slot .slot-label small { color: var(--muted, #888); }
+.dict-slot .slot-del { flex: none; border: 0; background: none; color: #dc2626;
+    font-size: 13px; padding: 6px 10px; cursor: pointer; }
+
+/* ===== #112 符号栏编辑页（2026-11-15 二轮：拖动排序） ===== */
+/* 拖柄：复用键盘选择页 ≡ 的视觉，触摸区扩到 44px（codex 方案：图形紧凑、
+ * 热区不妥协）；只对拖柄关 touch-action——列表保持原生纵向滚动。 */
+.ck-strip-handle {
+    min-width: 44px;
+    min-height: 44px;
+    touch-action: none;
+    cursor: grab;
+}
+.ck-strip-row {
+    touch-action: pan-y;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.ck-strip-row > * + * { margin-left: 8px; }
+/* 拖动中的原行=等高占位（内容隐藏+虚线框），浮动预览（ghost）跟随指针。 */
+.ck-strip-row.dragging {
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
+}
+.ck-strip-row.dragging > *:not(.ck-strip-handle) { visibility: hidden; }
+.ck-strip-ghost {
+    position: fixed;
+    z-index: 40;
+    pointer-events: none;
+    background: var(--pill, #3d3d3d);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+    padding: 8px 14px;
+    font-size: 20px;
+}
+.ck-strip-row .strip-glyph {
+    font-size: 20px;
+    min-width: 1.6em;
+}
