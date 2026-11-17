@@ -192,11 +192,11 @@ const I18N = {
         "guide.presets.title": "预设方案",
         "guide.presets.badge": "方案",
         "guide.preset.balanced": "均衡",
-        "guide.preset.balancedHint": "紧凑候选栏、全部小字符、液态玻璃，默认状态。",
+        "guide.preset.balancedHint": "无顶栏、候选占工具栏行、全部小字符、液态玻璃，默认状态。",
         "guide.preset.saver": "省电",
         "guide.preset.saverHint": "经典界面、省电模式、隐藏小字符，低内存设备更轻。",
         "guide.preset.full": "完整拼音行",
-        "guide.preset.fullHint": "保留单独的拼音行（原来样子），其他与均衡相同。",
+        "guide.preset.fullHint": "3.75 原样：顶栏输入框 + 单独拼音行，候选栏在工具栏上方；其他与均衡相同。",
         "guide.apply": "应用",
         "guide.presets.note": "预设只改显示与省电 5 项（候选栏方式、键帽小字符、字母上方数字、键盘界面版本、省电模式），不改其他设置。",
         "guide.howto.title": "使用指南",
@@ -215,6 +215,45 @@ const I18N = {
         "guide.howto.voiceHint": "按住语音键说话，松手出字；全程离线，不上传。",
         "guide.howto.backup": "备份",
         "guide.howto.backupHint": "设置页「备份与恢复」可导出 / 导入设置、常用语与词库。",
+        "wizard.title": "新手向导",
+        "wizard.stepOf": "第 {step} 步，共 {total} 步",
+        "wizard.skipAll": "跳过向导",
+        "wizard.close": "关闭",
+        "wizard.next": "下一步",
+        "wizard.skipStep": "跳过",
+        "wizard.finish": "完成，去设置",
+        "wizard.enable.title": "启用 FeelimD 输入法",
+        "wizard.enable.body": "去系统设置里勾选 FeelimD，回来后这里打勾才能继续。",
+        "wizard.enable.action": "去系统设置启用",
+        "wizard.enable.done": "已启用",
+        "wizard.enable.wait": "还没启用，点上面按钮去系统设置勾选。",
+        "wizard.default.title": "设为默认输入法",
+        "wizard.default.body": "点下面按钮调出系统输入法选择器，选 FeelimD。",
+        "wizard.default.action": "选择默认输入法",
+        "wizard.default.done": "已是默认输入法",
+        "wizard.default.wait": "还没设为默认，点上面按钮选 FeelimD。",
+        "wizard.layout.title": "候选栏长什么样",
+        "wizard.layout.slim": "紧凑（推荐）",
+        "wizard.layout.slimHint": "没有顶栏输入框；打字时候选直接占用工具栏那一行，候选前面没有拼音，省地方。",
+        "wizard.layout.full": "完整（3.75 原样）",
+        "wizard.layout.fullHint": "有顶栏输入框和单独的拼音行，候选栏在工具栏上方。",
+        "wizard.theme.title": "选个喜欢的颜色",
+        "wizard.theme.hint": "随时可以在「外观与皮肤」里再换。",
+        "wizard.theme.sakura": "樱粉",
+        "wizard.theme.ocean": "海蓝",
+        "wizard.theme.classic": "经典绿",
+        "wizard.power.title": "省电还是常规",
+        "wizard.power.regular": "常规（推荐）",
+        "wizard.power.regularHint": "磨砂和按键动画都开着，语音用双通道识别。",
+        "wizard.power.saver": "省电",
+        "wizard.power.saverHint": "磨砂和按键动画关闭，语音只用流式识别，模型空闲 1 分钟释放。",
+        "wizard.hints.title": "键帽小字符要不要",
+        "wizard.hints.on": "显示全部",
+        "wizard.hints.onHint": "字母上方的数字/符号、九宫格角落的符号与数字都显示。",
+        "wizard.hints.off": "只剩主字",
+        "wizard.hints.offHint": "全部小字符隐藏，键面更干净。",
+        "wizard.redo": "重新进行新手向导",
+        "wizard.redoHint": "一步一步重新走一遍启用与偏好设置。",
         "page.input": "键盘与输入",
         "page.dict": "词库",
         "dict.badge": "叠加",
@@ -973,9 +1012,9 @@ const I18N = {
         "input.feel.showKeyDigits": "字母上方显示数字",
         "input.feel.showKeyDigitsHint": "开 = 字母键上方显示数字 1-0；关 = 数字消失，只剩字母。默认开。",
         "input.feel.candidateBarMode": "候选栏显示方式",
-        "input.feel.candidateBarModeHint": "紧凑 = 打字时拼音显示在候选栏最前面，不另占一行；完整 = 保留单独的拼音行（原来样子）。默认紧凑。",
-        "input.feel.candidateBarModeSlim": "紧凑",
-        "input.feel.candidateBarModeFull": "完整",
+        "input.feel.candidateBarModeHint": "紧凑 = 没有顶栏输入框，打字时候选直接占用工具栏那一行，候选前面没有拼音；完整 = 3.75 原样，有顶栏输入框和单独的拼音行，候选栏在工具栏上方。默认紧凑。",
+        "input.feel.candidateBarModeSlim": "紧凑（无顶栏）",
+        "input.feel.candidateBarModeFull": "完整（顶栏 + 拼音行）",
         "input.feel.showKeyHints": "键帽小字符",
         "input.feel.showKeyHintsHint": "开 = 显示全部小字符（字母上方的数字/符号、九宫格角落的符号与数字）；关 = 只剩主字，键面更干净。默认开。",
         "input.feel.keyboardUiVersion": "键盘界面版本",
@@ -1159,11 +1198,11 @@ const I18N = {
         "guide.presets.title": "Presets",
         "guide.presets.badge": "Presets",
         "guide.preset.balanced": "Balanced",
-        "guide.preset.balancedHint": "Compact candidate bar, all small characters, liquid glass. The default.",
+        "guide.preset.balancedHint": "No top bar, candidates on the toolbar row, all small characters, liquid glass. The default.",
         "guide.preset.saver": "Power saving",
         "guide.preset.saverHint": "Classic UI, power-saving mode, small characters hidden. Lighter on low-memory devices.",
         "guide.preset.full": "Full pinyin row",
-        "guide.preset.fullHint": "Keep the separate pinyin row (the old look); otherwise the same as Balanced.",
+        "guide.preset.fullHint": "The 3.75 layout: top input box + separate pinyin row, candidate bar above the toolbar; otherwise the same as Balanced.",
         "guide.apply": "Apply",
         "guide.presets.note": "Presets only change 5 display and power-saving items (candidate bar style, small keycap characters, digits above letters, keyboard UI version, power-saving mode), nothing else.",
         "guide.howto.title": "How to use",
@@ -1182,6 +1221,45 @@ const I18N = {
         "guide.howto.voiceHint": "Hold the voice key to speak, release to commit text. Fully offline, nothing is uploaded.",
         "guide.howto.backup": "Backup",
         "guide.howto.backupHint": "Export / import settings, favorites and lexicons under Backup & restore in Settings.",
+        "wizard.title": "Setup wizard",
+        "wizard.stepOf": "Step {step} of {total}",
+        "wizard.skipAll": "Skip setup",
+        "wizard.close": "Close",
+        "wizard.next": "Next",
+        "wizard.skipStep": "Skip",
+        "wizard.finish": "Done — open settings",
+        "wizard.enable.title": "Enable the FeelimD keyboard",
+        "wizard.enable.body": "Turn on FeelimD in system settings; come back and the check appears here before you can continue.",
+        "wizard.enable.action": "Open system settings",
+        "wizard.enable.done": "Enabled",
+        "wizard.enable.wait": "Not enabled yet — tap the button above to turn it on in system settings.",
+        "wizard.default.title": "Set as the default keyboard",
+        "wizard.default.body": "Tap the button below to open the system keyboard picker and choose FeelimD.",
+        "wizard.default.action": "Choose default keyboard",
+        "wizard.default.done": "Already the default",
+        "wizard.default.wait": "Not the default yet — tap the button above and choose FeelimD.",
+        "wizard.layout.title": "How should the candidate bar look?",
+        "wizard.layout.slim": "Compact (recommended)",
+        "wizard.layout.slimHint": "No top input box; while typing, candidates take over the toolbar row with no pinyin in front. Saves space.",
+        "wizard.layout.full": "Full (the 3.75 layout)",
+        "wizard.layout.fullHint": "Top input box plus a separate pinyin row, with the candidate bar above the toolbar.",
+        "wizard.theme.title": "Pick a colour",
+        "wizard.theme.hint": "You can change this anytime under Appearance & skins.",
+        "wizard.theme.sakura": "Sakura pink",
+        "wizard.theme.ocean": "Ocean blue",
+        "wizard.theme.classic": "Classic green",
+        "wizard.power.title": "Power saving or regular?",
+        "wizard.power.regular": "Regular (recommended)",
+        "wizard.power.regularHint": "Glass blur and key animations on; speech uses both recognition passes.",
+        "wizard.power.saver": "Power saving",
+        "wizard.power.saverHint": "Glass blur and key animations off; streaming-only speech; models unload after 1 idle minute.",
+        "wizard.hints.title": "Small characters on the keys?",
+        "wizard.hints.on": "Show them all",
+        "wizard.hints.onHint": "Digits and symbols above letters, and the small marks in the corners of the 9-key layout.",
+        "wizard.hints.off": "Main character only",
+        "wizard.hints.offHint": "All small characters hidden; cleaner keys.",
+        "wizard.redo": "Run the setup wizard again",
+        "wizard.redoHint": "Walk through enabling and preferences step by step again.",
         "page.input": "Keyboard & input",
         "page.dict": "Lexicon",
         "dict.badge": "Overlay",
@@ -1930,9 +2008,9 @@ const I18N = {
         "input.feel.showKeyDigits": "Show digits above letters",
         "input.feel.showKeyDigitsHint": "On = digits 1-0 show above the letter keys; off = digits hidden, letters only. On by default.",
         "input.feel.candidateBarMode": "Candidate bar style",
-        "input.feel.candidateBarModeHint": "Compact = typed pinyin shows at the front of the candidate bar, no separate pinyin row; Full = keep the separate pinyin row (the old look). Compact by default.",
-        "input.feel.candidateBarModeSlim": "Compact",
-        "input.feel.candidateBarModeFull": "Full",
+        "input.feel.candidateBarModeHint": "Compact = no top input box; while typing, candidates take over the toolbar row with no pinyin in front. Full = the 3.75 layout: a top input box, a separate pinyin row, and the candidate bar above the toolbar. Compact by default.",
+        "input.feel.candidateBarModeSlim": "Compact (no top bar)",
+        "input.feel.candidateBarModeFull": "Full (top bar + pinyin row)",
         "input.feel.showKeyHints": "Small keycap characters",
         "input.feel.showKeyHintsHint": "On = show all small characters (digits/symbols above letters, corner symbols and digits on T9 keys); off = main glyphs only, cleaner keys. On by default.",
         "input.feel.keyboardUiVersion": "Keyboard interface version",
@@ -2734,6 +2812,9 @@ function render(state) {
     renderUpdate(state);
     renderAbout(state);
     renderGuide(state);
+    // 向导开着时每轮 state 回推都重算门闸；没开时首次 state 决定是否自动弹。
+    if (wizardActive) renderWizard();
+    else maybeOpenWizard(state);
 }
 
 /** 使用指南与预设（3.76）：本机推荐只读 state 的 recommendedPreset；
@@ -2745,6 +2826,121 @@ function renderGuide(state) {
     guideRecommended = rec;
     const label = $('guideRecommended');
     if (label) label.textContent = t('guide.preset.' + rec);
+}
+
+/* --- 新手向导（3.76 原地更新）-------------------------------------------
+ * 首次打开设置自动弹出（native wizardDone === false 才弹；字段缺失 =
+ * 旧桥，不弹，避免老版本 state 误触）。当前步只放 JS 内存，不进
+ * localStorage。第 1/2 步是系统门闸：跳转走无 token 的导航桥方法，
+ * 返回后靠 onResume 的 state 回推 + visibilitychange 时 wizardStatus()
+ * 实测重查，成了才打勾、才能下一步。选择步点选项即调既有 setter 写
+ * 原生 pref 立即生效；「跳过」不写。完成/跳过向导写 wizardDone；仅
+ * ✕ 关闭不写，下次打开设置仍会弹出。 */
+const WIZARD_TOTAL_STEPS = 6;
+let wizardStep = 0;
+let wizardActive = false;
+let wizardShownThisLoad = false;
+
+function wizardIme(state) {
+    const ime = (state && state.ime) || (lastState && lastState.ime) || {};
+    return { enabled: ime.enabled === true, isDefault: ime.isDefault === true };
+}
+
+/** wizardStatus() 同步实测重查（桥不存在/解析失败 = null，用 lastState 兜底）。 */
+function wizardStatusNow() {
+    try {
+        if (typeof BRIDGE.wizardStatus !== "function") return null;
+        const raw = BRIDGE.wizardStatus(token);
+        return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function refreshWizardStatus() {
+    const now = wizardStatusNow();
+    if (!now) return;
+    if (lastState) {
+        lastState.ime = { enabled: now.enabled === true, isDefault: now.isDefault === true };
+        if (typeof now.done === "boolean") lastState.wizardDone = now.done;
+    }
+    if (wizardActive) renderWizard();
+}
+
+function openWizard() {
+    wizardActive = true;
+    wizardStep = 0;
+    wizardShownThisLoad = true;
+    const overlay = $("wizardOverlay");
+    if (overlay) overlay.hidden = false;
+    refreshWizardStatus();
+    renderWizard();
+}
+
+function closeWizard(finish) {
+    if (finish) call("setWizardDone");
+    wizardActive = false;
+    const overlay = $("wizardOverlay");
+    if (overlay) overlay.hidden = true;
+    showPage("home");
+}
+
+function maybeOpenWizard(state) {
+    // 严格 === false 才自动弹：字段缺失（旧桥/state 未到）不弹。
+    if (state && state.wizardDone === false && !wizardShownThisLoad && !wizardActive) openWizard();
+}
+
+function wizardNextEnabled() {
+    const ime = wizardIme(lastState);
+    if (wizardStep === 0) return ime.enabled;
+    if (wizardStep === 1) return ime.isDefault;
+    return true;
+}
+
+function renderWizard() {
+    const overlay = $("wizardOverlay");
+    if (!overlay || !wizardActive) return;
+    const ime = wizardIme(lastState);
+    const stepLabel = $("wizardStepLabel");
+    if (stepLabel) stepLabel.textContent = t("wizard.stepOf", { step: wizardStep + 1, total: WIZARD_TOTAL_STEPS });
+    overlay.querySelectorAll("[data-wizard-step]").forEach(section => {
+        section.hidden = Number(section.dataset.wizardStep) !== wizardStep;
+    });
+    overlay.querySelectorAll(".wizard-dot").forEach((dot, index) => {
+        dot.classList.toggle("done", index < wizardStep);
+        dot.classList.toggle("current", index === wizardStep);
+    });
+    // 门闸步：状态灯是实测值，不是静态提示。
+    const enableState = $("wizardEnableState");
+    if (enableState) {
+        enableState.textContent = ime.enabled ? t("wizard.enable.done") : t("wizard.enable.wait");
+        enableState.classList.toggle("ok", ime.enabled);
+    }
+    const defaultState = $("wizardDefaultState");
+    if (defaultState) {
+        defaultState.textContent = ime.isDefault ? t("wizard.default.done") : t("wizard.default.wait");
+        defaultState.classList.toggle("ok", ime.isDefault);
+    }
+    const next = $("wizardNext");
+    if (next) {
+        next.disabled = !wizardNextEnabled();
+        next.textContent = wizardStep >= WIZARD_TOTAL_STEPS - 1 ? t("wizard.finish") : t("wizard.next");
+    }
+    // 门闸步没有按步跳过（成了才能下一步），只有整向导跳过。
+    const skipStep = $("wizardSkipStep");
+    if (skipStep) skipStep.hidden = wizardStep <= 1;
+    // 选择步：按当前原生 pref 回显已选（state 回推即刷新）。
+    const markChoice = (group, value) => {
+        overlay.querySelectorAll(`[data-wizard-choice="${group}"]`).forEach(button => {
+            button.classList.toggle("selected", button.dataset.wizardValue === value);
+        });
+    };
+    if (lastState) {
+        markChoice("layout", lastState.candidateBarMode === "full" ? "full" : "slim");
+        markChoice("theme", lastState.themePreset || "sakura");
+        markChoice("power", lastState.powerSaving === true ? "saver" : "regular");
+        markChoice("hints", lastState.showKeyHints === false ? "off" : "on");
+    }
 }
 
 /** #39 横屏三级页：安全区开关 + 高度上限/不透明度滑杆（滑杆拖动
@@ -4652,6 +4848,40 @@ function setToggleSafe(id, value) {
 
 $("btnEnableIme").addEventListener("click", () => call("enableIme"));
 $("btnPickIme").addEventListener("click", () => call("pickIme"));
+
+/* 新手向导接线：导航类桥方法无 token，直接调（call() 会追加 token，
+ * 不能走它）；选择步点选项即调既有 setter 写原生 pref，跳过不写。 */
+$("wizardEnableGo").addEventListener("click", () => {
+    try { if (typeof BRIDGE.openImeSettings === "function") BRIDGE.openImeSettings(); } catch (error) {}
+});
+$("wizardDefaultGo").addEventListener("click", () => {
+    try { if (typeof BRIDGE.showImePicker === "function") BRIDGE.showImePicker(); } catch (error) {}
+});
+$("wizardNext").addEventListener("click", () => {
+    if (!wizardNextEnabled()) { refreshWizardStatus(); return; }
+    if (wizardStep >= WIZARD_TOTAL_STEPS - 1) { closeWizard(true); return; }
+    wizardStep += 1;
+    renderWizard();
+});
+$("wizardSkipStep").addEventListener("click", () => {
+    if (wizardStep >= WIZARD_TOTAL_STEPS - 1) { closeWizard(true); return; }
+    wizardStep += 1;
+    renderWizard();
+});
+$("wizardSkipAll").addEventListener("click", () => closeWizard(true));
+$("wizardClose").addEventListener("click", () => closeWizard(false));
+$("btnRedoWizard").addEventListener("click", () => openWizard());
+document.querySelectorAll("[data-wizard-choice]").forEach(button => {
+    button.addEventListener("click", () => {
+        const group = button.dataset.wizardChoice;
+        const value = button.dataset.wizardValue;
+        if (group === "layout") call("setCandidateBarMode", value);
+        else if (group === "theme") call("setThemePreset", value);
+        else if (group === "power") call("setPowerSaving", value === "saver");
+        else if (group === "hints") call("setShowKeyHints", value === "on");
+        renderWizard();
+    });
+});
 $("btnAddShortcut").addEventListener("click", () => call("addImeShortcut"));
 $("btnAddTile").addEventListener("click", () => call("addImeTile"));
 $("btnMic").addEventListener("click", () => call("requestMic"));
@@ -7546,6 +7776,11 @@ function resyncImeFocusReport() {
     Native.imeInputFocused(imeEditableTarget(document.activeElement), token);
 }
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") resyncImeFocusReport();
+    if (document.visibilityState === "visible") {
+        resyncImeFocusReport();
+        // 从系统设置/选择器回来：state 回推之外再实测查一次门闸，
+        // 回推慢到时向导也不卡在旧状态上。
+        if (wizardActive) refreshWizardStatus();
+    }
 });
 window.addEventListener("pageshow", resyncImeFocusReport);

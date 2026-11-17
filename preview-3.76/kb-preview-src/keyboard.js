@@ -3737,6 +3737,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const hideBtn = document.getElementById('hide');
                 if (hideBtn) hideBtn.hidden = active;
             }
+            // 3.76 原地更新：手写候选态变化后重算接管。
+            this.updateStripTakeover();
             return active;
         }
 
@@ -4001,6 +4003,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const clear = document.getElementById('composeClear');
             if (clear) clear.hidden = !active;
             this.enforceToolbarExclusion();
+            // 3.76 原地更新：让位变化后重算接管（联想/T9/手写共用入口）。
+            this.updateStripTakeover();
         }
 
         /** 工具栏场景互斥不变量（用户 2026-11-13 裁定「几种场景严格
@@ -4073,6 +4077,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 button.addEventListener('mousedown', event => event.preventDefault());
                 bar.append(button);
             });
+            // 3.76 原地更新：符号行进条后重算接管。
+            this.updateStripTakeover();
         }
 
         cnEnKey() {
@@ -7767,6 +7773,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.hwBandFormMode();
             if (document.body.classList.contains('hwkb') === active) return;
             document.body.classList.toggle('hwkb', active);
+            // 3.76 原地更新：硬键盘形态切换时收起键归属与候选条接管同变。
+            this.placeHideButton();
+            this.updateStripTakeover();
             this.applyHeight();
             this.hwNotifyPanelHeight();
             this.updateHwModeTag();
@@ -7872,7 +7881,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         layoutChrome() {
             // 3.76 紧凑候选栏：拼音带整行撤掉，chrome 少 18px（竖屏
             // 136→118，横屏 118→100）；拼音字号档的 bandExtra 同样归零。
-            if (this.candidateBarMode === 'slim') return this.landscape ? 100 : 118;
+            // 3.76 原地更新（2026-11-18）：紧凑模式候选栏与工具箱行
+            // 合并成同一槽位（候选栏负 margin 叠在工具箱行之下），空闲
+            // 与打字时都只占一行，chrome 再少一整行（竖屏 118→70，
+            // 横屏 100→58；横屏少 42px——候选栏 38px + 叠层吞掉的 4px）。
+            if (this.candidateBarMode === 'slim') return this.landscape ? 58 : 70;
             const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
             /* 竖屏行距 5→7px，三道缝多 6px，从内容预算里扣掉，避免末行被挤出。 */
             // 3.74.10：候选栏与工具箱行统一 40px（竖屏）/ 34px（横屏），
@@ -7890,6 +7903,48 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         applyCandidateBarMode() {
             document.body.dataset.candidateMode = this.candidateBarMode;
             this.renderPreeditLine();
+            this.placeHideButton();
+            this.updateStripTakeover();
+        }
+
+        /** 收起键归属（3.76 原地更新）：紧凑模式下候选栏平时不可见，
+         * #hide 必须跟工具一起待在工具箱行里（空闲时才能收键盘）；
+         * 完整模式 / 硬键盘形态下它回候选栏原位（settingsPageBar 之前）。
+         * 节点搬移不丢监听（click 绑在节点上）；幂等——位置对了直接返回。
+         * applyToolbarLayout 末尾也会调它（右组重排会把行末的它顶到中间）。 */
+        placeHideButton() {
+            const hide = document.getElementById('hide');
+            const bar = document.getElementById('candidateBar');
+            const tools = document.getElementById('toolboxRow');
+            if (!hide || !bar || !tools) return;
+            const inToolbox = this.candidateBarMode === 'slim' &&
+                !document.body.classList.contains('hwkb');
+            if (inToolbox) {
+                if (tools.lastChild !== hide) tools.appendChild(hide);
+            } else {
+                const anchor = document.getElementById('settingsPageBar');
+                if (hide.nextSibling !== anchor) bar.insertBefore(hide, anchor);
+            }
+        }
+
+        /** 候选条接管工具栏行（3.76 原地更新）：紧凑模式下候选栏与
+         * 工具箱行是同一槽位的叠层（CSS 负 margin），本函数只翻
+         * body.strip-on 一个开关——行本身不动，淡入淡出 + 轻微滑动
+         * 全走 CSS 过渡（约 200ms ease）。接管条件：有候选内容
+         * （引擎池 / 联想词 / 手写识别 / T9 符号行，读 #candidates
+         * 的实际子节点数，不猜状态）；语音录音中不接管（mic 是 stop
+         * 入口，必须留在工具栏行）；硬键盘 / 设置页 / 统计页下不接管
+         * （CSS :not() 同时守住）。幂等、无内容变化时零成本。 */
+        updateStripTakeover() {
+            const bar = document.getElementById('candidates');
+            const recording = ['listening', 'loading', 'stopping'].includes(this.voiceState);
+            const blocked = document.body.classList.contains('hwkb') ||
+                document.body.classList.contains('settings-page') ||
+                document.body.classList.contains('stats-page');
+            const takeOver = this.candidateBarMode === 'slim' && !blocked && !recording &&
+                !!bar && bar.children.length > 0;
+            if (document.body.classList.contains('strip-on') === takeOver) return;
+            document.body.classList.toggle('strip-on', takeOver);
         }
 
         /** Read the native view's total height back as content height. The
@@ -8548,6 +8603,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             this.pruneOverflowTools();
             this.renderToolbarEditor();
+            // 3.76 原地更新：右组重排会把行末的收起键顶到中间，这里归位。
+            this.placeHideButton();
         }
 
         /** 工具栏对账（兜底，每次编辑操作 / 键盘弹起后跑）：不变式是
@@ -11600,6 +11657,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     bar.append(button);
                 });
                 bar.scrollLeft = held;
+                // 3.76 原地更新：联想词进条后重算接管。
+                this.updateStripTakeover();
                 return;
             }
             // The bar renders the WHOLE accumulated pool (same pool
@@ -11648,6 +11707,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // pulling pages until the strip overflows (endless drag ready).
             if (!this.expanded) this.maybeLoadMoreCandidates();
             this.schedulePinyinAlign();
+            // 3.76 原地更新：候选重画后重算接管（上屏/清空后恢复工具栏）。
+            this.updateStripTakeover();
         }
 
         /** 全拼切成音节。已是完整音节的取最长，切不开的字母单独留下。 */
@@ -11765,11 +11826,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
         }
 
-        /** 拼音行渲染（3.76）：紧凑模式拼音进候选栏首位 chip、拼音行留空；
-         * 完整模式拼音写回拼音行（.preedit-raw + 中置光标 + 音节对齐）。
-         * 只动拼音行与 chip，不碰工具栏/面板/控制视图——切模式的 hello
-         * 重推也调它，updateComposing 的其余副作用（关设置面板、挂起
-         * 控制视图等）不能在切模式时跑。 */
+        /** 拼音行渲染（3.76 原地更新）：紧凑模式拼音不进键盘——拼音已
+         * 由 composing 文本显示在宿主输入框里，键盘只留候选文字，
+         * 拼音行留空；完整模式拼音写回拼音行（.preedit-raw + 中置光标
+         * + 音节对齐）。只动拼音行，不碰工具栏/面板/控制视图——切模式
+         * 的 hello 重推也调它，updateComposing 的其余副作用（关设置
+         * 面板、挂起控制视图等）不能在切模式时跑。 */
         renderPreeditLine() {
             const preedit = document.getElementById('preeditLine');
             const reading = this.composing
@@ -11777,16 +11839,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     ? (this.t9Reading() || this.t9PreeditLabel(this.lastRawInput))
                     : this.lastRawInput)
                 : '';
-            // 3.76 紧凑候选栏：拼音不进单独的拼音行，改放候选栏首位的
-            // #candidateReading（主流输入法做法：拼音与候选同行）；拼音
-            // 行留空，音节对齐与中置光标竖线在紧凑模式下都不渲染（文字
-            // 已进宿主输入框，系统光标即位置指示）。
-            const readingChip = document.getElementById('candidateReading');
-            if (readingChip) {
-                const showReading = this.candidateBarMode === 'slim' && !!reading;
-                readingChip.textContent = showReading ? reading : '';
-                readingChip.hidden = !showReading;
-            }
+            // 3.76 原地更新（2026-11-18）：紧凑模式候选条里不再放拼音
+            // 前缀——拼音已由 composing 文本显示在宿主输入框里（如 QQ
+            // 发消息框），键盘只留候选文字。#candidateReading 已随
+            // 本次更新删掉；拼音行在紧凑模式下留空，音节对齐与中置
+            // 光标竖线也不渲染（系统光标即位置指示）。
             preedit.replaceChildren();
             if (this.candidateBarMode === 'slim') {
                 // 拼音行留空；renderCandidates 末尾的 schedulePinyinAlign
@@ -11983,6 +12040,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.updateEnterLabel();
             // T9 左列跟随组合状态：空闲=常用字符，组合中=音节候选。
             this.renderT9Side();
+            // 3.76 原地更新：组合态变化后重算接管（上屏/取消后恢复工具栏）。
+            this.updateStripTakeover();
         }
 
         /* ===== clipboard / favorites panel ===== */
@@ -12144,6 +12203,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // audit 而非裸 apply：组合中收起面板时 prune 不认
             // composing，会把 updateComposing 刚藏掉的工具又点亮。
             this.auditToolbarTools();
+            // 3.76 原地更新：面板收起后按当前候选重算接管。
+            this.updateStripTakeover();
             this.showKeyLayer(this.panelReturnLayer || 'letters');
             // The panel only borrowed the bar from the ctrl
             // view - hand the rows back if the switch is still on.

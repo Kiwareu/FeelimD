@@ -1556,3 +1556,41 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
     font-size: 20px;
     min-width: 1.6em;
 }
+
+/* ===== 新手向导（3.76 原地更新）=====
+ * 底部浮层卡片，复用 ck-modal 骨架口径。注意 css_lint 的教训：
+ * display:flex 会压过 UA 的 [hidden]，带 display 的元素必须自带
+ * [hidden] { display: none } 兜底（overlay / 步骤 / 底部按钮三处）。 */
+#wizardOverlay { position: fixed; inset: 0; z-index: 70; display: flex;
+    align-items: flex-end; justify-content: center; background: rgba(0, 0, 0, .45); }
+#wizardOverlay[hidden] { display: none; }
+.wizard-card { width: 100%; max-width: 680px; max-height: 88dvh; overflow-y: auto;
+    background: var(--card, #fff); color: inherit; border-radius: 16px 16px 0 0;
+    padding: 16px 16px calc(16px + max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, .18); }
+.wizard-head { display: flex; align-items: center; }
+.wizard-title { font-size: 18px; font-weight: 700; }
+.wizard-x { margin-left: auto; border: 0; background: none; font-size: 22px;
+    line-height: 1; padding: 4px 8px; color: inherit; cursor: pointer; }
+.wizard-progress { margin: 6px 0 0; color: var(--card-sub); font-size: 13px; }
+.wizard-dots { display: flex; gap: 6px; margin: 10px 0 4px; }
+.wizard-dot { width: 22px; height: 6px; border-radius: 3px; background: var(--pill); }
+.wizard-dot.done { background: var(--accent); }
+.wizard-dot.current { background: var(--accent-text); }
+.wizard-step[hidden] { display: none; }
+.wizard-step h3 { margin: 12px 0 6px; font-size: 17px; }
+.wizard-step p { margin: 0 0 12px; color: var(--card-sub); font-size: 14px; line-height: 1.5; }
+.wizard-action { width: 100%; justify-content: center; }
+.wizard-state { margin: 10px 0 0; font-size: 14px; }
+.wizard-state.ok { color: var(--accent-text); font-weight: 600; }
+.wizard-opt { display: block; width: 100%; text-align: left; margin: 0 0 10px;
+    padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+    background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.wizard-opt span { display: block; font-size: 16px; font-weight: 600; }
+.wizard-opt small { display: block; margin-top: 4px; color: var(--card-sub);
+    font-size: 13px; line-height: 1.45; }
+.wizard-opt.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.wizard-foot { display: flex; gap: 10px; margin-top: 8px; }
+.wizard-foot .btn { flex: 1; height: 50px; border-radius: 13px;
+    font-size: 16px; font-weight: 600; justify-content: center; }
+.wizard-foot .btn[hidden] { display: none; }
