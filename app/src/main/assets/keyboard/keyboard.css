@@ -428,6 +428,21 @@ body.landscape #symCatBar { margin-top: 3px; gap: 4px; }
     pointer-events: none;
 }
 body.composing #preeditLine { display: block; }
+/* 3.76 紧凑候选栏：拼音行在紧凑模式下不显示（拼音在候选栏首位 chip）。 */
+body[data-candidate-mode="slim"].composing #preeditLine { display: none; }
+/* 3.76 紧凑候选栏首位拼音 chip：只读文本，不进候选池；完整模式留空隐藏。 */
+.candidate-reading {
+    flex: none;
+    align-self: center;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 2px 0 8px;
+    font-size: calc(15px * var(--cand-font-scale, 1));
+    color: var(--text);
+}
+.candidate-reading[hidden] { display: none; }
 /* 默认不给拼音套一层跟着字数收缩的框。打开「拼音外框」才恢复胶囊。 */
 body.preedit-frame.composing #preeditLine {
     left: 8px;
@@ -752,8 +767,14 @@ body.power-saving:not([data-bg-image="on"]) #glassField {
 }
 /* 拼音加粗（issue #8）：设置开关，默认关。 */
 body[data-preedit-bold="1"] #preeditLine { font-weight: 600; }
+/* 3.76 紧凑候选栏是默认：拼音带高度默认 0（拼音进候选栏首位 chip）；
+ * 完整模式才恢复拼音行（18px）；拼音字号档 22/25px 由后方规则覆盖。 */
+body { --preedit-band: 0px; }
+body[data-candidate-mode="full"] { --preedit-band: 18px; }
 body[data-preedit-font="large"] { --preedit-font-scale: 1.2; --preedit-band: 22px; }
 body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 25px; }
+/* 紧凑模式压过拼音字号档：带高恒 0（与上方两条同权、后出者胜）。 */
+body[data-candidate-mode="slim"] { --preedit-band: 0px; }
 
 /* ===== Candidate / tool bar ===== */
 #candidateBar,
@@ -1655,8 +1676,9 @@ body.landscape .edit-grid { gap: 4px 5px; }
 /* flex:none 压住 .kb-key 的默认 flex:1——否则符号键与滚动条平分列高。
  * 高度 = 最后一行（r4）整行高，底边与 123/mic/中英/换行对齐。 */
 .t9-sym-btn { flex: none; height: var(--kb-row-h, 44px); }
-/* 字母组键：主字形=字母组，右上角标=数字（与空格的 0 角标同款）。 */
-.t9-key { position: relative; }
+/* 字母组键：主字形=字母组，右上角标=数字（与空格的 0 角标同款）。
+ * 3.76：键面防溢出——小键上字符再多也不顶出键外。 */
+.t9-key { position: relative; overflow: hidden; }
 .t9-sup {
     position: absolute;
     top: 2px;
@@ -1666,15 +1688,25 @@ body.landscape .edit-grid { gap: 4px 5px; }
 }
 /* 字母组主字形不加重——kb-key 的 550 在大号字母组上显得过粗（用户反馈） */
 .t9-group { font-size: min(calc(var(--kb-t9-base) * var(--keycap-font-scale, 1)), max(var(--kb-t9-base), calc(var(--kb-row-h, 44px) - 16px))); font-weight: 400; }
-/* 长按符号角标：左上角小字（issue #9；右上角留给数字角标）。 */
+/* 长按符号角标：左上角小字（issue #9；右上角留给数字角标）。
+ * 3.76：窄键上角标不再与数字角标相撞，超长截断。 */
 .t9-hint {
     position: absolute;
     top: 2px;
     left: 5px;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 10px;
     color: var(--key-ink, var(--key-subtext));
     letter-spacing: 1px;
 }
+/* 3.76 键帽小字符总开关：关 = 全部小字符隐藏。JS 门控之外，硬编码
+ * 的 1/7 号 @#. 键角标与笔画键小字也由这里兜底。 */
+body[data-key-hints="off"] .kb-alt,
+body[data-key-hints="off"] .t9-hint,
+body[data-key-hints="off"] .t9-sup { display: none; }
 /* 底行：123 与中英各 2/3 键宽，省出的空间全给 mic/空格（5/3 键宽）。 */
 .t9-r4 { display: flex; gap: 5px; min-width: 0; }
 .t9-r4 .kb-key { flex: 3; min-width: 0; }

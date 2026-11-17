@@ -109,7 +109,10 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 - 竖屏内容预算：候选条 + 工具箱行（竖屏 40px / 横屏 34px）+ 4 行键 + 行距
   + 底部边距；内容高下限 268px（`layoutChrome` 竖屏 136px + 128px 键区
   下限，3.74.10 起两行 chrome 收敛：竖屏 48+48+18+22=136，横屏
-  56+42+20=118，另加 preedit 字号增量 4/8/11px）。`heightDefault` 由原
+  56+42+20=118，另加 preedit 字号增量 4/8/11px）。**3.76 起分两档**：
+  完整模式（`candidateBarMode=full`）沿用上述预算；紧凑模式（默认，
+  `candidateBarMode=slim`）拼音带高度归零，`layoutChrome` 竖屏 118px /
+  横屏 100px，且不受 preedit 字号档影响。`heightDefault` 由原
   生下发，见 §14。preedit 行 absolute 覆盖顶部留白，**不占独立高度**——
   组合态与空闲态键盘总高相同，避免抖动。
 - 行高随键盘总高自动缩放（`applyHeight`），字号取 `min(原字号, 键高×系数)`，
@@ -134,6 +137,11 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 - preedit（拼音/罗马字原串）显示在 `#preeditLine`，**不写入宿主编辑器**（§5.2）。
   全拼/双拼/九宫格把音节逐个放到首个候选汉字的正上方，不再整串贴在最左边。
   默认没有随字数收缩的外框；皮肤页「拼音外框」打开后才恢复那层胶囊。
+  **3.76 紧凑模式**：拼音不进 `#preeditLine`，改放候选栏首位的只读
+  `#candidateReading` chip（不进候选池），拼音行留空隐藏；音节对齐与中置
+  光标竖线在紧凑模式下不渲染（文字已进宿主输入框，系统光标即位置指示）。
+  完整模式沿用拼音行。切模式只重画拼音行（`renderPreeditLine`），不走
+  `updateComposing` 的其余副作用（不关设置面板、不挂起控制视图）。
 - 组合态隐藏与输入无关的工具按钮；**麦克风在录音中不隐藏**（长按空格可以在
   组合中进入语音，必须保留停止入口）；候选条保留（点选/横滑）。
 - 首候选绿字 + pill（`--pill`，圆角 8px）；enter 键文案组合态「确定」、

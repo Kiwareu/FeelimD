@@ -396,7 +396,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.75';
+    const KEYBOARD_VERSION = '3.76';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1836,6 +1836,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.showKeyDigits = true;
             this.emojiIconAlt = false;
             this.keyboardUiVersion = 'glass';
+            // 3.76：候选栏显示方式（默认 slim=紧凑：拼音进候选栏首位，
+            // 不另占拼音行）、键帽小字符总开关（默认开）。
+            this.candidateBarMode = 'slim';
+            this.showKeyHints = true;
             // #55 悬浮键盘几何（css px，画布坐标=WebView 视口）：
             // spike 首版内存态（方向无关），进悬浮时按视口给安全初值。
             this.floating = false;
@@ -3082,12 +3086,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.className = 'kb-key t9-key';
             button.dataset.key = digit;
             button.dataset.lp = 'popup';
-            const hint = document.createElement('span');
-            hint.className = 't9-hint';
-            hint.textContent = (def.syms || []).join('');
-            const sup = document.createElement('span');
-            sup.className = 't9-sup';
-            sup.textContent = digit;
             const group = document.createElement('span');
             group.className = 't9-group';
             // CJK 多字主字（如「分词」）：标类给 CSS 做宽度自适应——悬浮
@@ -3098,7 +3096,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // t() 过一遍让「分词」跟界面语言走（其余部件字形无翻译条目，
             // 原样返回）；模块级表不能预求值，locale 切换后重渲染即更新。
             group.textContent = t(def.main);
-            button.append(hint, sup, group);
+            // 3.76 键帽小字符总开关：关 = 左上符号与右上数字都不画（与
+            // t9LetterKey 同款；1/7 号 @#. 键的硬编码角标由 CSS 兜底藏）。
+            if (this.showKeyHints !== false) {
+                const hint = document.createElement('span');
+                hint.className = 't9-hint';
+                hint.textContent = (def.syms || []).join('');
+                const sup = document.createElement('span');
+                sup.className = 't9-sup';
+                sup.textContent = digit;
+                button.append(hint, sup, group);
+            } else {
+                button.append(group);
+            }
             button.addEventListener('click', () => this.strokeActivate(digit));
             this.bindTouch(button);
             return button;
@@ -3780,16 +3790,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.className = 'kb-key t9-key';
             button.dataset.key = digit;
             button.dataset.lp = 'popup';
-            const hint = document.createElement('span');
-            hint.className = 't9-hint';
-            hint.textContent = (LAYOUTS.t9.keySymbols[digit] || []).join('');
-            const sup = document.createElement('span');
-            sup.className = 't9-sup';
-            sup.textContent = digit;
             const group = document.createElement('span');
             group.className = 't9-group';
             group.textContent = (LAYOUTS.t9.alts[digit] || '').toUpperCase();
-            button.append(hint, sup, group);
+            // 3.76 键帽小字符总开关：关 = 左上角符号与右上角数字都不画，
+            // 只剩字母组主字；九宫格长按弹层里的符号/数字不受影响。
+            if (this.showKeyHints !== false) {
+                const hint = document.createElement('span');
+                hint.className = 't9-hint';
+                hint.textContent = (LAYOUTS.t9.keySymbols[digit] || []).join('');
+                const sup = document.createElement('span');
+                sup.className = 't9-sup';
+                sup.textContent = digit;
+                button.append(hint, sup, group);
+            } else {
+                button.append(group);
+            }
             button.addEventListener('click', () =>
                 this.call(() => Native.key(digit, this.token)));
             this.bindTouch(button);
@@ -5547,6 +5563,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 字母上方数字角标（3.75，设置页开关 showKeyDigits）：关时
          *  只藏数字角标（1-0），符号角标（@# 等）不受影响。 */
         keyAltDisplay(key) {
+            // 3.76 键帽小字符总开关：关 = 全部小字符（数字与符号角标）都藏，
+            // 只剩主字；开时仍按 showKeyDigits 单独管数字角标。
+            if (this.showKeyHints === false) return '';
             const hint = this.keyAltHint(key);
             if (this.showKeyDigits === false && /^\d$/.test(hint)) return '';
             return hint;
@@ -7851,6 +7870,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * CJK font line box so vendor fonts don't clip descenders, issue
          * #8): the rows shrink by 4/8/11 against the old 14px base. */
         layoutChrome() {
+            // 3.76 紧凑候选栏：拼音带整行撤掉，chrome 少 18px（竖屏
+            // 136→118，横屏 118→100）；拼音字号档的 bandExtra 同样归零。
+            if (this.candidateBarMode === 'slim') return this.landscape ? 100 : 118;
             const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
             /* 竖屏行距 5→7px，三道缝多 6px，从内容预算里扣掉，避免末行被挤出。 */
             // 3.74.10：候选栏与工具箱行统一 40px（竖屏）/ 34px（横屏），
@@ -7858,6 +7880,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 56（34+18+4）+42（34+4+4）+20=118。横屏行高不再被
             // 40px 双行顶到 20px 以下（3.74.9 实机：候选栏比键行还高）。
             return (this.landscape ? 118 : 136) + bandExtra;
+        }
+
+        /** 候选栏显示方式（3.76）：写 body dataset 驱动 CSS（拼音带
+         * 高度归零 + 拼音行隐藏），再按当前组合态只重画拼音行与首位
+         * chip（renderPreeditLine，不走 updateComposing——切模式的
+         * hello 重推不能关设置面板/挂起控制视图）。行高重算不走这里：
+         * hello 尾部已有两次延时 applyHeight，数据集约在前、重算在后。 */
+        applyCandidateBarMode() {
+            document.body.dataset.candidateMode = this.candidateBarMode;
+            this.renderPreeditLine();
         }
 
         /** Read the native view's total height back as content height. The
@@ -11733,6 +11765,48 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
         }
 
+        /** 拼音行渲染（3.76）：紧凑模式拼音进候选栏首位 chip、拼音行留空；
+         * 完整模式拼音写回拼音行（.preedit-raw + 中置光标 + 音节对齐）。
+         * 只动拼音行与 chip，不碰工具栏/面板/控制视图——切模式的 hello
+         * 重推也调它，updateComposing 的其余副作用（关设置面板、挂起
+         * 控制视图等）不能在切模式时跑。 */
+        renderPreeditLine() {
+            const preedit = document.getElementById('preeditLine');
+            const reading = this.composing
+                ? (this.mode === 't9'
+                    ? (this.t9Reading() || this.t9PreeditLabel(this.lastRawInput))
+                    : this.lastRawInput)
+                : '';
+            // 3.76 紧凑候选栏：拼音不进单独的拼音行，改放候选栏首位的
+            // #candidateReading（主流输入法做法：拼音与候选同行）；拼音
+            // 行留空，音节对齐与中置光标竖线在紧凑模式下都不渲染（文字
+            // 已进宿主输入框，系统光标即位置指示）。
+            const readingChip = document.getElementById('candidateReading');
+            if (readingChip) {
+                const showReading = this.candidateBarMode === 'slim' && !!reading;
+                readingChip.textContent = showReading ? reading : '';
+                readingChip.hidden = !showReading;
+            }
+            preedit.replaceChildren();
+            if (this.candidateBarMode === 'slim') {
+                // 拼音行留空；renderCandidates 末尾的 schedulePinyinAlign
+                // 在空行上直接返回，不产生 .py-slot。
+            } else {
+                if (reading) {
+                    const raw = document.createElement('span');
+                    raw.className = 'preedit-raw';
+                    raw.textContent = reading;
+                    preedit.append(raw);
+                }
+                // #103 + 拼音带共存：中置光标时 renderPreeditCaret 会用
+                // 前/caret/后三节点重建拼音带（.preedit-raw 随之消失，
+                // 本帧拼音条不渲染）；无中置光标时直接返回，raw 留给
+                // schedulePinyinAlign 对齐音节。
+                this.renderPreeditCaret(preedit, preedit.textContent);
+                this.schedulePinyinAlign();
+            }
+        }
+
         /** M4 composing chrome: preedit line, toolbar swap, enter label. */
         updateComposing(state, rawInput) {
             // Variant replay fires a burst of intermediate engine events
@@ -11791,25 +11865,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.wildcardInFlight = false;
             document.body.classList.toggle('composing', this.composing);
             document.body.classList.toggle('preedit-frame', !!this.preeditFrame);
-            const preedit = document.getElementById('preeditLine');
-            const reading = this.composing
-                ? (this.mode === 't9'
-                    ? (this.t9Reading() || this.t9PreeditLabel(this.lastRawInput))
-                    : this.lastRawInput)
-                : '';
-            preedit.replaceChildren();
-            if (reading) {
-                const raw = document.createElement('span');
-                raw.className = 'preedit-raw';
-                raw.textContent = reading;
-                preedit.append(raw);
-            }
-            // #103 + 拼音带共存：中置光标时 renderPreeditCaret 会用
-            // 前/caret/后三节点重建拼音带（.preedit-raw 随之消失，
-            // 本帧拼音条不渲染）；无中置光标时直接返回，raw 留给
-            // schedulePinyinAlign 对齐音节。
-            this.renderPreeditCaret(preedit, preedit.textContent);
-            this.schedulePinyinAlign();
+            this.renderPreeditLine();
             if (!this.composing) {
                 this.t9ConfirmedLen = 0;
                 this._t9ConfirmedText = '';
@@ -13369,6 +13425,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.showKeyDigits = payload.showKeyDigits;
                 this.rerenderLangKeys();
                 this.renderFnLabels();
+            }
+            // 键帽小字符总开关（3.76，默认开）：值变化重画字母层角标与
+            // 九宫格/笔画键面（硬编码的 1/7 号 @#. 键角标由 CSS 兜底藏）。
+            if (typeof payload.showKeyHints === 'boolean' &&
+                payload.showKeyHints !== this.showKeyHints) {
+                this.showKeyHints = payload.showKeyHints;
+                this.rerenderLangKeys();
+                this.renderFnLabels();
+                if (this.mode === 't9') this.renderT9();
+                else if (this.mode === 'stroke') this.renderStroke();
+            }
+            document.body.dataset.keyHints = this.showKeyHints === false ? 'off' : 'on';
+            // 候选栏显示方式（3.76，默认 slim）：只换模式，调色管线不动。
+            // 每次 hello 都应用一次（首启默认值也要落 body dataset，
+            // 否则 CSS 仍按旧拼音行留白）。
+            if (typeof payload.candidateBarMode === 'string') {
+                this.candidateBarMode = payload.candidateBarMode === 'full' ? 'full' : 'slim';
+                this.applyCandidateBarMode();
             }
             // 键盘界面版本（3.75，默认 glass）：只换材质层 class，
             // 调色管线（--kb-* 令牌）两版共用，调色在两版下都生效。

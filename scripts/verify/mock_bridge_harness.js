@@ -1223,6 +1223,9 @@ class KeyboardWorld {
                 // #103 验收后默认开（与 SettingsBridge.readPreeditScrub
                 // 的 true 默认对齐）；测「手动关」分支显式传 false。
                 preeditScrub: true,
+                // 3.76 候选栏方式 + 键帽小字符（与 SettingsBridge 默认对齐）。
+                candidateBarMode: 'slim',
+                showKeyHints: true,
                 // #113 底行符号/数字分键（默认关，与 readBottomSymSplit
                 // 的 false 对齐）；开态用例显式传 true。
                 bottomSymSplit: false,

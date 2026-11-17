@@ -2882,7 +2882,8 @@ test('preedit scrub: composing space swipe moves the pinyin caret, gesture-locke
     // 默认开（#103 验收后，2026-11-13）；这里测的是用户手动关掉的
     // 分支——组合中空格横滑不启动（存量语义：组合中宿主光标属于组合
     // span，动了会被 setComposingText 弹回）。
-    const off = fresh({ mode: 'pinyin', preeditScrub: false });
+    // 3.76：拼音行只在完整模式下存在， scrub 光标与拼音带断言跑 full。
+    const off = fresh({ mode: 'pinyin', preeditScrub: false, candidateBarMode: 'full' });
     off.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: [], hasNextPage: false });
     off.touchDown(off.$('spaceKey'), 20, 20);
     off.move(off.$('spaceKey'), -40, 0);
@@ -2891,7 +2892,7 @@ test('preedit scrub: composing space swipe moves the pinyin caret, gesture-locke
     off.touchUp(off.$('spaceKey'), -40, 0);
 
     // 开启：组合中 → scrubCursor 通道（gestureId 会话锁定），宿主不动。
-    const on = fresh({ mode: 'pinyin', preeditScrub: true });
+    const on = fresh({ mode: 'pinyin', preeditScrub: true, candidateBarMode: 'full' });
     on.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: [], hasNextPage: false, inputCaret: 5, preeditCaret: 5 });
     on.touchDown(on.$('spaceKey'), 20, 20);
     on.move(on.$('spaceKey'), -40, 0);
@@ -2919,7 +2920,7 @@ test('preedit scrub optimistic caret: renders before any echo, endpoints include
     // 排队到手势结束——没有本地乐观渲染就完全没有跟手感（松手瞬移）。
     // localCaret 镜像：跨步立即渲染（不等回声），端点（串首 0/回尾）
     // 也画——中置会话内滑到头光标停在端点，不消失。
-    const w = fresh({ mode: 'pinyin', preeditScrub: true });
+    const w = fresh({ mode: 'pinyin', preeditScrub: true, candidateBarMode: 'full' });
     w.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: ['你好'], hasNextPage: false });
     const pl = () => w.$('preeditLine');
     equal(pl().querySelector('.preedit-caret'), null, 'never-scrubbed composition paints no caret (legacy look)');
@@ -5062,16 +5063,87 @@ test('long initial sequence shows the whole sentence as a candidate and picking 
         'picking the sentence candidate commits the whole sentence');
 });
 
-test('layoutChrome budgets portrait 136+band / landscape 118+band (3.74.10)', {since: '3.74.10'}, () => {
+test('layoutChrome budgets portrait 136+band / landscape 118+band, full mode (3.74.10)', {since: '3.74.10'}, () => {
+    const world = fresh();
+    const kb = world.context.window.Feelime;
+    // 3.76：紧凑是默认，136+band 的预算只在完整模式下成立。
+    world.hello({ orientation: 'portrait', candidateBarMode: 'full' });
+    equal(kb.layoutChrome(), 140, 'portrait chrome 136 + default band 4');
+    world.hello({ orientation: 'landscape', candidateBarMode: 'full' });
+    equal(kb.layoutChrome(), 122, 'landscape chrome 118 + default band 4');
+    // 拼音字号档加大时增量跟上。
+    world.hello({ orientation: 'portrait', candidateBarMode: 'full', preeditFont: 2 });
+    equal(kb.layoutChrome(), 147, 'portrait chrome grows with the preedit font level');
+});
+
+// ---------------------------------------------------------------- 3.76
+
+test('candidate bar mode defaults to slim: chrome 118/100, pinyin in the candidate bar (3.76)', {since: '3.76'}, () => {
     const world = fresh();
     const kb = world.context.window.Feelime;
     world.hello({ orientation: 'portrait' });
-    equal(kb.layoutChrome(), 140, 'portrait chrome 136 + default band 4');
+    equal(world.document.body.dataset.candidateMode, 'slim', 'dataset carries slim');
+    equal(kb.layoutChrome(), 118, 'portrait chrome 118, no pinyin band');
     world.hello({ orientation: 'landscape' });
-    equal(kb.layoutChrome(), 122, 'landscape chrome 118 + default band 4');
-    // 拼音字号档加大时增量跟上。
+    equal(kb.layoutChrome(), 100, 'landscape chrome 100, no pinyin band');
+    // 拼音字号档加大时紧凑模式高度不动。
     world.hello({ orientation: 'portrait', preeditFont: 2 });
-    equal(kb.layoutChrome(), 147, 'portrait chrome grows with the preedit font level');
+    equal(kb.layoutChrome(), 118, 'slim chrome ignores the preedit font level');
+    // 打字时拼音写进候选栏首位 chip，拼音行留空。
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }] });
+    const reading = world.$('candidateReading');
+    equal(reading.hidden, false, 'reading chip shown while composing');
+    equal(reading.textContent, 'ni', 'reading chip carries the pinyin');
+    equal(world.$('preeditLine').textContent.trim(), '', 'pinyin row stays empty in slim');
+    // 组合结束 chip 消失。
+    world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+        candidates: [] });
+    equal(reading.hidden, true, 'reading chip hidden when not composing');
+});
+
+test('candidate bar mode full keeps the pinyin row and the 136+band budget (3.76)', {since: '3.76'}, () => {
+    const world = fresh();
+    const kb = world.context.window.Feelime;
+    world.hello({ orientation: 'portrait', candidateBarMode: 'full' });
+    equal(world.document.body.dataset.candidateMode, 'full', 'dataset carries full');
+    equal(kb.layoutChrome(), 140, 'portrait chrome 136 + default band 4');
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }] });
+    equal(world.$('candidateReading').hidden, true, 'no reading chip in full mode');
+    assert(world.$('preeditLine').textContent.includes('ni'), 'pinyin back in the pinyin row');
+    // 切回紧凑：chip 出现、拼音行清空、高度回落。
+    world.hello({ orientation: 'portrait', candidateBarMode: 'slim' });
+    equal(world.$('candidateReading').hidden, false, 'reading chip returns on slim');
+    equal(world.$('candidateReading').textContent, 'ni', 'reading chip keeps the pinyin');
+    equal(world.$('preeditLine').textContent.trim(), '', 'pinyin row cleared on slim');
+    equal(kb.layoutChrome(), 118, 'chrome drops to 118 on slim');
+});
+
+test('key hints switch hides all small keycap characters incl. T9 corners (3.76)', {since: '3.76'}, () => {
+    const world = fresh();
+    // 26 键：字母键上方数字与符号角标都消失（.kb-alt 仍在位，内容为空）。
+    world.hello({ showKeyHints: false });
+    equal(world.document.body.dataset.keyHints, 'off', 'dataset carries off');
+    equal(world.key('q').querySelector('.kb-alt').textContent, '', 'digit above q hidden');
+    equal(world.key('j').querySelector('.kb-alt').textContent, '', 'symbol alt on j hidden');
+    // 九宫格：角标与数字角标消失，只剩主字组。
+    world.engineState({ mode: 't9', revision: 1, candidates: [], composing: '' });
+    const key2 = [...world.document.querySelectorAll('#qwertyLayer .kb-key')]
+        .find(k => k.dataset.key === '2');
+    assert(key2, 't9 key 2 present');
+    assert(!key2.querySelector('.t9-hint'), 'no long-press hint on t9 key 2');
+    assert(!key2.querySelector('.t9-sup'), 'no digit badge on t9 key 2');
+    assert(key2.querySelector('.t9-group'), 'letter group stays');
+    // 再打开：全部回来。
+    world.hello({ showKeyHints: true });
+    equal(world.document.body.dataset.keyHints, 'on', 'dataset carries on');
+    assert(world.key('q').querySelector('.kb-alt').textContent !== '', 'digit above q returns');
+    world.engineState({ mode: 't9', revision: 2, candidates: [], composing: '' });
+    const key2b = [...world.document.querySelectorAll('#qwertyLayer .kb-key')]
+        .find(k => k.dataset.key === '2');
+    assert(key2b.querySelector('.t9-hint'), 't9 hint returns');
+    assert(key2b.querySelector('.t9-sup'), 't9 digit badge returns');
 });
 
 test('global haptics: candidate pick and toolbox tap vibrate once each (3.74.10)', {since: '3.74.10'}, () => {
@@ -7575,7 +7647,8 @@ test('pinyin splits into one syllable per character', () => {
 });
 
 test('C2/C3/C7 candidates render, choose and page with revision', () => {
-    const world = fresh();
+    // 3.76：本例断言拼音行内容，跑完整模式。
+    const world = fresh({ candidateBarMode: 'full' });
     world.engineState({
         phase: 'READY',
         revision: 7,
@@ -7612,7 +7685,8 @@ test('pinyin strip follows the candidate bar when it scrolls', {since: '3.74.7'}
     world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
         'const keyboard = window.testKeyboard = new FeelimeKeyboard();');
     world.build();
-    world.hello({ mode: 'pinyin' });
+    // 3.76：拼音带只在完整模式下渲染，跑 full。
+    world.hello({ mode: 'pinyin', candidateBarMode: 'full' });
     const kb = world.context.testKeyboard;
     const candidates = [
         { id: 'c1', text: '法比' }, { id: 'c2', text: '发币' },
@@ -7692,7 +7766,8 @@ test('empty candidates leave the bar clean', () => {
 });
 
 test('voice session keeps the mic visible during composing', () => {
-    const world = fresh();
+    // 3.76：本例断言拼音行内容，跑完整模式。
+    const world = fresh({ candidateBarMode: 'full' });
     world.engineState({ phase: 'READY', revision: 1, composing: 'ni', candidates: [] });
     // 3.74.9：mic 在工具箱行，组合中常驻（空闲组合也不藏）；录音中
     // 同样是 stop 入口。
@@ -10436,7 +10511,8 @@ test('t9 mic key: literal 0 up, horizontal scrub, tap space', {since: '3.35.0'},
 });
 
 test('t9 syllable strip: freq order, confirmed boundary, reading echo', {since: '3.35.0'}, () => {
-    const world = fresh({ mode: 't9' });
+    // 3.76：本例断言拼音行读法，跑完整模式。
+    const world = fresh({ mode: 't9', candidateBarMode: 'full' });
     // 64426 首字未确认：左列只出首字读法、按词典词频全局降序（64 的 ni
     // 压过 6 的 o/mi），第二字的 ga/ha/gan/gao 绝不提前出现——引擎回显的
     // 段空格（'64 426'）是切分猜测，不能当确认边界（用户定稿）。
@@ -10481,7 +10557,7 @@ test('t9 syllable strip: freq order, confirmed boundary, reading echo', {since: 
     assert(cells().includes('ni'), 'deletion re-enumerates readings from scratch');
     // 独立场景：滑动输入的裸字母段 n426 只列 n- 一致读音（codex round-2
     // P2-5 复现用例），hao/gan 绝不出现；声母前缀缀尾。
-    const world2 = fresh({ mode: 't9' });
+    const world2 = fresh({ mode: 't9', candidateBarMode: 'full' });
     world2.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: 'n 426',
         rawInput: 'n 426', candidates: [], hasNextPage: false });
     const mixed = [...world2.document.querySelectorAll('#t9Strip .t9-side-cell')]
@@ -10761,7 +10837,8 @@ test('height refresh keeps composing tools in the toolbox row (#109 root cause)'
 });
 
 test('× during a variant replay unfreezes the composing UI instead of stranding it (#109 escape)', {since: '3.73.116'}, () => {
-    const world = fresh({ mode: 'double-pinyin' });
+    // 3.76：本例断言拼音行回声，跑完整模式。
+    const world = fresh({ mode: 'double-pinyin', candidateBarMode: 'full' });
     world.engineState({
         mode: 'double-pinyin', composing: true, rawInput: "x'an", revision: 5,
         candidates: [{ id: 'a', text: '西安' }, { id: 'b', text: '喜爱' }],

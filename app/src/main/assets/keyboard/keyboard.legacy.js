@@ -387,7 +387,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.75";
+  const KEYBOARD_VERSION = "3.76";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1849,6 +1849,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.showKeyDigits = true;
       this.emojiIconAlt = false;
       this.keyboardUiVersion = "glass";
+      this.candidateBarMode = "slim";
+      this.showKeyHints = true;
       this.floating = false;
       this.floatGeom = null;
       this.bubbleLinger = 400;
@@ -2790,19 +2792,23 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       button.className = "kb-key t9-key";
       button.dataset.key = digit;
       button.dataset.lp = "popup";
-      const hint = document.createElement("span");
-      hint.className = "t9-hint";
-      hint.textContent = (def.syms || []).join("");
-      const sup = document.createElement("span");
-      sup.className = "t9-sup";
-      sup.textContent = digit;
       const group = document.createElement("span");
       group.className = "t9-group";
       if (/[一-鿿]/.test(def.main) && def.main.length > 1) {
         group.classList.add("t9-cjk");
       }
       group.textContent = t(def.main);
-      button.append(hint, sup, group);
+      if (this.showKeyHints !== false) {
+        const hint = document.createElement("span");
+        hint.className = "t9-hint";
+        hint.textContent = (def.syms || []).join("");
+        const sup = document.createElement("span");
+        sup.className = "t9-sup";
+        sup.textContent = digit;
+        button.append(hint, sup, group);
+      } else {
+        button.append(group);
+      }
       button.addEventListener("click", () => this.strokeActivate(digit));
       this.bindTouch(button);
       return button;
@@ -3379,16 +3385,20 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       button.className = "kb-key t9-key";
       button.dataset.key = digit;
       button.dataset.lp = "popup";
-      const hint = document.createElement("span");
-      hint.className = "t9-hint";
-      hint.textContent = (LAYOUTS.t9.keySymbols[digit] || []).join("");
-      const sup = document.createElement("span");
-      sup.className = "t9-sup";
-      sup.textContent = digit;
       const group = document.createElement("span");
       group.className = "t9-group";
       group.textContent = (LAYOUTS.t9.alts[digit] || "").toUpperCase();
-      button.append(hint, sup, group);
+      if (this.showKeyHints !== false) {
+        const hint = document.createElement("span");
+        hint.className = "t9-hint";
+        hint.textContent = (LAYOUTS.t9.keySymbols[digit] || []).join("");
+        const sup = document.createElement("span");
+        sup.className = "t9-sup";
+        sup.textContent = digit;
+        button.append(hint, sup, group);
+      } else {
+        button.append(group);
+      }
       button.addEventListener("click", () => this.call(() => Native.key(digit, this.token)));
       this.bindTouch(button);
       return button;
@@ -4766,6 +4776,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     /** 字母上方数字角标（3.75，设置页开关 showKeyDigits）：关时
      *  只藏数字角标（1-0），符号角标（@# 等）不受影响。 */
     keyAltDisplay(key) {
+      if (this.showKeyHints === false) return "";
       const hint = this.keyAltHint(key);
       if (this.showKeyDigits === false && /^\d$/.test(hint)) return "";
       return hint;
@@ -6700,8 +6711,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * CJK font line box so vendor fonts don't clip descenders, issue
      * #8): the rows shrink by 4/8/11 against the old 14px base. */
     layoutChrome() {
+      if (this.candidateBarMode === "slim") return this.landscape ? 100 : 118;
       const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
       return (this.landscape ? 118 : 136) + bandExtra;
+    }
+    /** 候选栏显示方式（3.76）：写 body dataset 驱动 CSS（拼音带
+     * 高度归零 + 拼音行隐藏），再按当前组合态只重画拼音行与首位
+     * chip（renderPreeditLine，不走 updateComposing——切模式的
+     * hello 重推不能关设置面板/挂起控制视图）。行高重算不走这里：
+     * hello 尾部已有两次延时 applyHeight，数据集约在前、重算在后。 */
+    applyCandidateBarMode() {
+      document.body.dataset.candidateMode = this.candidateBarMode;
+      this.renderPreeditLine();
     }
     /** Read the native view's total height back as content height. The
      * fallback keeps the preview usable before its layout has measured. */
@@ -9886,6 +9907,33 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         line.scrollLeft = scrollX;
       }
     }
+    /** 拼音行渲染（3.76）：紧凑模式拼音进候选栏首位 chip、拼音行留空；
+     * 完整模式拼音写回拼音行（.preedit-raw + 中置光标 + 音节对齐）。
+     * 只动拼音行与 chip，不碰工具栏/面板/控制视图——切模式的 hello
+     * 重推也调它，updateComposing 的其余副作用（关设置面板、挂起
+     * 控制视图等）不能在切模式时跑。 */
+    renderPreeditLine() {
+      const preedit = document.getElementById("preeditLine");
+      const reading = this.composing ? this.mode === "t9" ? this.t9Reading() || this.t9PreeditLabel(this.lastRawInput) : this.lastRawInput : "";
+      const readingChip = document.getElementById("candidateReading");
+      if (readingChip) {
+        const showReading = this.candidateBarMode === "slim" && !!reading;
+        readingChip.textContent = showReading ? reading : "";
+        readingChip.hidden = !showReading;
+      }
+      preedit.replaceChildren();
+      if (this.candidateBarMode === "slim") {
+      } else {
+        if (reading) {
+          const raw = document.createElement("span");
+          raw.className = "preedit-raw";
+          raw.textContent = reading;
+          preedit.append(raw);
+        }
+        this.renderPreeditCaret(preedit, preedit.textContent);
+        this.schedulePinyinAlign();
+      }
+    }
     /** M4 composing chrome: preedit line, toolbar swap, enter label. */
     updateComposing(state, rawInput) {
       if (this.variantReplaying) return;
@@ -9923,17 +9971,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.wildcardInFlight = false;
       document.body.classList.toggle("composing", this.composing);
       document.body.classList.toggle("preedit-frame", !!this.preeditFrame);
-      const preedit = document.getElementById("preeditLine");
-      const reading = this.composing ? this.mode === "t9" ? this.t9Reading() || this.t9PreeditLabel(this.lastRawInput) : this.lastRawInput : "";
-      preedit.replaceChildren();
-      if (reading) {
-        const raw = document.createElement("span");
-        raw.className = "preedit-raw";
-        raw.textContent = reading;
-        preedit.append(raw);
-      }
-      this.renderPreeditCaret(preedit, preedit.textContent);
-      this.schedulePinyinAlign();
+      this.renderPreeditLine();
       if (!this.composing) {
         this.t9ConfirmedLen = 0;
         this._t9ConfirmedText = "";
@@ -11170,6 +11208,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.showKeyDigits = payload.showKeyDigits;
         this.rerenderLangKeys();
         this.renderFnLabels();
+      }
+      if (typeof payload.showKeyHints === "boolean" && payload.showKeyHints !== this.showKeyHints) {
+        this.showKeyHints = payload.showKeyHints;
+        this.rerenderLangKeys();
+        this.renderFnLabels();
+        if (this.mode === "t9") this.renderT9();
+        else if (this.mode === "stroke") this.renderStroke();
+      }
+      document.body.dataset.keyHints = this.showKeyHints === false ? "off" : "on";
+      if (typeof payload.candidateBarMode === "string") {
+        this.candidateBarMode = payload.candidateBarMode === "full" ? "full" : "slim";
+        this.applyCandidateBarMode();
       }
       if (typeof payload.keyboardUiVersion === "string") {
         this.keyboardUiVersion = payload.keyboardUiVersion === "classic" ? "classic" : "glass";

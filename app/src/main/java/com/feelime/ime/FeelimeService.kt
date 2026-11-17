@@ -2831,6 +2831,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("bottomSymSplit", com.feelime.ime.readBottomSymSplit(this))
             .put("showKeyDigits", com.feelime.ime.readShowKeyDigits(this))
             .put("keyboardUiVersion", com.feelime.ime.readKeyboardUiVersion(this))
+            .put("candidateBarMode", com.feelime.ime.readCandidateBarMode(this))
+            .put("showKeyHints", com.feelime.ime.readShowKeyHints(this))
             // 3.75 补漏：deleteConfirm 只在设置页 hello 里、键盘 hello
             // 一直漏了（3.74.11）——键盘拿不到，关掉开关也不生效。
             .put("deleteConfirm", com.feelime.ime.readDeleteConfirm(this))

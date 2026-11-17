@@ -155,6 +155,9 @@ class MockSettingsNative {
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
     setToastMs(...a) { this._rec('setToastMs', a); }
     setBottomSymSplit(...a) { this._rec('setBottomSymSplit', a); }
+    setCandidateBarMode(...a) { this._rec('setCandidateBarMode', a); }
+    setShowKeyHints(...a) { this._rec('setShowKeyHints', a); }
+    applyPreset(...a) { this._rec('applyPreset', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setDoubleShiftLock(...a) { this._rec('setDoubleShiftLock', a); }
@@ -1283,14 +1286,14 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
         home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
-        backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
+        backup: true, guide: true, about: true, customkeys: true, cksymbol: true, cklang: true,
         ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
         home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
-        backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
+        backup: true, guide: true, about: true, customkeys: true, cksymbol: true, cklang: true,
         ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
@@ -3849,6 +3852,50 @@ test('#112 strip pages: three entries route to independent pages, drag reorder, 
     world.$('ckinkReset').listeners.find(l => l.type === 'click').handler();
     delete world.sandbox.confirm;
     equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 12, 'reset restores 12 defaults');
+});
+test('candidate bar mode + key hints sync from state and call native setters (3.76)', () => {
+    const world = new SettingsWorld();
+    // 默认：紧凑 + 小字符开（state 未带字段时 fallback）。
+    world.push({ ...BASE_STATE });
+    equal(world.$('candidateBarMode').value, 'slim', 'slim by default');
+    equal(world.$('showKeyHints').checked, true, 'hints on by default');
+    // 显式态：完整 + 小字符关。
+    world.push({ ...BASE_STATE, candidateBarMode: 'full', showKeyHints: false });
+    equal(world.$('candidateBarMode').value, 'full', 'full selection from state');
+    equal(world.$('showKeyHints').checked, false, 'hints off from state');
+    const barChange = world.$('candidateBarMode').listeners.find(l => l.type === 'change');
+    assert(barChange, 'candidate bar select has a change listener');
+    world.$('candidateBarMode').value = 'slim';
+    barChange.handler({ target: world.$('candidateBarMode') });
+    equal(world.lastCall('setCandidateBarMode').args, ['slim', world.token], 'setCandidateBarMode token');
+    const hintsChange = world.$('showKeyHints').listeners.find(l => l.type === 'change');
+    assert(hintsChange, 'key hints toggle has a change listener');
+    world.$('showKeyHints').checked = true;
+    hintsChange.handler({ target: world.$('showKeyHints') });
+    equal(world.lastCall('setShowKeyHints').args, [true, world.token], 'setShowKeyHints token');
+});
+test('guide page: recommended preset renders, apply buttons call applyPreset (3.76)', () => {
+    const world = new SettingsWorld();
+    // 首页入口在日常组首位。
+    const entry = world.doc.querySelector('button[data-target="guide"]');
+    assert(entry, 'guide entry exists on home');
+    assert(entry.className.split(' ').includes('entry'), 'uses the standard .entry class');
+    assert(entry.querySelector('.entry-chevron'), 'chevron present');
+    // 缺省推荐 = 均衡。
+    world.push({ ...BASE_STATE });
+    equal(world.$('guideRecommended').textContent, '均衡', 'balanced by default');
+    // 低内存设备推荐省电。
+    world.push({ ...BASE_STATE, deviceRamGb: 4, recommendedPreset: 'saver' });
+    equal(world.$('guideRecommended').textContent, '省电', 'saver recommended');
+    const click = id => world.$(id).listeners.find(l => l.type === 'click').handler();
+    click('btnPresetSaver');
+    equal(world.lastCall('applyPreset').args, ['saver', world.token], 'applyPreset saver token');
+    equal(world.$('guideNote').textContent, '已应用', 'applied note shown');
+    click('btnPresetFull');
+    equal(world.lastCall('applyPreset').args, ['full', world.token], 'applyPreset full token');
+    // 「按推荐设置」用当前推荐（省电）。
+    click('btnApplyRecommended');
+    equal(world.lastCall('applyPreset').args, ['saver', world.token], 'recommended applies saver');
 });
 
 

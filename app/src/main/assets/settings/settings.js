@@ -181,6 +181,40 @@ const I18N = {
         "entry.about.subtitle": "版本信息 · 组件说明",
         "entry.test.title": "输入测试",
         "entry.test.subtitle": "唤起键盘试一试",
+        "entry.guide.title": "使用指南与预设",
+        "entry.guide.subtitle": "新手上路 · 按设备推荐",
+        "page.guide": "使用指南与预设",
+        "guide.recommended.title": "本机推荐",
+        "guide.recommended.badge": "推荐",
+        "guide.recommended.hint": "按本机运行内存给出，只是一个起点，随时可以改。",
+        "guide.applyRecommended": "按推荐设置",
+        "guide.applied": "已应用",
+        "guide.presets.title": "预设方案",
+        "guide.presets.badge": "方案",
+        "guide.preset.balanced": "均衡",
+        "guide.preset.balancedHint": "紧凑候选栏、全部小字符、液态玻璃，默认状态。",
+        "guide.preset.saver": "省电",
+        "guide.preset.saverHint": "经典界面、省电模式、隐藏小字符，低内存设备更轻。",
+        "guide.preset.full": "完整拼音行",
+        "guide.preset.fullHint": "保留单独的拼音行（原来样子），其他与均衡相同。",
+        "guide.apply": "应用",
+        "guide.presets.note": "预设只改显示与省电 5 项（候选栏方式、键帽小字符、字母上方数字、键盘界面版本、省电模式），不改其他设置。",
+        "guide.howto.title": "使用指南",
+        "guide.howto.badge": "上手",
+        "guide.howto.enable": "启用输入法",
+        "guide.howto.enableHint": "系统设置 → 语言与输入法 → 启用 FeelimD，再设为默认输入法。",
+        "guide.howto.switch": "切换输入法",
+        "guide.howto.switchHint": "点键盘左下角的地球键，或用系统输入法切换键。",
+        "guide.howto.type": "打字选词",
+        "guide.howto.typeHint": "拼出拼音后点候选词上屏；空格键左右滑可移动光标。",
+        "guide.howto.layouts": "九宫格 / 笔画",
+        "guide.howto.layoutsHint": "设置页「键盘布局」里切换全拼、双拼、九键、笔画。",
+        "guide.howto.clipboard": "剪贴板与常用语",
+        "guide.howto.clipboardHint": "工具栏剪贴板按钮打开；点 ☆ 可把条目放进常用语。",
+        "guide.howto.voice": "离线语音",
+        "guide.howto.voiceHint": "按住语音键说话，松手出字；全程离线，不上传。",
+        "guide.howto.backup": "备份",
+        "guide.howto.backupHint": "设置页「备份与恢复」可导出 / 导入设置、常用语与词库。",
         "page.input": "键盘与输入",
         "page.dict": "词库",
         "dict.badge": "叠加",
@@ -938,6 +972,12 @@ const I18N = {
         "input.feel.bottomSymSplitHint": "开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。",
         "input.feel.showKeyDigits": "字母上方显示数字",
         "input.feel.showKeyDigitsHint": "开 = 字母键上方显示数字 1-0；关 = 数字消失，只剩字母。默认开。",
+        "input.feel.candidateBarMode": "候选栏显示方式",
+        "input.feel.candidateBarModeHint": "紧凑 = 打字时拼音显示在候选栏最前面，不另占一行；完整 = 保留单独的拼音行（原来样子）。默认紧凑。",
+        "input.feel.candidateBarModeSlim": "紧凑",
+        "input.feel.candidateBarModeFull": "完整",
+        "input.feel.showKeyHints": "键帽小字符",
+        "input.feel.showKeyHintsHint": "开 = 显示全部小字符（字母上方的数字/符号、九宫格角落的符号与数字）；关 = 只剩主字，键面更干净。默认开。",
         "input.feel.keyboardUiVersion": "键盘界面版本",
         "input.feel.keyboardUiVersionHint": "液态玻璃是新版界面（发丝描边、顶光、内圈辉光）；经典是原来的键面。两版调色方式一样。",
         "input.feel.keyboardUiVersionGlass": "液态玻璃",
@@ -1108,6 +1148,40 @@ const I18N = {
         "entry.about.subtitle": "Version info · Components",
         "entry.test.title": "Input test",
         "entry.test.subtitle": "Wake FeelimD and try it",
+        "entry.guide.title": "Guide & presets",
+        "entry.guide.subtitle": "Getting started · Recommended for this device",
+        "page.guide": "Guide & presets",
+        "guide.recommended.title": "Recommended for this device",
+        "guide.recommended.badge": "Recommended",
+        "guide.recommended.hint": "Based on this device's RAM; just a starting point, change it any time.",
+        "guide.applyRecommended": "Apply recommendation",
+        "guide.applied": "Applied",
+        "guide.presets.title": "Presets",
+        "guide.presets.badge": "Presets",
+        "guide.preset.balanced": "Balanced",
+        "guide.preset.balancedHint": "Compact candidate bar, all small characters, liquid glass. The default.",
+        "guide.preset.saver": "Power saving",
+        "guide.preset.saverHint": "Classic UI, power-saving mode, small characters hidden. Lighter on low-memory devices.",
+        "guide.preset.full": "Full pinyin row",
+        "guide.preset.fullHint": "Keep the separate pinyin row (the old look); otherwise the same as Balanced.",
+        "guide.apply": "Apply",
+        "guide.presets.note": "Presets only change 5 display and power-saving items (candidate bar style, small keycap characters, digits above letters, keyboard UI version, power-saving mode), nothing else.",
+        "guide.howto.title": "How to use",
+        "guide.howto.badge": "Basics",
+        "guide.howto.enable": "Enable the input method",
+        "guide.howto.enableHint": "System Settings → Language & input → enable FeelimD, then set it as the default.",
+        "guide.howto.switch": "Switch input methods",
+        "guide.howto.switchHint": "Tap the globe key at the bottom-left of the keyboard, or use the system switcher.",
+        "guide.howto.type": "Type and pick",
+        "guide.howto.typeHint": "Type pinyin, then tap a candidate to commit it; slide left/right on the space bar to move the cursor.",
+        "guide.howto.layouts": "T9 / stroke",
+        "guide.howto.layoutsHint": "Switch between full pinyin, double pinyin, T9 and stroke under Keyboard layout in Settings.",
+        "guide.howto.clipboard": "Clipboard & favorites",
+        "guide.howto.clipboardHint": "Open it from the toolbar clipboard button; tap ☆ to pin an item to favorites.",
+        "guide.howto.voice": "Offline voice",
+        "guide.howto.voiceHint": "Hold the voice key to speak, release to commit text. Fully offline, nothing is uploaded.",
+        "guide.howto.backup": "Backup",
+        "guide.howto.backupHint": "Export / import settings, favorites and lexicons under Backup & restore in Settings.",
         "page.input": "Keyboard & input",
         "page.dict": "Lexicon",
         "dict.badge": "Overlay",
@@ -1855,6 +1929,12 @@ const I18N = {
         "input.feel.bottomSymSplitHint": "Splits the bottom-left [123] key into [Symbols] and [123]: symbols opens the symbol panel, 123 goes straight to the number pad. Off by default; when off, tapping 123 opens symbols and long-press opens the number pad (#113).",
         "input.feel.showKeyDigits": "Show digits above letters",
         "input.feel.showKeyDigitsHint": "On = digits 1-0 show above the letter keys; off = digits hidden, letters only. On by default.",
+        "input.feel.candidateBarMode": "Candidate bar style",
+        "input.feel.candidateBarModeHint": "Compact = typed pinyin shows at the front of the candidate bar, no separate pinyin row; Full = keep the separate pinyin row (the old look). Compact by default.",
+        "input.feel.candidateBarModeSlim": "Compact",
+        "input.feel.candidateBarModeFull": "Full",
+        "input.feel.showKeyHints": "Small keycap characters",
+        "input.feel.showKeyHintsHint": "On = show all small characters (digits/symbols above letters, corner symbols and digits on T9 keys); off = main glyphs only, cleaner keys. On by default.",
         "input.feel.keyboardUiVersion": "Keyboard interface version",
         "input.feel.keyboardUiVersionHint": "Liquid glass is the new interface (hairline edge, top sheen, inner glow); classic is the previous key surface. Both tint the same way.",
         "input.feel.keyboardUiVersionGlass": "Liquid glass",
@@ -1983,7 +2063,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "guide", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -2653,6 +2733,18 @@ function render(state) {
     renderFlypy(state);
     renderUpdate(state);
     renderAbout(state);
+    renderGuide(state);
+}
+
+/** 使用指南与预设（3.76）：本机推荐只读 state 的 recommendedPreset；
+ *  应用按钮直接调桥 applyPreset，生效后原生回推 state 重渲染。 */
+let guideRecommended = 'balanced';
+function renderGuide(state) {
+    const rec = state.recommendedPreset === 'saver' || state.recommendedPreset === 'full'
+        ? state.recommendedPreset : 'balanced';
+    guideRecommended = rec;
+    const label = $('guideRecommended');
+    if (label) label.textContent = t('guide.preset.' + rec);
 }
 
 /** #39 横屏三级页：安全区开关 + 高度上限/不透明度滑杆（滑杆拖动
@@ -3052,6 +3144,9 @@ function renderFeel(state) {
     setToggle("preeditBold", state.preeditBold);
     setToggle("preeditFrame", state.preeditFrame);
     setToggle("showKeyDigits", state.showKeyDigits !== false);
+    const barMode = $("candidateBarMode");
+    if (barMode) barMode.value = state.candidateBarMode === "full" ? "full" : "slim";
+    setToggle("showKeyHints", state.showKeyHints !== false);
     const uiVersion = $("keyboardUiVersion");
     if (uiVersion) uiVersion.value = state.keyboardUiVersion === "classic" ? "classic" : "glass";
     // 3.75：设置页本身也按所选版本换材质（与键盘同 class）。
@@ -4676,6 +4771,24 @@ $("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposi
 $("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));
 $("showKeyDigits").addEventListener("change", event => call("setShowKeyDigits", event.target.checked));
+$("candidateBarMode").addEventListener("change", event => call("setCandidateBarMode", event.target.value));
+$("showKeyHints").addEventListener("change", event => call("setShowKeyHints", event.target.checked));
+// 预设方案（3.76）：点「应用」即调桥 applyPreset；「按推荐设置」用
+// 最近一次 state 的 recommendedPreset（缺省均衡）。
+["btnPresetBalanced", "btnPresetSaver", "btnPresetFull"].forEach(id => {
+    const button = $(id);
+    if (!button) return;
+    button.addEventListener("click", () => {
+        call("applyPreset", button.dataset.preset);
+        const note = $("guideNote");
+        if (note) note.textContent = t("guide.applied");
+    });
+});
+$("btnApplyRecommended").addEventListener("click", () => {
+    call("applyPreset", guideRecommended);
+    const note = $("guideNote");
+    if (note) note.textContent = t("guide.applied");
+});
 $("keyboardUiVersion").addEventListener("change", event => call("setKeyboardUiVersion", event.target.value));
 $("voiceReadyHaptic").addEventListener("change", event => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", event => {

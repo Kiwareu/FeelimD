@@ -84,6 +84,10 @@
 
     <nav class="card entries" id="entries" aria-label="设置分组" data-i18n-aria="nav.groups">
       <p class="entry-group" data-i18n="nav.group.daily">日常</p>
+      <button class="entry" type="button" data-target="guide" data-keywords="使用指南 预设 推荐 新手 上手 guide preset recommend">
+        <span class="entry-label"><span data-i18n="entry.guide.title">使用指南与预设</span><small data-i18n="entry.guide.subtitle">新手上路 · 按设备推荐</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
       <button class="entry" type="button" data-target="appearance" data-keywords="外观 皮肤 壁纸 玻璃 配色 主题">
         <span class="entry-label"><span data-i18n="entry.appearance.title">外观与皮肤</span><small data-i18n="entry.appearance.subtitle">液态玻璃 · 配色 · 壁纸</small></span>
         <span class="entry-chevron" aria-hidden="true">›</span>
@@ -724,6 +728,18 @@
         <input type="checkbox" id="bottomSymSplit" data-keywords="底行 符号 数字 123 九宫格 分键 拆分 numpad symbols split bottom" class="toggle">
       </label>
 
+      <!-- 候选栏显示方式（3.76）：紧凑 = 拼音进候选栏首位，不另占一行（默认）；完整 = 保留单独的拼音行。 -->
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.candidateBarMode">候选栏显示方式</span>
+          <small data-i18n="input.feel.candidateBarModeHint">紧凑 = 打字时拼音显示在候选栏最前面，不另占一行；完整 = 保留单独的拼音行（原来样子）。默认紧凑。</small>
+        </span>
+        <select id="candidateBarMode" data-keywords="候选栏 拼音行 紧凑 完整 显示方式 candidate bar slim full" class="select" aria-label="候选栏显示方式" data-i18n-aria="input.feel.candidateBarMode">
+          <option value="slim" data-i18n="input.feel.candidateBarModeSlim">紧凑</option>
+          <option value="full" data-i18n="input.feel.candidateBarModeFull">完整</option>
+        </select>
+      </div>
+
       <!-- 字母上方数字（3.75）：默认开；关 = 字母键上方的数字 1-0 消失。 -->
       <label class="row switch-row" for="showKeyDigits">
         <span class="row-label">
@@ -731,6 +747,15 @@
           <small data-i18n="input.feel.showKeyDigitsHint">开 = 字母键上方显示数字 1-0；关 = 数字消失，只剩字母。默认开。</small>
         </span>
         <input type="checkbox" id="showKeyDigits" data-keywords="字母 数字 角标 数字键 123 显示 隐藏 digits numbers" class="toggle">
+      </label>
+
+      <!-- 键帽小字符总开关（3.76）：默认开；关 = 全部小字符隐藏，只剩主字。 -->
+      <label class="row switch-row" for="showKeyHints">
+        <span class="row-label">
+          <span data-i18n="input.feel.showKeyHints">键帽小字符</span>
+          <small data-i18n="input.feel.showKeyHintsHint">开 = 显示全部小字符（字母上方的数字/符号、九宫格角落的符号与数字）；关 = 只剩主字，键面更干净。默认开。</small>
+        </span>
+        <input type="checkbox" id="showKeyHints" data-keywords="键帽 小字符 角标 符号 数字 隐藏 显示 hints" class="toggle">
       </label>
 
       <div class="row language-row">
@@ -1394,6 +1419,102 @@
 </div>
 
 <!-- About and component notices. -->
+<div class="page" data-page="guide" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.guide">使用指南与预设</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-guide-recommended" aria-labelledby="guideRecommendedTitle">
+      <div class="section-heading"><h2 id="guideRecommendedTitle" data-i18n="guide.recommended.title">本机推荐</h2><span class="eyebrow" data-i18n="guide.recommended.badge">推荐</span></div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span id="guideRecommended" data-i18n="guide.preset.balanced">均衡</span>
+          <small data-i18n="guide.recommended.hint">按本机运行内存给出，只是一个起点，随时可以改。</small>
+        </span>
+        <button class="btn primary" id="btnApplyRecommended" type="button" data-i18n="guide.applyRecommended">按推荐设置</button>
+      </div>
+      <span class="save-note" id="guideNote" role="status" aria-live="polite"></span>
+    </section>
+
+    <section class="card" id="sec-guide-presets" aria-labelledby="guidePresetsTitle">
+      <div class="section-heading"><h2 id="guidePresetsTitle" data-i18n="guide.presets.title">预设方案</h2><span class="eyebrow" data-i18n="guide.presets.badge">方案</span></div>
+      <div class="rows">
+        <div class="row language-row">
+          <span class="row-label">
+            <span data-i18n="guide.preset.balanced">均衡</span>
+            <small data-i18n="guide.preset.balancedHint">紧凑候选栏、全部小字符、液态玻璃，默认状态。</small>
+          </span>
+          <button class="btn" type="button" id="btnPresetBalanced" data-preset="balanced" data-i18n="guide.apply">应用</button>
+        </div>
+        <div class="row language-row">
+          <span class="row-label">
+            <span data-i18n="guide.preset.saver">省电</span>
+            <small data-i18n="guide.preset.saverHint">经典界面、省电模式、隐藏小字符，低内存设备更轻。</small>
+          </span>
+          <button class="btn" type="button" id="btnPresetSaver" data-preset="saver" data-i18n="guide.apply">应用</button>
+        </div>
+        <div class="row language-row">
+          <span class="row-label">
+            <span data-i18n="guide.preset.full">完整拼音行</span>
+            <small data-i18n="guide.preset.fullHint">保留单独的拼音行（原来样子），其他与均衡相同。</small>
+          </span>
+          <button class="btn" type="button" id="btnPresetFull" data-preset="full" data-i18n="guide.apply">应用</button>
+        </div>
+      </div>
+      <p class="hint" data-i18n="guide.presets.note">预设只改显示与省电 5 项（候选栏方式、键帽小字符、字母上方数字、键盘界面版本、省电模式），不改其他设置。</p>
+    </section>
+
+    <section class="card" id="sec-guide-howto" aria-labelledby="guideHowtoTitle">
+      <div class="section-heading"><h2 id="guideHowtoTitle" data-i18n="guide.howto.title">使用指南</h2><span class="eyebrow" data-i18n="guide.howto.badge">上手</span></div>
+      <div class="rows">
+        <div class="row">
+          <span class="row-label">
+            <span data-i18n="guide.howto.enable">启用输入法</span>
+            <small data-i18n="guide.howto.enableHint">系统设置 → 语言与输入法 → 启用 FeelimD，再设为默认输入法。</small>
+          </span>
+        </div>
+        <div class="row">
+          <span class="row-label">
+            <span data-i18n="guide.howto.switch">切换输入法</span>
+            <small data-i18n="guide.howto.switchHint">点键盘左下角的地球键，或用系统输入法切换键。</small>
+          </span>
+        </div>
+        <div class="row">
+          <span class="row-label">
+            <span data-i18n="guide.howto.type">打字选词</span>
+            <small data-i18n="guide.howto.typeHint">拼出拼音后点候选词上屏；空格键左右滑可移动光标。</small>
+          </span>
+        </div>
+        <div class="row">
+          <span class="row-label">
+            <span data-i18n="guide.howto.layouts">九宫格 / 笔画</span>
+            <small data-i18n="guide.howto.layoutsHint">设置页「键盘布局」里切换全拼、双拼、九键、笔画。</small>
+          </span>
+        </div>
+        <div class="row">
+          <span class="row-label">
+            <span data-i18n="guide.howto.clipboard">剪贴板与常用语</span>
+            <small data-i18n="guide.howto.clipboardHint">工具栏剪贴板按钮打开；点 ☆ 可把条目放进常用语。</small>
+          </span>
+        </div>
+        <div class="row">
+          <span class="row-label">
+            <span data-i18n="guide.howto.voice">离线语音</span>
+            <small data-i18n="guide.howto.voiceHint">按住语音键说话，松手出字；全程离线，不上传。</small>
+          </span>
+        </div>
+        <div class="row">
+          <span class="row-label">
+            <span data-i18n="guide.howto.backup">备份</span>
+            <small data-i18n="guide.howto.backupHint">设置页「备份与恢复」可导出 / 导入设置、常用语与词库。</small>
+          </span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
 <div class="page" data-page="about" hidden>
   <header class="page-head">
     <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>

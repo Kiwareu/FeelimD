@@ -1,5 +1,6 @@
 package com.feelime.ime
 
+import android.app.ActivityManager
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.Intent
@@ -222,6 +223,54 @@ fun readKeyboardUiVersion(context: Context): String {
         .getString(PREF_KEYBOARD_UI_VERSION, KEYBOARD_UI_VERSION_GLASS)
     return if (raw == KEYBOARD_UI_VERSION_CLASSIC) KEYBOARD_UI_VERSION_CLASSIC
     else KEYBOARD_UI_VERSION_GLASS
+}
+
+/** 候选栏显示方式（3.76）：slim = 紧凑（打字时拼音进候选栏首位，不再
+ *  另占一行拼音带，默认）；full = 完整（保留单独的拼音行，3.75 旧观感）。
+ *  非法值一律回落 slim。 */
+const val PREF_CANDIDATE_BAR_MODE = "candidate_bar_mode"
+const val CANDIDATE_BAR_MODE_SLIM = "slim"
+const val CANDIDATE_BAR_MODE_FULL = "full"
+
+fun readCandidateBarMode(context: Context): String {
+    val raw = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_CANDIDATE_BAR_MODE, CANDIDATE_BAR_MODE_SLIM)
+    return if (raw == CANDIDATE_BAR_MODE_FULL) CANDIDATE_BAR_MODE_FULL
+    else CANDIDATE_BAR_MODE_SLIM
+}
+
+/** 键帽小字符总开关（3.76）：开 = 显示全部小字符（默认）；关 = 26 键
+ *  字母上方数字/符号角标与九宫格左上角符号、右上角数字全部隐藏，只剩
+ *  主字。比 showKeyDigits 的口径大（那个只管数字角标）。 */
+const val PREF_SHOW_KEY_HINTS = "show_key_hints"
+
+fun readShowKeyHints(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_SHOW_KEY_HINTS, true)
+
+/** 预设方案 id（3.76）：balanced 均衡、saver 省电、full 完整拼音行。
+ *  只动显示与省电 5 项既有偏好，不碰纠错/删除确认等行为项。 */
+const val PRESET_BALANCED = "balanced"
+const val PRESET_SAVER = "saver"
+const val PRESET_FULL = "full"
+
+/** 按设备推荐预设（3.76）：只看运行内存总量（CyIME 首次向导的简化版，
+ *  不跑 CPU 基准、不问用户）。<= 4 GiB = 省电，其余 = 均衡。 */
+fun recommendedPreset(context: Context): String {
+    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        ?: return PRESET_BALANCED
+    val info = ActivityManager.MemoryInfo()
+    am.getMemoryInfo(info)
+    return if (info.totalMem <= 4L * 1024 * 1024 * 1024) PRESET_SAVER else PRESET_BALANCED
+}
+
+/** 本机运行内存（GiB，向下取整；读不到 = 0，设置页不展示具体数字）。 */
+fun deviceRamGb(context: Context): Long {
+    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        ?: return 0
+    val info = ActivityManager.MemoryInfo()
+    am.getMemoryInfo(info)
+    return info.totalMem / (1024 * 1024 * 1024)
 }
 
 /** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。
@@ -1110,6 +1159,8 @@ class SettingsBridge(
             .put("deleteConfirm", readDeleteConfirm(context))
             .put("showKeyDigits", readShowKeyDigits(context))
             .put("keyboardUiVersion", readKeyboardUiVersion(context))
+            .put("candidateBarMode", readCandidateBarMode(context))
+            .put("showKeyHints", readShowKeyHints(context))
             // 设备能力：无幅度马达的机型强度档按时长近似（hint 说明）。
             .put("keyHapticAmplitude", hapticAmplitudeSupported())
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
@@ -1181,6 +1232,8 @@ class SettingsBridge(
             .put("panelOpacity", readPanelOpacity(context))
             .put("glassSkin", readGlassSkin(context))
             .put("powerSaving", readPowerSaving(context))
+            .put("deviceRamGb", deviceRamGb(context))
+            .put("recommendedPreset", recommendedPreset(context))
             .put("pinyinCorrection", readPinyinCorrection(context))
             .put("habitLexicon", readHabitLexicon(context))
             .put("landscapeSafeArea", if (readLandscapeSafeArea(context)) 1 else 0)
@@ -2318,6 +2371,67 @@ class SettingsBridge(
         else KEYBOARD_UI_VERSION_GLASS
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putString(PREF_KEYBOARD_UI_VERSION, value).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 候选栏显示方式（3.76）：slim | full，非法值回落 slim。 */
+    @JavascriptInterface
+    fun setCandidateBarMode(mode: String, token: String) = guarded(token) {
+        val value = if (mode == CANDIDATE_BAR_MODE_FULL) CANDIDATE_BAR_MODE_FULL
+        else CANDIDATE_BAR_MODE_SLIM
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_CANDIDATE_BAR_MODE, value).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 键帽小字符总开关（3.76，默认开）。 */
+    @JavascriptInterface
+    fun setShowKeyHints(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_SHOW_KEY_HINTS, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 预设方案（3.76）：一次写 5 项显示与省电偏好（候选栏方式、键帽
+     *  小字符、字母上方数字、键盘界面版本、省电模式），一次广播、一次
+     *  回推。未知 id = 不做任何事。 */
+    @JavascriptInterface
+    fun applyPreset(presetId: String, token: String) = guarded(token) {
+        val edit = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
+        when (presetId) {
+            PRESET_SAVER -> {
+                edit.putString(PREF_CANDIDATE_BAR_MODE, CANDIDATE_BAR_MODE_SLIM)
+                edit.putBoolean(PREF_SHOW_KEY_HINTS, false)
+                edit.putBoolean(PREF_SHOW_KEY_DIGITS, false)
+                edit.putString(PREF_KEYBOARD_UI_VERSION, KEYBOARD_UI_VERSION_CLASSIC)
+                edit.putBoolean(PREF_POWER_SAVING, true)
+            }
+            PRESET_FULL -> {
+                edit.putString(PREF_CANDIDATE_BAR_MODE, CANDIDATE_BAR_MODE_FULL)
+                edit.putBoolean(PREF_SHOW_KEY_HINTS, true)
+                edit.putBoolean(PREF_SHOW_KEY_DIGITS, true)
+                edit.putString(PREF_KEYBOARD_UI_VERSION, KEYBOARD_UI_VERSION_GLASS)
+                edit.putBoolean(PREF_POWER_SAVING, false)
+            }
+            PRESET_BALANCED -> {
+                edit.putString(PREF_CANDIDATE_BAR_MODE, CANDIDATE_BAR_MODE_SLIM)
+                edit.putBoolean(PREF_SHOW_KEY_HINTS, true)
+                edit.putBoolean(PREF_SHOW_KEY_DIGITS, true)
+                edit.putString(PREF_KEYBOARD_UI_VERSION, KEYBOARD_UI_VERSION_GLASS)
+                edit.putBoolean(PREF_POWER_SAVING, false)
+            }
+            else -> return@guarded
+        }
+        edit.commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
