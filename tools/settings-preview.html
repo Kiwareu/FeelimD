@@ -57,6 +57,7 @@ body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; 
   <button data-page="update">更新</button>
   <button data-page="about">关于</button>
   <button data-page="test">测试</button>
+  <button id="previewWizard">新手向导</button>
   <button id="previewPlay">切换 Google Play 版</button>
   <button id="toggleLog">桥日志</button>
   <span id="sourceStatus">加载真实设置源…</span>
@@ -86,6 +87,7 @@ const state = {
   playDistribution: false,
   uiLocale: locale,
   ime: { enabled: true, isDefault: true },
+  wizardDone: true, // 默认已完成：普通预览不弹向导；?act=wizard 时改为 false。
   mic: { granted: true },
   models: [
     { id: 'streaming-zipformer-bilingual-zh-en', title: '流式语音识别（中英）', sizeBytes: 122437672, downloadBytes: 364126525, state: 'missing' },
@@ -169,6 +171,27 @@ window.PreviewBridge = {
     state.ime.isDefault = true;
     pushState();
   },
+  // 新手向导（3.76 原地更新）：与真实 SettingsBridge 同形；导航类无 token。
+  wizardStatus(...args) {
+    log('wizardStatus', args);
+    return JSON.stringify({ enabled: state.ime.enabled, isDefault: state.ime.isDefault, done: !!state.wizardDone });
+  },
+  openImeSettings(...args) {
+    log('openImeSettings', args);
+    state.ime.enabled = true;
+    pushState();
+  },
+  showImePicker(...args) {
+    log('showImePicker', args);
+    state.ime.enabled = true;
+    state.ime.isDefault = true;
+    pushState();
+  },
+  setWizardDone(...args) {
+    log('setWizardDone', args);
+    state.wizardDone = true;
+    pushState();
+  },
   addImeShortcut(...args) { log('addImeShortcut', args); },
   addImeWidget(...args) { log('addImeWidget', args); },
   addImeTile(...args) { log('addImeTile', args); },
@@ -243,6 +266,11 @@ document.getElementById('localeEn').addEventListener('click', () => {
   locale = 'en'; state.uiLocale = locale; state.uiLanguage = 'en'; document.getElementById('localeEn').classList.add('active'); document.getElementById('localeZh').classList.remove('active'); pushState();
 });
 document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
+// ?act=wizard：首次 state 回推即自动弹出向导（与真机首次打开同路）。
+// 工具栏按钮同效（wizardDone=false 后再推一次 state）；页内首页的
+// 「重新进行新手向导」入口在预览里同样可用。
+if (new URLSearchParams(location.search).get('act') === 'wizard') state.wizardDone = false;
+document.getElementById('previewWizard').addEventListener('click', () => { state.wizardDone = false; pushState(); });
 document.getElementById('previewPlay').onclick = () => { state.playDistribution = !state.playDistribution; document.getElementById('previewPlay').textContent = state.playDistribution ? '切换直接安装版' : '切换 Google Play 版'; pushState(); };
 document.getElementById('toggleLog').addEventListener('click', () => document.getElementById('logDrawer').classList.toggle('open'));
 fitStage();

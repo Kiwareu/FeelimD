@@ -248,6 +248,16 @@ fun readShowKeyHints(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_SHOW_KEY_HINTS, true)
 
+/** 新手向导完成标志（3.76 原地更新）：true = 向导已走完或被跳过，
+ *  设置页不再自动弹出；false（默认）= 首次打开设置时自动弹出向导。
+ *  只由 setWizardDone 写 true；「重新进行向导」入口不改它（向导内
+ *  再走完/跳过才会再写）。 */
+const val PREF_WIZARD_DONE = "wizard_done"
+
+fun readWizardDone(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_WIZARD_DONE, false)
+
 /** 预设方案 id（3.76）：balanced 均衡、saver 省电、full 完整拼音行。
  *  只动显示与省电 5 项既有偏好，不碰纠错/删除确认等行为项。 */
 const val PRESET_BALANCED = "balanced"
@@ -1161,6 +1171,7 @@ class SettingsBridge(
             .put("keyboardUiVersion", readKeyboardUiVersion(context))
             .put("candidateBarMode", readCandidateBarMode(context))
             .put("showKeyHints", readShowKeyHints(context))
+            .put("wizardDone", readWizardDone(context))
             // 设备能力：无幅度马达的机型强度档按时长近似（hint 说明）。
             .put("keyHapticAmplitude", hapticAmplitudeSupported())
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
@@ -1535,6 +1546,51 @@ class SettingsBridge(
 
     @JavascriptInterface
     fun enableIme(token: String) = guarded(token) { host.showImeEnableSettings() }
+
+    /** 新手向导状态（3.76 原地更新）：一次返回 {enabled, isDefault,
+     *  done}，供向导在系统设置/选择器返回后实测重查（onResume 的
+     *  state 回推之外再查一次，state 回推慢到时也不卡住下一步）。
+     *  数据读类，全量门闸。 */
+    @JavascriptInterface
+    fun wizardStatus(token: String): String {
+        if (closed || pageToken.isEmpty() || token != pageToken) {
+            Log.w(TAG, "settings bridge call rejected (bad token)")
+            return "{}"
+        }
+        return JSONObject()
+            .put("enabled", hostEnabled())
+            .put("isDefault", hostIsDefaultIme())
+            .put("done", readWizardDone(context))
+            .toString()
+    }
+
+    /** 新手向导：跳系统输入法设置（导航类，用户明确点击、无数据面，
+     *  不过 token 门闸；与 enableIme 同目标，区别只是不带 token——
+     *  向导第一步的按钮直接调它。绝不直接写 DEFAULT_INPUT_METHOD，
+     *  启用与否只由系统设置里的勾选决定）。 */
+    @JavascriptInterface
+    fun openImeSettings() {
+        if (closed) return
+        host.showImeEnableSettings()
+    }
+
+    /** 新手向导：调系统输入法选择器（导航类，不过 token 门闸；
+     *  与 pickIme 同目标，区别只是不带 token）。 */
+    @JavascriptInterface
+    fun showImePicker() {
+        if (closed) return
+        host.showImePicker()
+    }
+
+    /** 新手向导完成：写 wizard_done=true 并回推 state（数据写类，
+     *  全量门闸）。向导内「完成」与「跳过向导」都走这里；仅关闭
+     *  （✕）不调，下次打开设置仍会弹出。 */
+    @JavascriptInterface
+    fun setWizardDone(token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_WIZARD_DONE, true).commit()
+        pushState()
+    }
 
     /** #85：设置页文字输入框焦点上报——IME 的上滑删/下滑恢复手势
      *  据此路由进设置页 JS（ImeSettingsChannel），绕开 Chromium IC

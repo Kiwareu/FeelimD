@@ -430,19 +430,36 @@ body.landscape #symCatBar { margin-top: 3px; gap: 4px; }
 body.composing #preeditLine { display: block; }
 /* 3.76 紧凑候选栏：拼音行在紧凑模式下不显示（拼音在候选栏首位 chip）。 */
 body[data-candidate-mode="slim"].composing #preeditLine { display: none; }
-/* 3.76 紧凑候选栏首位拼音 chip：只读文本，不进候选池；完整模式留空隐藏。 */
-.candidate-reading {
-    flex: none;
-    align-self: center;
-    max-width: 40%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0 2px 0 8px;
-    font-size: calc(15px * var(--cand-font-scale, 1));
-    color: var(--text);
+/* 3.76 原地更新（2026-11-18）：新版紧凑——候选栏与工具箱行是同一槽位
+ * 的叠层。候选栏平时不占地方：负 margin 把它叠在工具箱行之下（竖屏
+ * -42px、横屏 -38px，刚好让两行边框重合），两行同高同圆角同底色，
+ * 视觉上就是同一行；打字时候选内容直接占这一行（body.strip-on），
+ * 工具栏淡出、候选条淡入，约 200ms ease + 轻微滑动；打完恢复。
+ * 只在紧凑 + 非设置页/统计页/硬键盘形态下生效——三者各有自己的行
+ * （设置/统计 chrome、硬键盘本体候选条），:not() 守住；完整模式完全不动。 */
+body[data-candidate-mode="slim"]:not(.settings-page):not(.stats-page):not(.hwkb) #candidateBar {
+    margin-bottom: -42px;
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
 }
-.candidate-reading[hidden] { display: none; }
+body[data-candidate-mode="slim"].landscape:not(.settings-page):not(.stats-page):not(.hwkb) #candidateBar {
+    margin-bottom: -38px;
+}
+body[data-candidate-mode="slim"]:not(.settings-page):not(.stats-page):not(.hwkb) #toolboxRow {
+    transition: opacity .2s ease, transform .2s ease;
+}
+body[data-candidate-mode="slim"]:not(.settings-page):not(.stats-page):not(.hwkb).strip-on #candidateBar {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+body[data-candidate-mode="slim"]:not(.settings-page):not(.stats-page):not(.hwkb).strip-on #toolboxRow {
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+}
 /* 默认不给拼音套一层跟着字数收缩的框。打开「拼音外框」才恢复胶囊。 */
 body.preedit-frame.composing #preeditLine {
     left: 8px;

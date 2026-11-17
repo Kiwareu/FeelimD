@@ -157,6 +157,15 @@ class MockSettingsNative {
     setBottomSymSplit(...a) { this._rec('setBottomSymSplit', a); }
     setCandidateBarMode(...a) { this._rec('setCandidateBarMode', a); }
     setShowKeyHints(...a) { this._rec('setShowKeyHints', a); }
+    // 新手向导（3.76 原地更新）：wizardStatus 同步返回当前门闸状态；
+    // openImeSettings / showImePicker 是无 token 的导航调用。
+    wizardStatus(...a) {
+        this._rec('wizardStatus', a);
+        return JSON.stringify(this.wizardStatusValue || { enabled: false, isDefault: false, done: false });
+    }
+    openImeSettings(...a) { this._rec('openImeSettings', a); }
+    showImePicker(...a) { this._rec('showImePicker', a); }
+    setWizardDone(...a) { this._rec('setWizardDone', a); }
     applyPreset(...a) { this._rec('applyPreset', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
@@ -265,6 +274,7 @@ const BASE_STATE = {
     uiLanguage: 'auto',
     uiLocale: 'zh',
     doubleShiftLock: true,
+    wizardDone: true, // 默认已完成：旧用例不弹向导；向导用例显式覆写为 false。
 };
 
 // ------------------------------------------------------------------- tests
@@ -3896,6 +3906,175 @@ test('guide page: recommended preset renders, apply buttons call applyPreset (3.
     // 「按推荐设置」用当前推荐（省电）。
     click('btnApplyRecommended');
     equal(world.lastCall('applyPreset').args, ['saver', world.token], 'recommended applies saver');
+});
+
+
+// --------------------------------------------------- 新手向导（3.76 原地更新）
+
+const wizardClick = (world, id) => {
+    const el = world.$(id);
+    const handler = (el.listeners || []).find(l => l.type === 'click');
+    assert(handler, `#${id} has a click listener`);
+    handler.handler({ target: el, type: 'click' });
+};
+const wizardChoice = (world, group, value) => {
+    const button = [...world.doc.querySelectorAll(`[data-wizard-choice="${group}"]`)]
+        .find(b => b.dataset.wizardValue === value);
+    assert(button, `wizard choice ${group}=${value} exists`);
+    fire(button, 'click');
+};
+const wizardOpenFresh = (world) => {
+    world.push({ ...BASE_STATE, wizardDone: false, ime: { enabled: false, isDefault: false } });
+    assert(!world.$('wizardOverlay').hidden, 'wizard auto-opens on first launch');
+    equal(world.$('wizardStepLabel').textContent, '第 1 步，共 6 步', 'starts at step 1');
+};
+const wizardToStep = (world, target) => {
+    // 门闸步靠 state 放行（真机上是用户回系统设置勾选后 state 回推）。
+    for (let guard = 0; guard < 10; guard++) {
+        const label = world.$('wizardStepLabel').textContent;
+        const step = Number((label.match(/第 (\d+) 步/) || [])[1] || 0);
+        assert(step > 0, `step label parses, got ${label}`);
+        if (step >= target) return;
+        if (step === 1) world.push({ ...BASE_STATE, wizardDone: false, ime: { enabled: true, isDefault: false } });
+        if (step === 2) world.push({ ...BASE_STATE, wizardDone: false, ime: { enabled: true, isDefault: true } });
+        wizardClick(world, 'wizardNext');
+    }
+    throw new Error(`wizard did not reach step ${target}`);
+};
+
+test('wizard: first launch auto-opens on wizardDone=false; done=true never auto-opens', () => {
+    const fresh = new SettingsWorld();
+    wizardOpenFresh(fresh);
+    const done = new SettingsWorld();
+    done.push({ ...BASE_STATE, wizardDone: true, ime: { enabled: false, isDefault: false } });
+    assert(done.$('wizardOverlay').hidden, 'no auto-open once done');
+    // 字段缺失（旧桥）也不弹。
+    const legacy = new SettingsWorld();
+    const state = { ...BASE_STATE };
+    delete state.wizardDone;
+    legacy.push({ ...state, ime: { enabled: false, isDefault: false } });
+    assert(legacy.$('wizardOverlay').hidden, 'no auto-open when the field is absent');
+});
+
+test('wizard: step 1 gate blocks Next until enabled; openImeSettings carries no token', () => {
+    const world = new SettingsWorld();
+    wizardOpenFresh(world);
+    assert(world.$('wizardNext').disabled, 'Next disabled before enabling');
+    wizardClick(world, 'wizardEnableGo');
+    equal(world.lastCall('openImeSettings').args, [], 'openImeSettings takes no token');
+    world.push({ ...BASE_STATE, wizardDone: false, ime: { enabled: true, isDefault: false } });
+    assert(!world.$('wizardNext').disabled, 'Next enabled once enabled');
+    assert(world.$('wizardEnableState').textContent.includes('已启用'), 'enable check shown');
+    wizardClick(world, 'wizardNext');
+    equal(world.$('wizardStepLabel').textContent, '第 2 步，共 6 步', 'advances to step 2');
+});
+
+test('wizard: step 2 gate blocks Next until default; showImePicker carries no token', () => {
+    const world = new SettingsWorld();
+    wizardOpenFresh(world);
+    wizardToStep(world, 2);
+    assert(world.$('wizardNext').disabled, 'Next disabled before default');
+    wizardClick(world, 'wizardDefaultGo');
+    equal(world.lastCall('showImePicker').args, [], 'showImePicker takes no token');
+    world.push({ ...BASE_STATE, wizardDone: false, ime: { enabled: true, isDefault: true } });
+    assert(!world.$('wizardNext').disabled, 'Next enabled once default');
+    assert(world.$('wizardDefaultState').textContent.includes('已是默认'), 'default check shown');
+});
+
+test('wizard: visibilitychange re-checks gates via wizardStatus', () => {
+    const world = new SettingsWorld();
+    wizardOpenFresh(world);
+    assert(world.$('wizardNext').disabled, 'Next disabled before enabling');
+    world.native.wizardStatusValue = { enabled: true, isDefault: false, done: false };
+    world.doc.visibilityState = 'visible';
+    // 两个 visibilitychange 监听器（cancelStripDrag + 向导重查）：全调一遍。
+    const handlers = (world.doc.listeners || []).filter(l => l.type === 'visibilitychange');
+    assert(handlers.length >= 2, 'visibilitychange listeners registered');
+    handlers.forEach(l => l.handler());
+    assert(world.native.of('wizardStatus').length > 0, 'wizardStatus queried on return');
+    assert(!world.$('wizardNext').disabled, 'Next enabled after live re-check');
+});
+
+test('wizard: layout choice writes setCandidateBarMode immediately; skip writes nothing', () => {
+    const world = new SettingsWorld();
+    wizardOpenFresh(world);
+    wizardToStep(world, 3);
+    wizardChoice(world, 'layout', 'full');
+    equal(world.lastCall('setCandidateBarMode').args, ['full', world.token], 'layout full writes pref');
+    wizardChoice(world, 'layout', 'slim');
+    equal(world.lastCall('setCandidateBarMode').args, ['slim', world.token], 'layout slim writes pref');
+    const before = world.native.of('setThemePreset').length;
+    wizardClick(world, 'wizardSkipStep');
+    equal(world.$('wizardStepLabel').textContent, '第 4 步，共 6 步', 'skip advances without choosing');
+    equal(world.native.of('setThemePreset').length, before, 'skip writes no theme preset');
+});
+
+test('wizard: theme/power/hints choices write existing setters; finish marks done and lands on home', () => {
+    const world = new SettingsWorld();
+    wizardOpenFresh(world);
+    wizardToStep(world, 4);
+    wizardChoice(world, 'theme', 'ocean');
+    equal(world.lastCall('setThemePreset').args, ['ocean', world.token], 'theme writes preset');
+    wizardClick(world, 'wizardNext');
+    equal(world.$('wizardStepLabel').textContent, '第 5 步，共 6 步', 'power step');
+    wizardChoice(world, 'power', 'saver');
+    equal(world.lastCall('setPowerSaving').args, [true, world.token], 'power saver writes pref');
+    wizardClick(world, 'wizardNext');
+    equal(world.$('wizardStepLabel').textContent, '第 6 步，共 6 步', 'hints step');
+    equal(world.$('wizardNext').textContent, '完成，去设置', 'last step shows finish');
+    wizardChoice(world, 'hints', 'off');
+    equal(world.lastCall('setShowKeyHints').args, [false, world.token], 'hints off writes pref');
+    wizardClick(world, 'wizardNext');
+    equal(world.lastCall('setWizardDone').args, [world.token], 'finish marks wizard done');
+    assert(world.$('wizardOverlay').hidden, 'wizard closes on finish');
+});
+
+test('wizard: redo entry reopens after done; close (x) does not mark done', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, wizardDone: true, ime: { enabled: true, isDefault: true } });
+    assert(world.$('wizardOverlay').hidden, 'done state stays closed');
+    // 重开时向导先 wizardStatus() 实测重查：mock 也要答已启用/已默认。
+    world.native.wizardStatusValue = { enabled: true, isDefault: true, done: true };
+    wizardClick(world, 'btnRedoWizard');
+    assert(!world.$('wizardOverlay').hidden, 'redo reopens the wizard');
+    equal(world.$('wizardStepLabel').textContent, '第 1 步，共 6 步', 'redo restarts at step 1');
+    assert(!world.$('wizardNext').disabled, 'already-enabled gate passes on redo');
+    wizardClick(world, 'wizardClose');
+    assert(world.$('wizardOverlay').hidden, 'x closes the wizard');
+    equal(world.native.of('setWizardDone').length, 0, 'x alone does not mark done');
+    wizardClick(world, 'btnRedoWizard');
+    assert(!world.$('wizardOverlay').hidden, 'still reopens after an x-close');
+});
+
+test('wizard: candidate bar copy describes both layouts; no stale pinyin-first wording', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const hint = world.doc.querySelector('[data-i18n="input.feel.candidateBarModeHint"]');
+    assert(hint.textContent.includes('工具栏那一行'), 'compact says candidates take the toolbar row');
+    assert(hint.textContent.includes('3.75 原样'), 'full says it is the 3.75 layout');
+    assert(!hint.textContent.includes('最前面'), 'stale pinyin-first wording is gone');
+    const fullHint = world.doc.querySelector('[data-i18n="guide.preset.fullHint"]');
+    assert(fullHint.textContent.includes('3.75 原样'), 'preset full hint matches the wizard wording');
+    assert(!fullHint.textContent.includes('原来样子'), 'stale preset wording is gone');
+});
+
+test('wizard: Kotlin bridge contract (3.76 in-place update)', () => {
+    const bridgeSrc = fs.readFileSync(KT_BRIDGE_PATH, 'utf8');
+    assert(bridgeSrc.includes('const val PREF_WIZARD_DONE = "wizard_done"'), 'wizard_done pref key exists');
+    assert(bridgeSrc.includes('.put("wizardDone", readWizardDone(context))'), 'state carries wizardDone');
+    assert(bridgeSrc.includes('fun wizardStatus(token: String): String'), 'wizardStatus bridge method exists');
+    assert(bridgeSrc.includes('fun openImeSettings()'), 'openImeSettings bridge method exists');
+    assert(bridgeSrc.includes('fun showImePicker()'), 'showImePicker bridge method exists');
+    assert(bridgeSrc.includes('fun setWizardDone(token: String)'), 'setWizardDone bridge method exists');
+    // 导航类不过 token 门闸：方法体里直接调 host，不走 guarded(token)。
+    const navOpen = bridgeSrc.slice(bridgeSrc.indexOf('fun openImeSettings()'));
+    assert(!navOpen.slice(0, 200).includes('guarded(token)'), 'openImeSettings skips the token gate');
+    const navPick = bridgeSrc.slice(bridgeSrc.indexOf('fun showImePicker()'));
+    assert(!navPick.slice(0, 200).includes('guarded(token)'), 'showImePicker skips the token gate');
+    // 数据类照旧全量门闸。
+    assert(bridgeSrc.includes('fun wizardStatus(token: String): String {'), 'wizardStatus is token-gated');
+    // 绝不直接写默认输入法。
+    assert(!bridgeSrc.includes('Settings.Secure.putString'), 'bridge never writes DEFAULT_INPUT_METHOD');
 });
 
 

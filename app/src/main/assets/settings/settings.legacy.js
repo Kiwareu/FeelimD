@@ -278,11 +278,11 @@ const I18N = {
     "guide.presets.title": "\u9884\u8BBE\u65B9\u6848",
     "guide.presets.badge": "\u65B9\u6848",
     "guide.preset.balanced": "\u5747\u8861",
-    "guide.preset.balancedHint": "\u7D27\u51D1\u5019\u9009\u680F\u3001\u5168\u90E8\u5C0F\u5B57\u7B26\u3001\u6DB2\u6001\u73BB\u7483\uFF0C\u9ED8\u8BA4\u72B6\u6001\u3002",
+    "guide.preset.balancedHint": "\u65E0\u9876\u680F\u3001\u5019\u9009\u5360\u5DE5\u5177\u680F\u884C\u3001\u5168\u90E8\u5C0F\u5B57\u7B26\u3001\u6DB2\u6001\u73BB\u7483\uFF0C\u9ED8\u8BA4\u72B6\u6001\u3002",
     "guide.preset.saver": "\u7701\u7535",
     "guide.preset.saverHint": "\u7ECF\u5178\u754C\u9762\u3001\u7701\u7535\u6A21\u5F0F\u3001\u9690\u85CF\u5C0F\u5B57\u7B26\uFF0C\u4F4E\u5185\u5B58\u8BBE\u5907\u66F4\u8F7B\u3002",
     "guide.preset.full": "\u5B8C\u6574\u62FC\u97F3\u884C",
-    "guide.preset.fullHint": "\u4FDD\u7559\u5355\u72EC\u7684\u62FC\u97F3\u884C\uFF08\u539F\u6765\u6837\u5B50\uFF09\uFF0C\u5176\u4ED6\u4E0E\u5747\u8861\u76F8\u540C\u3002",
+    "guide.preset.fullHint": "3.75 \u539F\u6837\uFF1A\u9876\u680F\u8F93\u5165\u6846 + \u5355\u72EC\u62FC\u97F3\u884C\uFF0C\u5019\u9009\u680F\u5728\u5DE5\u5177\u680F\u4E0A\u65B9\uFF1B\u5176\u4ED6\u4E0E\u5747\u8861\u76F8\u540C\u3002",
     "guide.apply": "\u5E94\u7528",
     "guide.presets.note": "\u9884\u8BBE\u53EA\u6539\u663E\u793A\u4E0E\u7701\u7535 5 \u9879\uFF08\u5019\u9009\u680F\u65B9\u5F0F\u3001\u952E\u5E3D\u5C0F\u5B57\u7B26\u3001\u5B57\u6BCD\u4E0A\u65B9\u6570\u5B57\u3001\u952E\u76D8\u754C\u9762\u7248\u672C\u3001\u7701\u7535\u6A21\u5F0F\uFF09\uFF0C\u4E0D\u6539\u5176\u4ED6\u8BBE\u7F6E\u3002",
     "guide.howto.title": "\u4F7F\u7528\u6307\u5357",
@@ -301,6 +301,45 @@ const I18N = {
     "guide.howto.voiceHint": "\u6309\u4F4F\u8BED\u97F3\u952E\u8BF4\u8BDD\uFF0C\u677E\u624B\u51FA\u5B57\uFF1B\u5168\u7A0B\u79BB\u7EBF\uFF0C\u4E0D\u4E0A\u4F20\u3002",
     "guide.howto.backup": "\u5907\u4EFD",
     "guide.howto.backupHint": "\u8BBE\u7F6E\u9875\u300C\u5907\u4EFD\u4E0E\u6062\u590D\u300D\u53EF\u5BFC\u51FA / \u5BFC\u5165\u8BBE\u7F6E\u3001\u5E38\u7528\u8BED\u4E0E\u8BCD\u5E93\u3002",
+    "wizard.title": "\u65B0\u624B\u5411\u5BFC",
+    "wizard.stepOf": "\u7B2C {step} \u6B65\uFF0C\u5171 {total} \u6B65",
+    "wizard.skipAll": "\u8DF3\u8FC7\u5411\u5BFC",
+    "wizard.close": "\u5173\u95ED",
+    "wizard.next": "\u4E0B\u4E00\u6B65",
+    "wizard.skipStep": "\u8DF3\u8FC7",
+    "wizard.finish": "\u5B8C\u6210\uFF0C\u53BB\u8BBE\u7F6E",
+    "wizard.enable.title": "\u542F\u7528 FeelimD \u8F93\u5165\u6CD5",
+    "wizard.enable.body": "\u53BB\u7CFB\u7EDF\u8BBE\u7F6E\u91CC\u52FE\u9009 FeelimD\uFF0C\u56DE\u6765\u540E\u8FD9\u91CC\u6253\u52FE\u624D\u80FD\u7EE7\u7EED\u3002",
+    "wizard.enable.action": "\u53BB\u7CFB\u7EDF\u8BBE\u7F6E\u542F\u7528",
+    "wizard.enable.done": "\u5DF2\u542F\u7528",
+    "wizard.enable.wait": "\u8FD8\u6CA1\u542F\u7528\uFF0C\u70B9\u4E0A\u9762\u6309\u94AE\u53BB\u7CFB\u7EDF\u8BBE\u7F6E\u52FE\u9009\u3002",
+    "wizard.default.title": "\u8BBE\u4E3A\u9ED8\u8BA4\u8F93\u5165\u6CD5",
+    "wizard.default.body": "\u70B9\u4E0B\u9762\u6309\u94AE\u8C03\u51FA\u7CFB\u7EDF\u8F93\u5165\u6CD5\u9009\u62E9\u5668\uFF0C\u9009 FeelimD\u3002",
+    "wizard.default.action": "\u9009\u62E9\u9ED8\u8BA4\u8F93\u5165\u6CD5",
+    "wizard.default.done": "\u5DF2\u662F\u9ED8\u8BA4\u8F93\u5165\u6CD5",
+    "wizard.default.wait": "\u8FD8\u6CA1\u8BBE\u4E3A\u9ED8\u8BA4\uFF0C\u70B9\u4E0A\u9762\u6309\u94AE\u9009 FeelimD\u3002",
+    "wizard.layout.title": "\u5019\u9009\u680F\u957F\u4EC0\u4E48\u6837",
+    "wizard.layout.slim": "\u7D27\u51D1\uFF08\u63A8\u8350\uFF09",
+    "wizard.layout.slimHint": "\u6CA1\u6709\u9876\u680F\u8F93\u5165\u6846\uFF1B\u6253\u5B57\u65F6\u5019\u9009\u76F4\u63A5\u5360\u7528\u5DE5\u5177\u680F\u90A3\u4E00\u884C\uFF0C\u5019\u9009\u524D\u9762\u6CA1\u6709\u62FC\u97F3\uFF0C\u7701\u5730\u65B9\u3002",
+    "wizard.layout.full": "\u5B8C\u6574\uFF083.75 \u539F\u6837\uFF09",
+    "wizard.layout.fullHint": "\u6709\u9876\u680F\u8F93\u5165\u6846\u548C\u5355\u72EC\u7684\u62FC\u97F3\u884C\uFF0C\u5019\u9009\u680F\u5728\u5DE5\u5177\u680F\u4E0A\u65B9\u3002",
+    "wizard.theme.title": "\u9009\u4E2A\u559C\u6B22\u7684\u989C\u8272",
+    "wizard.theme.hint": "\u968F\u65F6\u53EF\u4EE5\u5728\u300C\u5916\u89C2\u4E0E\u76AE\u80A4\u300D\u91CC\u518D\u6362\u3002",
+    "wizard.theme.sakura": "\u6A31\u7C89",
+    "wizard.theme.ocean": "\u6D77\u84DD",
+    "wizard.theme.classic": "\u7ECF\u5178\u7EFF",
+    "wizard.power.title": "\u7701\u7535\u8FD8\u662F\u5E38\u89C4",
+    "wizard.power.regular": "\u5E38\u89C4\uFF08\u63A8\u8350\uFF09",
+    "wizard.power.regularHint": "\u78E8\u7802\u548C\u6309\u952E\u52A8\u753B\u90FD\u5F00\u7740\uFF0C\u8BED\u97F3\u7528\u53CC\u901A\u9053\u8BC6\u522B\u3002",
+    "wizard.power.saver": "\u7701\u7535",
+    "wizard.power.saverHint": "\u78E8\u7802\u548C\u6309\u952E\u52A8\u753B\u5173\u95ED\uFF0C\u8BED\u97F3\u53EA\u7528\u6D41\u5F0F\u8BC6\u522B\uFF0C\u6A21\u578B\u7A7A\u95F2 1 \u5206\u949F\u91CA\u653E\u3002",
+    "wizard.hints.title": "\u952E\u5E3D\u5C0F\u5B57\u7B26\u8981\u4E0D\u8981",
+    "wizard.hints.on": "\u663E\u793A\u5168\u90E8",
+    "wizard.hints.onHint": "\u5B57\u6BCD\u4E0A\u65B9\u7684\u6570\u5B57/\u7B26\u53F7\u3001\u4E5D\u5BAB\u683C\u89D2\u843D\u7684\u7B26\u53F7\u4E0E\u6570\u5B57\u90FD\u663E\u793A\u3002",
+    "wizard.hints.off": "\u53EA\u5269\u4E3B\u5B57",
+    "wizard.hints.offHint": "\u5168\u90E8\u5C0F\u5B57\u7B26\u9690\u85CF\uFF0C\u952E\u9762\u66F4\u5E72\u51C0\u3002",
+    "wizard.redo": "\u91CD\u65B0\u8FDB\u884C\u65B0\u624B\u5411\u5BFC",
+    "wizard.redoHint": "\u4E00\u6B65\u4E00\u6B65\u91CD\u65B0\u8D70\u4E00\u904D\u542F\u7528\u4E0E\u504F\u597D\u8BBE\u7F6E\u3002",
     "page.input": "\u952E\u76D8\u4E0E\u8F93\u5165",
     "page.dict": "\u8BCD\u5E93",
     "dict.badge": "\u53E0\u52A0",
@@ -1059,9 +1098,9 @@ const I18N = {
     "input.feel.showKeyDigits": "\u5B57\u6BCD\u4E0A\u65B9\u663E\u793A\u6570\u5B57",
     "input.feel.showKeyDigitsHint": "\u5F00 = \u5B57\u6BCD\u952E\u4E0A\u65B9\u663E\u793A\u6570\u5B57 1-0\uFF1B\u5173 = \u6570\u5B57\u6D88\u5931\uFF0C\u53EA\u5269\u5B57\u6BCD\u3002\u9ED8\u8BA4\u5F00\u3002",
     "input.feel.candidateBarMode": "\u5019\u9009\u680F\u663E\u793A\u65B9\u5F0F",
-    "input.feel.candidateBarModeHint": "\u7D27\u51D1 = \u6253\u5B57\u65F6\u62FC\u97F3\u663E\u793A\u5728\u5019\u9009\u680F\u6700\u524D\u9762\uFF0C\u4E0D\u53E6\u5360\u4E00\u884C\uFF1B\u5B8C\u6574 = \u4FDD\u7559\u5355\u72EC\u7684\u62FC\u97F3\u884C\uFF08\u539F\u6765\u6837\u5B50\uFF09\u3002\u9ED8\u8BA4\u7D27\u51D1\u3002",
-    "input.feel.candidateBarModeSlim": "\u7D27\u51D1",
-    "input.feel.candidateBarModeFull": "\u5B8C\u6574",
+    "input.feel.candidateBarModeHint": "\u7D27\u51D1 = \u6CA1\u6709\u9876\u680F\u8F93\u5165\u6846\uFF0C\u6253\u5B57\u65F6\u5019\u9009\u76F4\u63A5\u5360\u7528\u5DE5\u5177\u680F\u90A3\u4E00\u884C\uFF0C\u5019\u9009\u524D\u9762\u6CA1\u6709\u62FC\u97F3\uFF1B\u5B8C\u6574 = 3.75 \u539F\u6837\uFF0C\u6709\u9876\u680F\u8F93\u5165\u6846\u548C\u5355\u72EC\u7684\u62FC\u97F3\u884C\uFF0C\u5019\u9009\u680F\u5728\u5DE5\u5177\u680F\u4E0A\u65B9\u3002\u9ED8\u8BA4\u7D27\u51D1\u3002",
+    "input.feel.candidateBarModeSlim": "\u7D27\u51D1\uFF08\u65E0\u9876\u680F\uFF09",
+    "input.feel.candidateBarModeFull": "\u5B8C\u6574\uFF08\u9876\u680F + \u62FC\u97F3\u884C\uFF09",
     "input.feel.showKeyHints": "\u952E\u5E3D\u5C0F\u5B57\u7B26",
     "input.feel.showKeyHintsHint": "\u5F00 = \u663E\u793A\u5168\u90E8\u5C0F\u5B57\u7B26\uFF08\u5B57\u6BCD\u4E0A\u65B9\u7684\u6570\u5B57/\u7B26\u53F7\u3001\u4E5D\u5BAB\u683C\u89D2\u843D\u7684\u7B26\u53F7\u4E0E\u6570\u5B57\uFF09\uFF1B\u5173 = \u53EA\u5269\u4E3B\u5B57\uFF0C\u952E\u9762\u66F4\u5E72\u51C0\u3002\u9ED8\u8BA4\u5F00\u3002",
     "input.feel.keyboardUiVersion": "\u952E\u76D8\u754C\u9762\u7248\u672C",
@@ -1247,11 +1286,11 @@ const I18N = {
     "guide.presets.title": "Presets",
     "guide.presets.badge": "Presets",
     "guide.preset.balanced": "Balanced",
-    "guide.preset.balancedHint": "Compact candidate bar, all small characters, liquid glass. The default.",
+    "guide.preset.balancedHint": "No top bar, candidates on the toolbar row, all small characters, liquid glass. The default.",
     "guide.preset.saver": "Power saving",
     "guide.preset.saverHint": "Classic UI, power-saving mode, small characters hidden. Lighter on low-memory devices.",
     "guide.preset.full": "Full pinyin row",
-    "guide.preset.fullHint": "Keep the separate pinyin row (the old look); otherwise the same as Balanced.",
+    "guide.preset.fullHint": "The 3.75 layout: top input box + separate pinyin row, candidate bar above the toolbar; otherwise the same as Balanced.",
     "guide.apply": "Apply",
     "guide.presets.note": "Presets only change 5 display and power-saving items (candidate bar style, small keycap characters, digits above letters, keyboard UI version, power-saving mode), nothing else.",
     "guide.howto.title": "How to use",
@@ -1270,6 +1309,45 @@ const I18N = {
     "guide.howto.voiceHint": "Hold the voice key to speak, release to commit text. Fully offline, nothing is uploaded.",
     "guide.howto.backup": "Backup",
     "guide.howto.backupHint": "Export / import settings, favorites and lexicons under Backup & restore in Settings.",
+    "wizard.title": "Setup wizard",
+    "wizard.stepOf": "Step {step} of {total}",
+    "wizard.skipAll": "Skip setup",
+    "wizard.close": "Close",
+    "wizard.next": "Next",
+    "wizard.skipStep": "Skip",
+    "wizard.finish": "Done \u2014 open settings",
+    "wizard.enable.title": "Enable the FeelimD keyboard",
+    "wizard.enable.body": "Turn on FeelimD in system settings; come back and the check appears here before you can continue.",
+    "wizard.enable.action": "Open system settings",
+    "wizard.enable.done": "Enabled",
+    "wizard.enable.wait": "Not enabled yet \u2014 tap the button above to turn it on in system settings.",
+    "wizard.default.title": "Set as the default keyboard",
+    "wizard.default.body": "Tap the button below to open the system keyboard picker and choose FeelimD.",
+    "wizard.default.action": "Choose default keyboard",
+    "wizard.default.done": "Already the default",
+    "wizard.default.wait": "Not the default yet \u2014 tap the button above and choose FeelimD.",
+    "wizard.layout.title": "How should the candidate bar look?",
+    "wizard.layout.slim": "Compact (recommended)",
+    "wizard.layout.slimHint": "No top input box; while typing, candidates take over the toolbar row with no pinyin in front. Saves space.",
+    "wizard.layout.full": "Full (the 3.75 layout)",
+    "wizard.layout.fullHint": "Top input box plus a separate pinyin row, with the candidate bar above the toolbar.",
+    "wizard.theme.title": "Pick a colour",
+    "wizard.theme.hint": "You can change this anytime under Appearance & skins.",
+    "wizard.theme.sakura": "Sakura pink",
+    "wizard.theme.ocean": "Ocean blue",
+    "wizard.theme.classic": "Classic green",
+    "wizard.power.title": "Power saving or regular?",
+    "wizard.power.regular": "Regular (recommended)",
+    "wizard.power.regularHint": "Glass blur and key animations on; speech uses both recognition passes.",
+    "wizard.power.saver": "Power saving",
+    "wizard.power.saverHint": "Glass blur and key animations off; streaming-only speech; models unload after 1 idle minute.",
+    "wizard.hints.title": "Small characters on the keys?",
+    "wizard.hints.on": "Show them all",
+    "wizard.hints.onHint": "Digits and symbols above letters, and the small marks in the corners of the 9-key layout.",
+    "wizard.hints.off": "Main character only",
+    "wizard.hints.offHint": "All small characters hidden; cleaner keys.",
+    "wizard.redo": "Run the setup wizard again",
+    "wizard.redoHint": "Walk through enabling and preferences step by step again.",
     "page.input": "Keyboard & input",
     "page.dict": "Lexicon",
     "dict.badge": "Overlay",
@@ -2018,9 +2096,9 @@ const I18N = {
     "input.feel.showKeyDigits": "Show digits above letters",
     "input.feel.showKeyDigitsHint": "On = digits 1-0 show above the letter keys; off = digits hidden, letters only. On by default.",
     "input.feel.candidateBarMode": "Candidate bar style",
-    "input.feel.candidateBarModeHint": "Compact = typed pinyin shows at the front of the candidate bar, no separate pinyin row; Full = keep the separate pinyin row (the old look). Compact by default.",
-    "input.feel.candidateBarModeSlim": "Compact",
-    "input.feel.candidateBarModeFull": "Full",
+    "input.feel.candidateBarModeHint": "Compact = no top input box; while typing, candidates take over the toolbar row with no pinyin in front. Full = the 3.75 layout: a top input box, a separate pinyin row, and the candidate bar above the toolbar. Compact by default.",
+    "input.feel.candidateBarModeSlim": "Compact (no top bar)",
+    "input.feel.candidateBarModeFull": "Full (top bar + pinyin row)",
     "input.feel.showKeyHints": "Small keycap characters",
     "input.feel.showKeyHintsHint": "On = show all small characters (digits/symbols above letters, corner symbols and digits on T9 keys); off = main glyphs only, cleaner keys. On by default.",
     "input.feel.keyboardUiVersion": "Keyboard interface version",
@@ -2712,6 +2790,8 @@ function render(state) {
   renderUpdate(state);
   renderAbout(state);
   renderGuide(state);
+  if (wizardActive) renderWizard();
+  else maybeOpenWizard(state);
 }
 __name(render, "render");
 let guideRecommended = "balanced";
@@ -2722,6 +2802,107 @@ function renderGuide(state) {
   if (label) label.textContent = t("guide.preset." + rec);
 }
 __name(renderGuide, "renderGuide");
+const WIZARD_TOTAL_STEPS = 6;
+let wizardStep = 0;
+let wizardActive = false;
+let wizardShownThisLoad = false;
+function wizardIme(state) {
+  const ime = state && state.ime || lastState && lastState.ime || {};
+  return { enabled: ime.enabled === true, isDefault: ime.isDefault === true };
+}
+__name(wizardIme, "wizardIme");
+function wizardStatusNow() {
+  try {
+    if (typeof BRIDGE.wizardStatus !== "function") return null;
+    const raw = BRIDGE.wizardStatus(token);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+__name(wizardStatusNow, "wizardStatusNow");
+function refreshWizardStatus() {
+  const now = wizardStatusNow();
+  if (!now) return;
+  if (lastState) {
+    lastState.ime = { enabled: now.enabled === true, isDefault: now.isDefault === true };
+    if (typeof now.done === "boolean") lastState.wizardDone = now.done;
+  }
+  if (wizardActive) renderWizard();
+}
+__name(refreshWizardStatus, "refreshWizardStatus");
+function openWizard() {
+  wizardActive = true;
+  wizardStep = 0;
+  wizardShownThisLoad = true;
+  const overlay = $("wizardOverlay");
+  if (overlay) overlay.hidden = false;
+  refreshWizardStatus();
+  renderWizard();
+}
+__name(openWizard, "openWizard");
+function closeWizard(finish) {
+  if (finish) call("setWizardDone");
+  wizardActive = false;
+  const overlay = $("wizardOverlay");
+  if (overlay) overlay.hidden = true;
+  showPage("home");
+}
+__name(closeWizard, "closeWizard");
+function maybeOpenWizard(state) {
+  if (state && state.wizardDone === false && !wizardShownThisLoad && !wizardActive) openWizard();
+}
+__name(maybeOpenWizard, "maybeOpenWizard");
+function wizardNextEnabled() {
+  const ime = wizardIme(lastState);
+  if (wizardStep === 0) return ime.enabled;
+  if (wizardStep === 1) return ime.isDefault;
+  return true;
+}
+__name(wizardNextEnabled, "wizardNextEnabled");
+function renderWizard() {
+  const overlay = $("wizardOverlay");
+  if (!overlay || !wizardActive) return;
+  const ime = wizardIme(lastState);
+  const stepLabel = $("wizardStepLabel");
+  if (stepLabel) stepLabel.textContent = t("wizard.stepOf", { step: wizardStep + 1, total: WIZARD_TOTAL_STEPS });
+  overlay.querySelectorAll("[data-wizard-step]").forEach((section) => {
+    section.hidden = Number(section.dataset.wizardStep) !== wizardStep;
+  });
+  overlay.querySelectorAll(".wizard-dot").forEach((dot, index) => {
+    dot.classList.toggle("done", index < wizardStep);
+    dot.classList.toggle("current", index === wizardStep);
+  });
+  const enableState = $("wizardEnableState");
+  if (enableState) {
+    enableState.textContent = ime.enabled ? t("wizard.enable.done") : t("wizard.enable.wait");
+    enableState.classList.toggle("ok", ime.enabled);
+  }
+  const defaultState = $("wizardDefaultState");
+  if (defaultState) {
+    defaultState.textContent = ime.isDefault ? t("wizard.default.done") : t("wizard.default.wait");
+    defaultState.classList.toggle("ok", ime.isDefault);
+  }
+  const next = $("wizardNext");
+  if (next) {
+    next.disabled = !wizardNextEnabled();
+    next.textContent = wizardStep >= WIZARD_TOTAL_STEPS - 1 ? t("wizard.finish") : t("wizard.next");
+  }
+  const skipStep = $("wizardSkipStep");
+  if (skipStep) skipStep.hidden = wizardStep <= 1;
+  const markChoice = /* @__PURE__ */ __name((group, value) => {
+    overlay.querySelectorAll(`[data-wizard-choice="${group}"]`).forEach((button) => {
+      button.classList.toggle("selected", button.dataset.wizardValue === value);
+    });
+  }, "markChoice");
+  if (lastState) {
+    markChoice("layout", lastState.candidateBarMode === "full" ? "full" : "slim");
+    markChoice("theme", lastState.themePreset || "sakura");
+    markChoice("power", lastState.powerSaving === true ? "saver" : "regular");
+    markChoice("hints", lastState.showKeyHints === false ? "off" : "on");
+  }
+}
+__name(renderWizard, "renderWizard");
 function renderLandscape(state) {
   var _a, _b, _c, _d;
   const safe = $("landscapeSafeArea");
@@ -4434,6 +4615,52 @@ function setToggleSafe(id, value) {
 __name(setToggleSafe, "setToggleSafe");
 $("btnEnableIme").addEventListener("click", () => call("enableIme"));
 $("btnPickIme").addEventListener("click", () => call("pickIme"));
+$("wizardEnableGo").addEventListener("click", () => {
+  try {
+    if (typeof BRIDGE.openImeSettings === "function") BRIDGE.openImeSettings();
+  } catch (error) {
+  }
+});
+$("wizardDefaultGo").addEventListener("click", () => {
+  try {
+    if (typeof BRIDGE.showImePicker === "function") BRIDGE.showImePicker();
+  } catch (error) {
+  }
+});
+$("wizardNext").addEventListener("click", () => {
+  if (!wizardNextEnabled()) {
+    refreshWizardStatus();
+    return;
+  }
+  if (wizardStep >= WIZARD_TOTAL_STEPS - 1) {
+    closeWizard(true);
+    return;
+  }
+  wizardStep += 1;
+  renderWizard();
+});
+$("wizardSkipStep").addEventListener("click", () => {
+  if (wizardStep >= WIZARD_TOTAL_STEPS - 1) {
+    closeWizard(true);
+    return;
+  }
+  wizardStep += 1;
+  renderWizard();
+});
+$("wizardSkipAll").addEventListener("click", () => closeWizard(true));
+$("wizardClose").addEventListener("click", () => closeWizard(false));
+$("btnRedoWizard").addEventListener("click", () => openWizard());
+document.querySelectorAll("[data-wizard-choice]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const group = button.dataset.wizardChoice;
+    const value = button.dataset.wizardValue;
+    if (group === "layout") call("setCandidateBarMode", value);
+    else if (group === "theme") call("setThemePreset", value);
+    else if (group === "power") call("setPowerSaving", value === "saver");
+    else if (group === "hints") call("setShowKeyHints", value === "on");
+    renderWizard();
+  });
+});
 $("btnAddShortcut").addEventListener("click", () => call("addImeShortcut"));
 $("btnAddTile").addEventListener("click", () => call("addImeTile"));
 $("btnMic").addEventListener("click", () => call("requestMic"));
@@ -7050,6 +7277,9 @@ function resyncImeFocusReport() {
 }
 __name(resyncImeFocusReport, "resyncImeFocusReport");
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") resyncImeFocusReport();
+  if (document.visibilityState === "visible") {
+    resyncImeFocusReport();
+    if (wizardActive) refreshWizardStatus();
+  }
 });
 window.addEventListener("pageshow", resyncImeFocusReport);

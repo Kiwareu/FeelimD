@@ -1308,7 +1308,9 @@ test('floating toolbar fit: continuous shrink + prune survives audit (narrow-car
         left: ['ctrl', 'ime', 'clipboard', 'favorites'],
         right: ['mic', 'kaomoji', 'floating', 'onehand'],
     }) });
-    // 3.74.9：量的是工具箱行（固定键只剩 setup，hide 留在候选栏）。
+    // 3.74.9：量的是工具箱行。3.76 原地更新：紧凑模式下收起键搬进工具
+    // 箱行，固定键变成 setup + hide 两个，N=2+8=10（fit 会把它也算进
+    // 尺寸预算，否则它会被顶出卡片）。
     const bar = world.document.getElementById('toolboxRow');
     const st = world.document.documentElement.style;
     world.context.window.innerHeight = 830; // 悬浮空间门按全屏高度放行
@@ -1319,7 +1321,7 @@ test('floating toolbar fit: continuous shrink + prune survives audit (narrow-car
           favorites: 'favoritesButton', mic: 'mic', kaomoji: 'toolKaomoji',
           floating: 'toolFloating', onehand: 'toolOneHand' }[id]);
 
-    // 宽卡（360 桩）：N=8 配置+1 固定=9 全显示、26px 上限档
+    // 宽卡（360 桩）：N=8 配置+2 固定=10 全显示、26px 上限档
     bar._clientWidthOverride = 360;
     world.context.window.Feelime.setFloatingMode(true);
     world.context.window.Feelime.fitToolbar();
@@ -1327,25 +1329,25 @@ test('floating toolbar fit: continuous shrink + prune survives audit (narrow-car
     equal(cfg.filter(id => domId(id).hidden).length, 0, 'wide bar shows all 8 config tools');
 
     // 窄卡（216 桩，用户 ace 实测宽；B=216-G2-壳预留8=206）：
-    // K=floor(208/20)=10 ≥ N=9 → 不裁；size=(206-16)/9=21.1 连续缩放档
+    // K=floor(208/20)=10 ≥ N=10 → 不裁；size=(206-18)/10=18.8 连续缩放档
     bar._clientWidthOverride = 216;
     world.context.window.Feelime.fitToolbar();
-    equal(st.getPropertyValue('--ftool-s'), '21.1px', 'narrow bar shrinks continuously');
+    equal(st.getPropertyValue('--ftool-s'), '18.8px', 'narrow bar shrinks continuously');
     equal(cfg.filter(id => domId(id).hidden).length, 0,
-        '9 tools all fit at 21.1px — nothing swallowed');
+        '10 tools all fit at 18.8px — nothing swallowed');
     equal(world.document.getElementById('hide').hidden, false, 'hide key never pruned');
 
-    // 极窄（150 桩）：K=floor(152/20)=7 < N=9 → M=7、名额 6、裁 2 个配置
+    // 极窄（150 桩）：K=floor(152/20)=7 < N=10 → M=7、名额 5、裁 3 个配置
     bar._clientWidthOverride = 150;
     world.context.window.Feelime.fitToolbar();
     equal(st.getPropertyValue('--ftool-s'), '18.2px', 'extreme narrow shrinks within the 18px floor');
     const hiddenAfterPrune = cfg.filter(id => domId(id).hidden);
-    equal(hiddenAfterPrune.length, 2, 'extreme narrow prunes the tail 2');
+    equal(hiddenAfterPrune.length, 3, 'extreme narrow prunes the tail 3');
     equal(world.document.getElementById('hide').hidden, false, 'hide survives extreme narrow');
 
     // 口径回归核心：applyHeight 尾的 audit 不得翻回 prune 的隐藏
     world.context.window.Feelime.applyHeightNow();
-    equal(cfg.filter(id => domId(id).hidden).length, 2,
+    equal(cfg.filter(id => domId(id).hidden).length, 3,
         'audit keeps the pruned tools hidden (has(id) fix, regression)');
 
     // 退出悬浮：清 var、恢复停靠容量口径
@@ -5078,28 +5080,53 @@ test('layoutChrome budgets portrait 136+band / landscape 118+band, full mode (3.
 
 // ---------------------------------------------------------------- 3.76
 
-test('candidate bar mode defaults to slim: chrome 118/100, pinyin in the candidate bar (3.76)', {since: '3.76'}, () => {
+test('candidate bar mode defaults to slim: chrome 70/58, candidates take over the toolbar row (3.76 update)', {since: '3.76'}, () => {
     const world = fresh();
     const kb = world.context.window.Feelime;
     world.hello({ orientation: 'portrait' });
     equal(world.document.body.dataset.candidateMode, 'slim', 'dataset carries slim');
-    equal(kb.layoutChrome(), 118, 'portrait chrome 118, no pinyin band');
+    equal(kb.layoutChrome(), 70, 'portrait chrome 70, one row only');
     world.hello({ orientation: 'landscape' });
-    equal(kb.layoutChrome(), 100, 'landscape chrome 100, no pinyin band');
+    equal(kb.layoutChrome(), 58, 'landscape chrome 58, one row only');
     // 拼音字号档加大时紧凑模式高度不动。
     world.hello({ orientation: 'portrait', preeditFont: 2 });
-    equal(kb.layoutChrome(), 118, 'slim chrome ignores the preedit font level');
-    // 打字时拼音写进候选栏首位 chip，拼音行留空。
+    equal(kb.layoutChrome(), 70, 'slim chrome ignores the preedit font level');
+    // 空闲：不接管；收起键在工具栏行末。
+    equal(world.document.body.classList.contains('strip-on'), false, 'no takeover while idle');
+    equal(world.$('hide').parentNode, world.$('toolboxRow'), 'hide lives in the toolbar row in slim');
+    const rowKids = world.$('toolboxRow').children;
+    equal(rowKids[rowKids.length - 1], world.$('hide'), 'hide is last in the toolbar row');
+    // 打字：候选进条、前面没有拼音前缀，工具栏行被接管。
     world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
         candidates: [{ id: 'c1', text: '你' }] });
-    const reading = world.$('candidateReading');
-    equal(reading.hidden, false, 'reading chip shown while composing');
-    equal(reading.textContent, 'ni', 'reading chip carries the pinyin');
+    equal(world.$('candidateReading'), null, 'no reading chip element any more');
     equal(world.$('preeditLine').textContent.trim(), '', 'pinyin row stays empty in slim');
-    // 组合结束 chip 消失。
+    equal(world.document.body.classList.contains('strip-on'), true, 'strip takes over while composing');
+    equal(world.$('candidates').children[0].textContent, '你', 'first strip item is the candidate itself, no pinyin prefix');
+    // 上屏后恢复工具栏。
     world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
         candidates: [] });
-    equal(reading.hidden, true, 'reading chip hidden when not composing');
+    equal(world.document.body.classList.contains('strip-on'), false, 'toolbar restored after commit');
+});
+
+test('idle association words take over the toolbar row and restore on clear (3.76 update)', {since: '3.76'}, () => {
+    const world = fresh();
+    world.hello({ orientation: 'portrait' });
+    world.assoc(['你好', '你们']);
+    equal(world.document.body.classList.contains('strip-on'), true, 'assoc takes over the toolbar row');
+    equal(world.$('candidates').children[0].textContent, '你好', 'assoc word first, no pinyin prefix');
+    world.assoc([]);
+    equal(world.document.body.classList.contains('strip-on'), false, 'toolbar restored when assoc clears');
+});
+
+test('hide stays in the candidate bar in hardware-keyboard form (3.76 update)', {since: '3.76'}, () => {
+    const world = fresh({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'candidates' });
+    // hello 会按 defaults 重建 payload：硬件键盘参数要随 hello 一起传，
+    // 只传 orientation 会把它们清掉（hwkb 形态随之解除）。
+    world.hello({ orientation: 'portrait', hardwareKeyboard: true, hwkbForm: 'candidates' });
+    equal(world.document.body.classList.contains('hwkb'), true, 'hwkb class on');
+    equal(world.$('hide').parentNode, world.$('candidateBar'), 'hide stays in the candidate bar in hwkb form');
+    equal(world.document.body.classList.contains('strip-on'), false, 'no takeover in hwkb form');
 });
 
 test('candidate bar mode full keeps the pinyin row and the 136+band budget (3.76)', {since: '3.76'}, () => {
@@ -5110,14 +5137,17 @@ test('candidate bar mode full keeps the pinyin row and the 136+band budget (3.76
     equal(kb.layoutChrome(), 140, 'portrait chrome 136 + default band 4');
     world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
         candidates: [{ id: 'c1', text: '你' }] });
-    equal(world.$('candidateReading').hidden, true, 'no reading chip in full mode');
+    equal(world.$('candidateReading'), null, 'no reading chip in full mode either');
     assert(world.$('preeditLine').textContent.includes('ni'), 'pinyin back in the pinyin row');
-    // 切回紧凑：chip 出现、拼音行清空、高度回落。
+    // 切回紧凑：拼音行清空、高度回落、收起键搬进工具栏行。
     world.hello({ orientation: 'portrait', candidateBarMode: 'slim' });
-    equal(world.$('candidateReading').hidden, false, 'reading chip returns on slim');
-    equal(world.$('candidateReading').textContent, 'ni', 'reading chip keeps the pinyin');
     equal(world.$('preeditLine').textContent.trim(), '', 'pinyin row cleared on slim');
-    equal(kb.layoutChrome(), 118, 'chrome drops to 118 on slim');
+    equal(kb.layoutChrome(), 70, 'chrome drops to 70 on slim');
+    equal(world.$('hide').parentNode, world.$('toolboxRow'), 'hide moves to the toolbar row on slim');
+    // 切回完整：收起键回候选栏原位、高度回来。
+    world.hello({ orientation: 'portrait', candidateBarMode: 'full' });
+    equal(world.$('hide').parentNode, world.$('candidateBar'), 'hide back in the candidate bar on full');
+    equal(kb.layoutChrome(), 140, 'chrome back to 140 on full');
 });
 
 test('key hints switch hides all small keycap characters incl. T9 corners (3.76)', {since: '3.76'}, () => {
@@ -8813,6 +8843,9 @@ test('toolbar gains the control + IME-switch tools; globe opens the picker', () 
 
 test('toolbox row: tools live in their own row between the candidates and the keys (3.74.9)', {since: '3.74.9'}, () => {
     const world = fresh();
+    // 3.76 原地更新：这条 3.74.9 不变量说的是完整模式——紧凑模式下收起键
+    // 有意搬进工具栏行（空闲时才能收键盘），所以这里显式钉 full 再断言。
+    world.hello({ candidateBarMode: 'full' });
     const row = world.$('toolboxRow');
     assert(row, 'toolbox row exists');
     // DOM order: candidate bar, toolbox row, then the key layers.
@@ -9227,8 +9260,12 @@ test('short landscape keeps all four rows above the system area', {since: '3.22.
     const world = new KeyboardWorld().build();
     world.$('softKeyboard').clientHeight = 212;
     world.hello({ orientation: 'landscape', safeBottom: 32 });
+    const kb = world.context.window.Feelime;
     const row = parseInt(world.document.documentElement.style['--kb-row-h'], 10);
-    assert(row > 0 && 78 + 4 * row <= 180, 'four rows fit the native half-screen content budget');
+    // 3.76 原地更新：紧凑横屏 chrome 58，fit=(180-58)/4=30，总高 58+120=178，
+    // 仍落在 180 的可用预算里；断言直接用实时 chrome，不再钉旧常量。
+    equal(kb.layoutChrome(), 58, 'slim landscape chrome 58');
+    assert(row > 0 && kb.layoutChrome() + 4 * row <= 180, 'four rows fit the native half-screen content budget');
 });
 
 test('height drag previews live; save persists and cancel restores (round-6)', {since: '3.59.0'}, () => {
@@ -9261,8 +9298,10 @@ test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.
     const world = fresh();
     // 3.74.10：内容下限随 chrome 降到 268（136+4+128），272 fallback 会被
     // 钳到下限、滑块钉在左端——把视图抬到 310，落在 [268, 340] 中段。
+    // 3.76 原地更新：这条钉的是完整模式的 268 下限（紧凑竖屏下限是
+    // 198=70+4+128），两处 hello 都显式传 candidateBarMode: 'full'。
     world.$('softKeyboard').clientHeight = 310;
-    world.hello({ heightCeil: 340, heightFloor: 210, floatBand: 200 });
+    world.hello({ heightCeil: 340, heightFloor: 210, floatBand: 200, candidateBarMode: 'full' });
     world.tap(world.$('setupButton'));
     world.tap(world.tile('键盘高度'));
     equal(world.document.getElementById('heightValue').textContent, '310px',
@@ -9274,7 +9313,7 @@ test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.
     // A ceiling AT the content floor (landscape half-screen budgets) must say
     // so instead of offering a range the native clamp silently refuses.
     world.tap(world.document.getElementById('heightCardCancel'));
-    world.hello({ orientation: 'landscape', heightCeil: 206, heightFloor: 170, floatBand: 120 });
+    world.hello({ orientation: 'landscape', heightCeil: 206, heightFloor: 170, floatBand: 120, candidateBarMode: 'full' });
     world.tap(world.$('setupButton'));
     world.tap(world.tile('键盘高度'));
     equal(world.document.getElementById('heightHint').textContent, '横屏已达屏幕上限',

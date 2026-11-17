@@ -3344,6 +3344,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         const hideBtn = document.getElementById("hide");
         if (hideBtn) hideBtn.hidden = active;
       }
+      this.updateStripTakeover();
       return active;
     }
     /** 点选候选：commitText 直上屏并清笔迹（design §2 数据流）。
@@ -3572,6 +3573,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const clear = document.getElementById("composeClear");
       if (clear) clear.hidden = !active;
       this.enforceToolbarExclusion();
+      this.updateStripTakeover();
     }
     /** 工具栏场景互斥不变量（用户 2026-11-13 裁定「几种场景严格
      * 互斥」：候选场景 / 工具 icon 场景 / 剪贴板·常用语场景不得
@@ -3631,6 +3633,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         button.addEventListener("mousedown", (event) => event.preventDefault());
         bar.append(button);
       });
+      this.updateStripTakeover();
     }
     cnEnKey() {
       const button = document.createElement("button");
@@ -6632,6 +6635,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const active = !!this.hardwareKeyboard && (this.hwkbForm || "candidates") === "candidates" && this.hwBandFormMode();
       if (document.body.classList.contains("hwkb") === active) return;
       document.body.classList.toggle("hwkb", active);
+      this.placeHideButton();
+      this.updateStripTakeover();
       this.applyHeight();
       this.hwNotifyPanelHeight();
       this.updateHwModeTag();
@@ -6711,7 +6716,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * CJK font line box so vendor fonts don't clip descenders, issue
      * #8): the rows shrink by 4/8/11 against the old 14px base. */
     layoutChrome() {
-      if (this.candidateBarMode === "slim") return this.landscape ? 100 : 118;
+      if (this.candidateBarMode === "slim") return this.landscape ? 58 : 70;
       const bandExtra = this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4;
       return (this.landscape ? 118 : 136) + bandExtra;
     }
@@ -6723,6 +6728,42 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     applyCandidateBarMode() {
       document.body.dataset.candidateMode = this.candidateBarMode;
       this.renderPreeditLine();
+      this.placeHideButton();
+      this.updateStripTakeover();
+    }
+    /** 收起键归属（3.76 原地更新）：紧凑模式下候选栏平时不可见，
+     * #hide 必须跟工具一起待在工具箱行里（空闲时才能收键盘）；
+     * 完整模式 / 硬键盘形态下它回候选栏原位（settingsPageBar 之前）。
+     * 节点搬移不丢监听（click 绑在节点上）；幂等——位置对了直接返回。
+     * applyToolbarLayout 末尾也会调它（右组重排会把行末的它顶到中间）。 */
+    placeHideButton() {
+      const hide = document.getElementById("hide");
+      const bar = document.getElementById("candidateBar");
+      const tools = document.getElementById("toolboxRow");
+      if (!hide || !bar || !tools) return;
+      const inToolbox = this.candidateBarMode === "slim" && !document.body.classList.contains("hwkb");
+      if (inToolbox) {
+        if (tools.lastChild !== hide) tools.appendChild(hide);
+      } else {
+        const anchor = document.getElementById("settingsPageBar");
+        if (hide.nextSibling !== anchor) bar.insertBefore(hide, anchor);
+      }
+    }
+    /** 候选条接管工具栏行（3.76 原地更新）：紧凑模式下候选栏与
+     * 工具箱行是同一槽位的叠层（CSS 负 margin），本函数只翻
+     * body.strip-on 一个开关——行本身不动，淡入淡出 + 轻微滑动
+     * 全走 CSS 过渡（约 200ms ease）。接管条件：有候选内容
+     * （引擎池 / 联想词 / 手写识别 / T9 符号行，读 #candidates
+     * 的实际子节点数，不猜状态）；语音录音中不接管（mic 是 stop
+     * 入口，必须留在工具栏行）；硬键盘 / 设置页 / 统计页下不接管
+     * （CSS :not() 同时守住）。幂等、无内容变化时零成本。 */
+    updateStripTakeover() {
+      const bar = document.getElementById("candidates");
+      const recording = ["listening", "loading", "stopping"].includes(this.voiceState);
+      const blocked = document.body.classList.contains("hwkb") || document.body.classList.contains("settings-page") || document.body.classList.contains("stats-page");
+      const takeOver = this.candidateBarMode === "slim" && !blocked && !recording && !!bar && bar.children.length > 0;
+      if (document.body.classList.contains("strip-on") === takeOver) return;
+      document.body.classList.toggle("strip-on", takeOver);
     }
     /** Read the native view's total height back as content height. The
      * fallback keeps the preview usable before its layout has measured. */
@@ -7293,6 +7334,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       });
       this.pruneOverflowTools();
       this.renderToolbarEditor();
+      this.placeHideButton();
     }
     /** 工具栏对账（兜底，每次编辑操作 / 键盘弹起后跑）：不变式是
      *  「每颗工具要么在工具箱行、要么在下方仓库完整展示」。实现拆两层：
@@ -9772,6 +9814,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           bar.append(button);
         });
         bar.scrollLeft = held;
+        this.updateStripTakeover();
         return;
       }
       ordered.forEach((candidate, index) => {
@@ -9799,6 +9842,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       bar.scrollLeft = held;
       if (!this.expanded) this.maybeLoadMoreCandidates();
       this.schedulePinyinAlign();
+      this.updateStripTakeover();
     }
     /** 全拼切成音节。已是完整音节的取最长，切不开的字母单独留下。 */
     pinyinPieces(raw) {
@@ -9907,20 +9951,15 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         line.scrollLeft = scrollX;
       }
     }
-    /** 拼音行渲染（3.76）：紧凑模式拼音进候选栏首位 chip、拼音行留空；
-     * 完整模式拼音写回拼音行（.preedit-raw + 中置光标 + 音节对齐）。
-     * 只动拼音行与 chip，不碰工具栏/面板/控制视图——切模式的 hello
-     * 重推也调它，updateComposing 的其余副作用（关设置面板、挂起
-     * 控制视图等）不能在切模式时跑。 */
+    /** 拼音行渲染（3.76 原地更新）：紧凑模式拼音不进键盘——拼音已
+     * 由 composing 文本显示在宿主输入框里，键盘只留候选文字，
+     * 拼音行留空；完整模式拼音写回拼音行（.preedit-raw + 中置光标
+     * + 音节对齐）。只动拼音行，不碰工具栏/面板/控制视图——切模式
+     * 的 hello 重推也调它，updateComposing 的其余副作用（关设置
+     * 面板、挂起控制视图等）不能在切模式时跑。 */
     renderPreeditLine() {
       const preedit = document.getElementById("preeditLine");
       const reading = this.composing ? this.mode === "t9" ? this.t9Reading() || this.t9PreeditLabel(this.lastRawInput) : this.lastRawInput : "";
-      const readingChip = document.getElementById("candidateReading");
-      if (readingChip) {
-        const showReading = this.candidateBarMode === "slim" && !!reading;
-        readingChip.textContent = showReading ? reading : "";
-        readingChip.hidden = !showReading;
-      }
       preedit.replaceChildren();
       if (this.candidateBarMode === "slim") {
       } else {
@@ -10022,6 +10061,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       this.updateEnterLabel();
       this.renderT9Side();
+      this.updateStripTakeover();
     }
     /* ===== clipboard / favorites panel ===== */
     /** Tear the shared editor strip down completely: hide it, drop the
@@ -10130,6 +10170,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.getElementById("candidateBar").hidden = false;
       document.getElementById("toolboxRow").hidden = false;
       this.auditToolbarTools();
+      this.updateStripTakeover();
       this.showKeyLayer(this.panelReturnLayer || "letters");
       this.maybeResumeCtrlView();
     }
