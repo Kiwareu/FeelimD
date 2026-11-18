@@ -319,7 +319,7 @@ class TranslateEngine(context: Context) {
         try {
             var decoderInput = longArrayOf(MarianTokenizer.DECODER_START_ID.toLong())
             repeat(TranslateDirections.MAX_OUTPUT_TOKENS) { step ->
-                val inputs = LinkedHashMap<String, Any>()
+                val inputs = LinkedHashMap<String, OnnxTensor>()
                 inputs["input_ids"] = OnnxTensor.createTensor(env, arrayOf(decoderInput))
                 inputs["encoder_hidden_states"] = hidden
                 inputs["encoder_attention_mask"] = encoderMask
