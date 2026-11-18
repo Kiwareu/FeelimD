@@ -13138,6 +13138,21 @@ test('s2tw: MANIFEST registers every new/changed engine file (3.76 item 4)', () 
         'ziranma_double_pinyin']) {
         check(id + '.schema.yaml');
     }
+    // third_party/manifest.json outputs is what CI checkEngineArtifacts
+    // actually audits: the two schema files listed there must match too
+    // (3.76 item 4 follow-up: the ziranma entry went stale and broke CI).
+    const thirdParty = JSON.parse(fs.readFileSync(
+        path.resolve(__dirname, '../../third_party/manifest.json'), 'utf8'));
+    for (const id of ['luna_pinyin', 'ziranma_double_pinyin']) {
+        const rel = id + '.schema.yaml';
+        const entry = thirdParty.outputs.find(o =>
+            o.path === 'app/src/main/assets/engine-data/rime/' + rel);
+        assert(entry, `third_party outputs lists rime/${rel}`);
+        const bytes = fs.readFileSync(path.join(RIME_DIR, rel));
+        equal(entry.bytes, bytes.length, `third_party bytes for rime/${rel}`);
+        equal(entry.sha256, crypto.createHash('sha256').update(bytes).digest('hex'),
+            `third_party sha256 for rime/${rel}`);
+    }
 });
 
 test('s2tw: Kotlin wiring for the script switch (3.76 item 4)', () => {
