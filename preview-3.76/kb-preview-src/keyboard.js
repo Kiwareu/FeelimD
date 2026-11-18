@@ -377,7 +377,24 @@
         "已清空笔迹": "Ink cleared",
         "手写模型未就绪": "Handwriting model not ready",
         "手写识别失败": "Handwriting recognition failed",
-        "手写": "Handwriting"
+        "手写": "Handwriting",
+        // 3.76 离线翻译面板。
+        "翻译": "Translate",
+        "切换翻译方向": "Switch translation direction",
+        "关闭翻译": "Close translation",
+        "输入要翻译的内容": "Enter text to translate",
+        "原文": "Source text",
+        "译文": "Translation",
+        "正在翻译…": "Translating…",
+        "先输入要翻译的内容": "Enter text to translate first",
+        "上屏": "Insert",
+        "复制": "Copy",
+        "已复制": "Copied",
+        "复制失败，可长按译文手动复制": "Copy failed — long-press the translation to copy it manually",
+        "去下载模型": "Download models",
+        "当前版本不支持离线翻译，请更新 APK": "This version doesn't support offline translation — update the app.",
+        "中 → 英": "ZH → EN",
+        "英 → 中": "EN → ZH"
 };
     function t(source, ...values) {
         const pattern = uiLocale === 'en' ? (UI_EN[source] || source) : source;
@@ -409,6 +426,9 @@
         stats:    { el: 'statsLayer',    openClass: null,    close: 'closeStatsPanel',    returnField: 'statsReturnLayer' },
         edit:     { el: 'editLayer',     openClass: null,    close: 'closeEditPanel',     returnField: 'editReturnLayer' },
         panel:    { el: 'panelLayer',    openClass: null,    close: 'closePanel',         returnField: 'panelReturnLayer' },
+        // 3.76 离线翻译面板（.kb-layer 整屏级视图）：登记即与全部视图
+        // 双向互斥；mock 的 mutex gate 枚举 DOM 比对，漏登记直接红。
+        translate: { el: 'translateLayer', openClass: null, close: 'closeTranslatePanel', returnField: 'translateReturnLayer' },
         modeMenu: { el: 'modeMenu',      openClass: 'open',  close: 'closeModeMenu' },
     };
 
@@ -486,7 +506,7 @@
     };
     const dynamicWeekNames = ['日', '一', '二', '三', '四', '五', '六'];
 
-    function dynamicCandidatesFor(raw, mode) {
+    function dynamicCandidatesFor(raw, mode, scriptVariant) {
         if (mode !== 'pinyin' && mode !== 'double-pinyin') return [];
         let spec = DYNAMIC_INPUT_CODES[raw];
         if (!spec) return [];
@@ -515,7 +535,10 @@
             ];
         } else {
             const name = dynamicWeekNames[now.getDay()];
-            texts = [`星期${name}`, `周${name}`, now.getDay() === 0 ? '星期天' : `礼拜${name}`];
+            // 繁体（台湾）模式：JS 侧动态候选不经引擎 simplifier，
+            // 「礼拜」要按台湾用法出「禮拜」（其余字两岸同形）。
+            const libai = scriptVariant === 'hant_tw' ? '禮拜' : '礼拜';
+            texts = [`星期${name}`, `周${name}`, now.getDay() === 0 ? '星期天' : `${libai}${name}`];
         }
         return texts.map((text, index) => ({
             id: `dyn:${spec.kind}-${index}`,
@@ -598,6 +621,9 @@ const TOOL_CATALOG = {
     ime: 'imeSwitchButton',
     clipboard: 'clipboardButton',
     favorites: 'favoritesButton',
+    // 3.76 离线翻译：默认上栏（TOOLBAR_DEFAULT.right），用户可在工具编辑
+    // 里移走；旧壳无 translateText 桥时按钮隐藏（见初始化绑定）。
+    translate: 'translateButton',
     mic: 'mic',
     // 开关型/动作型工具：默认不上栏，只待在编辑仓库里由用户添加（动态创建）。
     // setup 是静态元素（index.html 里的 fullSetupButton），其余动态创建。
@@ -634,7 +660,23 @@ const PREEDIT_SCRUB_MODES = new Set(['pinyin', 'double-pinyin']);
  *  但快捷对的语义是中英切换，不能落到外文键盘上。 */
 const CHINESE_INPUT_MODES = new Set(['pinyin', 'double-pinyin', 't9', 'stroke', 'flypy']);
 
-const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
+const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'translate', 'mic'] };
+/** 工具栏左一按钮（setupButton）可换图标（3.76 原地更新）：id 与
+ *  native TOOLBAR_ICON_IDS 同源（空串 = 默认 F 标志，custom = 用户
+ *  上传图走 toolbarIconUrl）。品牌标志只用简洁字母/线条手绘，不搬
+ *  官方矢量资产：OnePlus 取 "1+"、小米取 "MI"、OPPO/vivo 取字母标。
+ *  设置页的图标网格只画文字标（TOOLBAR_ICON_OPTIONS），id 集须一致
+ *  （mock_settings_tests 交叉校验）。 */
+const TOOLBAR_ICONS = {
+    '': '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12.5 8.5h24l-1.8 6.2H19.3v7.2h13.3l-1.8 6.2H19.3v11.4h-6.8z"/><rect x="31" y="31" width="4.5" height="8.5" rx="1"/></svg>',
+    oneplus: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="31" text-anchor="middle" font-size="19" font-weight="700">1+</text></svg>',
+    xiaomi: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="31" text-anchor="middle" font-size="16" font-weight="700">MI</text></svg>',
+    oppo: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="29" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1">OPPO</text></svg>',
+    vivo: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="30" text-anchor="middle" font-size="13" font-weight="700">vivo</text></svg>',
+    star: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+    bolt: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>',
+};
     const MIN_NATIVE_API = 1;
     const REQUIRED_CAPABILITIES = [
         'candidate-revision-v1',
@@ -1625,6 +1667,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #67 颜文字面板：当前分类（跨开合记住）。
             this.kaomojiTab = KAOMOJI_TABS[0].id;
             this.panelOpen = false;
+            // 3.76 离线翻译面板：方向（'zh-en'|'en-zh'，hello 下发、切换
+            // 时经 setQuickPref 写回原生 pref）、在途请求的 reqId、
+            // 最新一条译文（上屏/复制用）。
+            this.translateDirection = 'zh-en';
+            this.translateReqId = 0;
+            this.translateResultText = '';
+            this.translateTranslating = false;
             // Control-key layer state - the toolbar swap, the
             // sticky Ctrl/Alt/Meta modifiers and the open combo grid.
             this.ctrlView = false;
@@ -1840,6 +1889,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 不另占拼音行）、键帽小字符总开关（默认开）。
             this.candidateBarMode = 'slim';
             this.showKeyHints = true;
+            // 3.76 原地更新第 4 项：简/繁（台湾）字形（默认简体）；
+            // 只影响 JS 侧动态日期候选（礼拜→禮拜），拼音候选由引擎
+            // simplifier 转换，不经 JS。
+            this.scriptVariant = 'hans';
             // #55 悬浮键盘几何（css px，画布坐标=WebView 视口）：
             // spike 首版内存态（方向无关），进悬浮时按视口给安全初值。
             this.floating = false;
@@ -2244,6 +2297,44 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (clipBtn) clipBtn.addEventListener('click', () => this.openPanel('clipboard'));
             const favBtn = document.getElementById('favoritesButton');
             if (favBtn) favBtn.addEventListener('click', () => this.openPanel('favorites'));
+            const translateBtn = document.getElementById('translateButton');
+            if (translateBtn) translateBtn.addEventListener('click', () => this.toggleTranslatePanel());
+            this.syncTranslateButton();
+            document.getElementById('translateClose').addEventListener('click', () => this.closeTranslatePanel());
+            document.getElementById('translateDirection').addEventListener('click', () => {
+                this.setTranslateDirection(this.translateDirection === 'zh-en' ? 'en-zh' : 'zh-en');
+            });
+            document.getElementById('translateGo').addEventListener('click', () => this.translateNow());
+            document.getElementById('translateCancel').addEventListener('click', () => this.cancelTranslateRequest());
+            document.getElementById('translateCommit').addEventListener('click', () => this.translateCommit());
+            document.getElementById('translateCopy').addEventListener('click', () => this.translateCopy());
+            document.getElementById('translateDownload').addEventListener('click', () => {
+                this.closeTranslatePanel();
+                if (typeof Native.openSetupPage === 'function') {
+                    this.call(() => Native.openSetupPage('voice', this.token));
+                }
+            });
+            // 原文框：focus 走 setPanelInput(true)，与常用语编辑框/剪贴板
+            // 搜索同款重定向——键盘按键直接打进原文框（panelInputField
+            // 认 .phrase-input）。blur 时松开重定向（点「翻译」等按钮后
+            // 再点回原文框会重新 focus、重新接上）。
+            const translateSource = document.getElementById('translateSource');
+            if (translateSource) {
+                translateSource.addEventListener('focus', () => {
+                    this.setPanelInput(true);
+                    this.reportPanelSelection();
+                });
+                translateSource.addEventListener('blur', () => {
+                    if (!document.getElementById('translateLayer').hidden) {
+                        // 面板还开着：只是按钮拿走了焦点，留在重定向里等
+                        // 用户点回原文框（blur 后 focus 会再接上）；面板
+                        // 关闭时 closeTranslatePanel 统一松开。
+                    } else {
+                        this.setPanelInput(false);
+                    }
+                });
+                translateSource.addEventListener('input', () => this.reportPanelSelection());
+            }
             document.getElementById('panelClose').addEventListener('click', () => this.closePanel());
             document.getElementById('panelClear').addEventListener('click', () => {
                 if (this.panelTab !== 'clipboard') return;
@@ -8569,6 +8660,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // 把未上栏的按钮移进下方仓库 grid），applyToolbarLayout 只负责
         // 按数组重排；事件绑定在元素上，移动安全。
 
+        /** 工具栏左一按钮换图标（3.76 原地更新）：只换 setupButton 的
+         *  图形，按钮作用（开快捷设置）不变。custom 且有图 = <img>；
+         *  custom 但无图（备份恢复后文件未跟来）回落默认 F；未知 id
+         *  同样回落默认。同一图标+同一 URL 不重复写 DOM。 */
+        applyToolbarIcon(payload) {
+            const btn = document.getElementById('setupButton');
+            if (!btn) return;
+            const id = typeof payload.toolbarIcon === 'string' ? payload.toolbarIcon : '';
+            const url = typeof payload.toolbarIconUrl === 'string' ? payload.toolbarIconUrl : '';
+            const key = id === 'custom' ? 'custom|' + url : 'builtin|' + id;
+            if (this._toolbarIconKey === key) return;
+            this._toolbarIconKey = key;
+            if (id === 'custom' && url) {
+                btn.innerHTML = '<img src="' + url.replace(/"/g, '') +
+                    '" width="16" height="16" alt="">';
+                return;
+            }
+            btn.innerHTML = TOOLBAR_ICONS[id] || TOOLBAR_ICONS[''];
+        }
+
+        /** 折射边框与加厚模糊（3.76 原地更新）：只挂 class，视觉由 CSS
+         *  侧规则出。缺字段按 native 默认补：折射默认开、加厚默认关
+         *  （旧壳 hello 不带字段时也不丢默认行为）。 */
+        applyThemeExtras(payload) {
+            const refraction = typeof payload.keyRefraction === 'boolean'
+                ? payload.keyRefraction : true;
+            this.keyRefraction = refraction;
+            document.documentElement.classList.toggle('key-refraction', refraction);
+            const heavy = typeof payload.kbBgBlurHeavy === 'boolean'
+                ? payload.kbBgBlurHeavy : false;
+            this.kbBgBlurHeavy = heavy;
+            document.body.classList.toggle('kb-bg-heavy-blur', heavy);
+        }
+
         applyToolbarLayoutValue(raw) {
             let parsed = null;
             try { parsed = JSON.parse(raw); } catch (error) { parsed = null; }
@@ -8622,6 +8747,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (dom === 'mic') return;
                 const el = document.getElementById(dom);
                 if (!el) return;
+                // 3.76：旧壳无 translateText 桥时翻译入口恒藏——布局对账
+                // 不得把它翻回可见（与 syncTranslateButton 同口径；
+                // updateComposing 里同款守卫）。
+                if (dom === 'translateButton' && typeof Native.translateText !== 'function') {
+                    el.hidden = true;
+                    return;
+                }
                 el.hidden = el.closest('#toolbarEditorGrid')
                     ? false
                     // 工具箱行：只按溢出藏（打字/让位不藏）；候选栏内：
@@ -8683,6 +8815,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const recording = ['listening', 'loading', 'stopping']
                     .includes(this.voiceState);
                 if (recording && id === 'mic') return;
+                // 3.76：旧壳无 translateText 桥时翻译入口恒藏——prune 是
+                // audit 之后的尾步，不得把刚藏好的它写回可见（与
+                // syncTranslateButton / auditToolbarTools 同口径）。
+                if (id === 'translate' && typeof Native.translateText !== 'function') {
+                    el.hidden = true;
+                    return;
+                }
                 if (this.toolbarCandidatesSceneActive() && el.closest('#candidateBar')) {
                     el.hidden = true;
                     return;
@@ -9813,6 +9952,175 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.body.classList.remove('stats-page');
             this.showKeyLayer(this.statsReturnLayer || 'letters');
             this.maybeResumeCtrlView();
+        }
+
+        /** 3.76 离线翻译入口显隐：旧壳没有 translateText 桥方法时隐藏
+         *  （特性检测，不靠能力握手——translate-v1 不进 REQUIRED）。
+         *  初始化与每次 hello 各同步一次；工具栏对账循环里另有同款
+         *  守卫，防止溢出/组合对账把它翻回可见。 */
+        syncTranslateButton() {
+            const button = document.getElementById('translateButton');
+            if (!button) return;
+            button.hidden = typeof Native.translateText !== 'function';
+        }
+
+        /** 3.76 离线翻译面板（ONNX 路线）：toggle/close 照统计浮层同款
+         *  （互斥走注册表、回层走 returnField、ctrl 视图借出借还）。 */
+        toggleTranslatePanel() {
+            this.closeOtherViews('translate');
+            const layer = document.getElementById('translateLayer');
+            if (layer && !layer.hidden) { this.closeTranslatePanel(); return; }
+            if (this.ctrlView) this.suspendCtrlView();
+            this.translateReturnLayer = this.keyLayer;
+            this.keyLayer = 'translate';
+            this.hideKeyLayers();
+            document.getElementById('candidateBar').hidden = true;
+            document.getElementById('toolboxRow').hidden = true;
+            layer.hidden = false;
+            this.syncTranslateDirectionLabel();
+            // 打开时清掉上次的残留状态/下载出口，免得旧错误还挂在面板上。
+            this.setTranslateStatus('', false);
+            this.hwNotifyPanelHeight(); // #H 翻译面板=完整高度
+            // 打开即把焦点放进原文框：focus 处理里接 setPanelInput，
+            // 键盘按键直接打进原文框；译文框只读，不抢焦点。
+            const source = document.getElementById('translateSource');
+            if (source) source.focus();
+        }
+
+        closeTranslatePanel() {
+            const layer = document.getElementById('translateLayer');
+            if (!layer || layer.hidden) return;
+            layer.hidden = true;
+            // 在途翻译作废：回推按 reqId 丢弃（旧请求已发，native 侧只翻
+            // 最新一句；这里只清本地态，不发 cancel——关面板即放弃结果）。
+            this.translateTranslating = false;
+            this.syncTranslateButtons();
+            document.getElementById('candidateBar').hidden = false;
+            document.getElementById('toolboxRow').hidden = false;
+            this.auditToolbarTools();
+            this.updateStripTakeover();
+            // 原文框的重定向随面板关闭松开（blur 路径不抢，见初始化绑定）。
+            if (this.settingsInputFocus) this.setPanelInput(false);
+            this.showKeyLayer(this.translateReturnLayer || 'letters');
+            this.maybeResumeCtrlView();
+        }
+
+        /** 方向切换：只认两个合法值；写回原生 pref（setQuickPref 白名单
+         *  里有 translateDirection），hello 重推后回读，不走 localStorage。 */
+        setTranslateDirection(direction) {
+            if (direction !== 'zh-en' && direction !== 'en-zh') return;
+            this.translateDirection = direction;
+            this.syncTranslateDirectionLabel();
+            if (typeof Native.setQuickPref === 'function') {
+                this.call(() => Native.setQuickPref('translateDirection', direction, this.token));
+            }
+        }
+
+        syncTranslateDirectionLabel() {
+            const button = document.getElementById('translateDirection');
+            if (!button) return;
+            button.textContent = this.translateDirection === 'en-zh' ? t('英 → 中') : t('中 → 英');
+        }
+
+        /** 翻译按钮行状态：翻译中只留取消；有译文才亮上屏/复制。
+         *  去下载按钮的显隐只归 setTranslateStatus 管（模型未下载的错
+         *  误才亮），这里不碰它，免得把刚亮起的出口又藏回去。 */
+        syncTranslateButtons() {
+            const go = document.getElementById('translateGo');
+            const cancel = document.getElementById('translateCancel');
+            const commit = document.getElementById('translateCommit');
+            const copy = document.getElementById('translateCopy');
+            const hasResult = !!this.translateResultText;
+            if (go) go.hidden = this.translateTranslating;
+            if (cancel) cancel.hidden = !this.translateTranslating;
+            if (commit) commit.disabled = !hasResult || this.translateTranslating;
+            if (copy) copy.disabled = !hasResult || this.translateTranslating;
+        }
+
+        setTranslateStatus(text, showDownload) {
+            const status = document.getElementById('translateStatus');
+            if (status) status.textContent = text || '';
+            const download = document.getElementById('translateDownload');
+            if (download) download.hidden = !showDownload;
+        }
+
+        translateNow() {
+            const source = document.getElementById('translateSource');
+            const text = (source ? source.value : '').trim();
+            if (!text) {
+                this.setTranslateStatus(t('先输入要翻译的内容'), false);
+                return;
+            }
+            if (typeof Native.translateText !== 'function') {
+                this.setTranslateStatus(t('当前版本不支持离线翻译，请更新 APK'), false);
+                return;
+            }
+            const [from, to] = this.translateDirection === 'en-zh' ? ['en', 'zh'] : ['zh', 'en'];
+            this.translateReqId += 1;
+            const reqId = this.translateReqId;
+            this.translateTranslating = true;
+            this.translateResultText = '';
+            document.getElementById('translateResult').value = '';
+            this.setTranslateStatus(t('正在翻译…'), false);
+            this.syncTranslateButtons();
+            this.call(() => Native.translateText(text, from, to, reqId, this.token));
+        }
+
+        cancelTranslateRequest() {
+            if (!this.translateTranslating) return;
+            const reqId = this.translateReqId;
+            this.translateTranslating = false;
+            this.setTranslateStatus('', false);
+            this.syncTranslateButtons();
+            if (typeof Native.cancelTranslate === 'function') {
+                this.call(() => Native.cancelTranslate(reqId, this.token));
+            }
+        }
+
+        /** 原生回推（仿 onInkCandidates）：reqId 与最新请求不符丢弃。 */
+        onTranslateResult(payload) {
+            if (!payload || payload.reqId !== this.translateReqId) return;
+            this.translateTranslating = false;
+            if (payload.state === 'done') {
+                this.translateResultText = payload.text || '';
+                document.getElementById('translateResult').value = this.translateResultText;
+                this.setTranslateStatus('', false);
+            } else {
+                const error = payload.error || '';
+                this.translateResultText = '';
+                document.getElementById('translateResult').value = '';
+                // 模型未下载 → 给「去下载模型」出口（跳设置页语音/模型区）；
+                // 其他错误只显示原因（不支持/翻译出错不给下载按钮）。
+                this.setTranslateStatus(error, error.indexOf('还没下载') !== -1);
+            }
+            this.syncTranslateButtons();
+        }
+
+        /** 译文上屏：走现有 commitText 通道（是输入，进统计），然后关面板。 */
+        translateCommit() {
+            if (!this.translateResultText) return;
+            const text = this.translateResultText;
+            this.closeTranslatePanel();
+            this.call(() => Native.commitText(text, this.token));
+        }
+
+        translateCopy() {
+            if (!this.translateResultText) return;
+            const text = this.translateResultText;
+            const done = () => this.showToast(t('已复制'));
+            const failed = () => this.showToast(t('复制失败，可长按译文手动复制'));
+            try {
+                const clip = navigator.clipboard;
+                if (clip && typeof clip.writeText === 'function') {
+                    const result = clip.writeText(text);
+                    if (result && typeof result.then === 'function') result.then(done, failed);
+                    else done();
+                } else {
+                    failed();
+                }
+            } catch (error) {
+                failed();
+            }
         }
 
         /** #41 二轮：统计浮层。数据经 inputStats 桥同步拉全量 JSON。 */
@@ -11022,7 +11330,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // （xingqi → 星期日）撞词时去重，避免同文双格。设置开关关掉
             // 时整体不注入（date/time/week 与拼音码一起停）。
             const dyn = (raw && this.dynamicDateTimeOn !== false
-                ? dynamicCandidatesFor(raw, this.mode) : [])
+                ? dynamicCandidatesFor(raw, this.mode, this.scriptVariant) : [])
                 .filter(item => !engineTexts.has(item.text));
             const exact = [];
             const prefix = [];
@@ -11966,6 +12274,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (dom === 'mic') return;
                 const el = document.getElementById(dom);
                 if (!el) return;
+                // 3.76：旧壳无 translateText 桥时翻译入口恒藏——本循环的
+                // 溢出/组合对账不得把它翻回可见（与 syncTranslateButton
+                // 同口径；auditToolbarTools 里同款守卫）。
+                if (dom === 'translateButton' && typeof Native.translateText !== 'function') {
+                    el.hidden = true;
+                    return;
+                }
                 el.hidden = el.closest('#toolboxRow')
                     ? !!(this._overflowTools && this._overflowTools.has(dom))
                     : this.composing
@@ -13394,6 +13709,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (kf >= 50 && kf <= 150) this.keycapFont = kf;
             }
             this.applyKeycapFont();
+            // 3.76 翻译方向（hello 下发、原生 pref 是事实源）：只认两个
+            // 合法值；旧壳不带字段不覆盖（默认中→英）。
+            if (payload.translateDirection === 'zh-en' || payload.translateDirection === 'en-zh') {
+                this.translateDirection = payload.translateDirection;
+                this.syncTranslateDirectionLabel();
+            }
+            // 翻译入口显隐随 hello 再同步一次（旧壳无桥时保持隐藏）。
+            this.syncTranslateButton();
             // 用户字体（issue #70）：digest 非空 = 导入过；路由 404/损坏时
             // @font-face 无效，CSS 字体栈逐字回落，功能不受影响。旧 APK 不带
             // 字段不覆盖。
@@ -13476,6 +13799,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.correctionCandidates = [];
                 }
             }
+            // 简/繁（台湾）（3.76 原地更新第 4 项）：hello 下发，
+            // 动态日期候选据此出「礼拜」或「禮拜」。
+            if (typeof payload.scriptVariant === 'string' &&
+                payload.scriptVariant !== this.scriptVariant) {
+                this.scriptVariant = payload.scriptVariant === 'hant_tw' ? 'hant_tw' : 'hans';
+            }
             // 删除前确认（3.74.11，默认开）：关 = 删除直接执行，不弹确认卡。
             if (typeof payload.deleteConfirm === 'boolean') {
                 this.deleteConfirm = payload.deleteConfirm;
@@ -13512,6 +13841,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             document.documentElement.classList.toggle('glass-v2', this.keyboardUiVersion !== 'classic');
             this.applyGlass(payload);
+            this.applyThemeExtras(payload);
             this.applyLandscapeChrome();
             // #31 预置色调：native pref 经 hello 下发，html[data-preset]
             // 驱动 CSS 覆盖（classic = 清掉 dataset 回默认绿）。
@@ -13636,6 +13966,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.applyToolbarLayoutValue(payload.toolbarLayout);
             }
             this.applyToolbarLayout();
+            // 工具栏左一按钮图标（3.76 原地更新）：布局重排不碰它，
+            // 这里按 hello 快照换图。
+            this.applyToolbarIcon(payload);
             this.associationOn = !!payload.associationOn;
             this.touchDiagnostics = payload.touchDiagnostics === true;
             this.syncDiagnosticProbe();
@@ -14235,10 +14568,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // issue #12：组合串无上限累积（连打/乱打）后候选退化甚至死空
             // ——设备日志实录：51 字母后 input 自主收缩、候选归零，跨收起/
             // 弹出不清除，用户感知「再按键没有反应」。拼音族在回声侧自动
-            // 收束：有候选=组合到 40 字母上屏首候选（等同按空格，主流
-            // IME 的超长自动组句）；无候选=不可解析死串，攒到 16 字母清空
+            // 收束：有候选=组合到 64 字母上屏首候选（等同按空格，主流
+            // IME 的超长自动组句）；无候选=不可解析死串，攒到 64 字母清空
             // 组合换回可用性。英文等模式 rawInput 长是正常态，T9/笔画有
             // 各自的确认边界，都不进收束范围。
+            // 3.76 原地更新②（2026-11-18 QQ 诊断）：旧阈值 40/16 太紧——
+            // 整句拼音常超 16 字母，诊断里 raw=16 的无候选尾段（部分选词
+            // 后剩余的乱打尾巴）就触发了「组合过长，已清空」，连同用户
+            // 正在打的组合一起丢掉。64 字母≈一整句话的拼音量（与
+            // queryPinyinCandidates 的 64 字母上限同档），正常整句输入
+            // 不再触线；超限仍按旧机制收束/清空，行为不变、只移阈值。
             // 判定只认引擎原生候选（payload.candidates）：展示池混有常用语
             // /联想等注入项，前缀匹配会在引擎候选已空时冒充池首，既遮住
             // 死串分支、又把 fav: 等非引擎 id 送进 chooseCandidate（codex
@@ -14260,11 +14599,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         && payload.inputCaret >= 0
                         && payload.inputCaret < raw.length;
                     if (raw && raw !== this._autoCollapseKey && !midCaret) {
-                        if (raw.length >= 40 && engineCands.length) {
+                        if (raw.length >= 64 && engineCands.length) {
                             this._autoCollapseKey = raw;
                             this.call(revision => Native.chooseCandidate(
                                 revision, engineCands[0].id, this.token));
-                        } else if (raw.length >= 16 && !engineCands.length) {
+                        } else if (raw.length >= 64 && !engineCands.length) {
                             // 死串清空是破坏性 Reset（原生无 revision 校验，
                             // codex R3 P1）：单独设在途门闩——发出后只认
                             // 「组合结束回声」解除。迟到的高位回声（清空前
@@ -14452,7 +14791,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         const root = document.documentElement;
         // 3.75：className 是整串重写——glass-v2（键盘界面版本）是正交
         // 的 class，主题切换（hello / tile 循环）不能把它洗掉。
+        // 3.76：key-refraction（折射边框）同样正交，一并保留。
         const glassV2 = root.classList.contains('glass-v2');
+        const refraction = root.classList.contains('key-refraction');
         if (theme !== 'auto') {
             root.className = `theme-${theme}`;
         } else {
@@ -14463,6 +14804,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             root.className = systemThemeKnown ? `theme-${systemTheme}` : '';
         }
         if (glassV2) root.classList.add('glass-v2');
+        if (refraction) root.classList.add('key-refraction');
         // 主题切换即换对应组的背景图与工具栏图形（两组拆分后这里必须
         // 跟；真机翻车：非 auto 分支提前 return，手动切深色后背景停在
         // 另一组的图上）。hello 首轮走构造路径时 keyboard 还在 TDZ
@@ -14553,6 +14895,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onNativeState: payload => keyboard.onNativeState(payload),
         onVoiceLevel: level => keyboard.onVoiceLevel(level),
         onInkCandidates: payload => keyboard.onInkCandidates(payload),
+        // 3.76 离线翻译：原生 translateText 的终态回推（done/error）。
+        onTranslateResult: payload => keyboard.onTranslateResult(payload),
         onEditorInfo: payload => keyboard.onEditorInfo(payload),
         cancelTouches: () => keyboard.cancelTouches(),
         // #H 硬件键盘：native 全认领后的注入入口（design §1/§4.1）。
@@ -14588,6 +14932,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // #39-10 编辑面板（preview/诊断与 mock 套件共用入口）。
         toggleEditPanel: () => keyboard.toggleEditPanel(),
         toggleStatsPanel: () => keyboard.toggleStatsPanel(),
+        // 3.76 离线翻译面板（mock mutex 矩阵与预览直调入口）。
+        toggleTranslatePanel: () => keyboard.toggleTranslatePanel(),
         toggleControlView: () => keyboard.setControlView(!keyboard.ctrlView),
         showNumpad: () => keyboard.showNumpad(),
         // Called by the native side on every IME show: hiding the IME can

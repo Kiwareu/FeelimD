@@ -95,6 +95,9 @@ const state = {
     { id: 'offline-punct-zh-en', title: '中英标点恢复', sizeBytes: 75519198, state: 'installed' },
   ],
   asr: { stripPeriod: true, idleUnload: false, hotwords: 'Feelime\nGPU' },
+  // 3.76 原地更新：左一按钮图标（默认 F）+ 折射边框（默认开）+
+  // 加厚模糊（默认关）。预览里上传只改状态、不解码图片。
+  toolbarIcon: '', toolbarIconUrl: '', keyRefraction: true, kbBgBlurHeavy: false,
   custom: { enabled: true, summary: '已定制 2 个键', json: '{"version":1,"rows":[[]]}' },
   update: { source: 'https://github.com/feelime/feelime', sourceMode: 'default', sourceConfigured: false,
     autoCheck: false, autoCheckLastAttemptAt: 0, url: '', activeSource: 'built_in',
@@ -215,6 +218,12 @@ window.PreviewBridge = {
   cancelModelDownload(...args) { log('cancelModelDownload', args); },
   deleteModel(id, ...args) { log('deleteModel', [id, ...args]); },
   setAsrIdleUnload(enabled, ...args) { log('setAsrIdleUnload', [enabled, ...args]); state.asr.idleUnload = !!enabled; pushState(); },
+  // 3.76 原地更新：左一按钮图标 + 折射边框 + 加厚模糊（与真实
+  // SettingsBridge 同形；预览不解码上传图，custom 卡只显示占位标）。
+  setToolbarIcon(id, ...args) { log('setToolbarIcon', [id, ...args]); state.toolbarIcon = id; if (id !== 'custom') state.toolbarIconUrl = ''; pushState(); },
+  uploadToolbarIcon(...args) { log('uploadToolbarIcon', args); state.toolbarIcon = 'custom'; state.toolbarIconUrl = ''; pushState(); },
+  setKeyRefraction(enabled, ...args) { log('setKeyRefraction', [enabled, ...args]); state.keyRefraction = !!enabled; pushState(); },
+  setKbBgBlurHeavy(enabled, ...args) { log('setKbBgBlurHeavy', [enabled, ...args]); state.kbBgBlurHeavy = !!enabled; pushState(); },
   saveAsrSettings(...args) { log('saveAsrSettings', args); },
   saveCustom(...args) { log('saveCustom', args); },
   checkUpdate(...args) { log('checkUpdate', args); notify({ type: 'updateError', code: 'TIMEOUT' }); },

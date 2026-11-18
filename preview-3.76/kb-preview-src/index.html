@@ -251,6 +251,12 @@
                 <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
             </svg>
         </button>
+        <!-- 3.76 离线翻译（ONNX）：工具栏入口，旧壳无 translateText 桥时隐藏。 -->
+        <button id="translateButton" data-role="translate" class="tool" aria-label="翻译" data-i18n-aria-label="翻译">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <text x="12" y="17" text-anchor="middle" font-size="13" fill="currentColor" stroke="none">译</text>
+            </svg>
+        </button>
         <button id="mic" class="tool" aria-label="开始语音输入" data-i18n-aria-label="开始语音输入">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
                 <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>
@@ -390,6 +396,36 @@
         </div>
         <div id="panelList"></div>
         <div id="panelEmpty" hidden></div>
+    </section>
+
+    <!-- 3.76 离线翻译面板（ONNX 路线，全离线）：原文框 + 译文框两个框，
+         方向可切（中→英/英→中），译文一键上屏。原文框用 phrase-input
+         接 setPanelInput 重定向（与常用语编辑框/剪贴板搜索同款），
+         键盘按键直接打进原文框。整屏级视图，进 EXCLUSIVE_VIEWS 注册表。 -->
+    <section id="translateLayer" class="kb-layer" hidden>
+        <div class="translate-head">
+            <span class="translate-title" data-i18n="翻译">翻译</span>
+            <button id="translateDirection" class="translate-dir" type="button" data-i18n-aria-label="切换翻译方向" aria-label="切换翻译方向">中 → 英</button>
+            <span class="translate-spacer"></span>
+            <button id="translateClose" class="tool" aria-label="关闭翻译" data-i18n-aria-label="关闭翻译">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18"/>
+                </svg>
+            </button>
+        </div>
+        <textarea id="translateSource" class="phrase-input translate-source" rows="3" data-i18n-placeholder="输入要翻译的内容" placeholder="输入要翻译的内容" data-i18n-aria-label="原文" aria-label="原文" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+        <div class="translate-actions">
+            <button id="translateGo" class="translate-btn primary" type="button" data-i18n="翻译">翻译</button>
+            <button id="translateCancel" class="translate-btn" type="button" data-i18n="取消" hidden>取消</button>
+        </div>
+        <p id="translateStatus" class="translate-status" aria-live="polite"></p>
+        <textarea id="translateResult" class="phrase-input translate-result" rows="3" readonly data-i18n-placeholder="译文" placeholder="译文" data-i18n-aria-label="译文" aria-label="译文"></textarea>
+        <div class="translate-actions">
+            <button id="translateCommit" class="translate-btn primary" type="button" data-i18n="上屏" disabled>上屏</button>
+            <button id="translateCopy" class="translate-btn" type="button" data-i18n="复制" disabled>复制</button>
+            <button id="translateDownload" class="translate-btn" type="button" data-i18n="去下载模型" hidden>去下载模型</button>
+        </div>
     </section>
 
 

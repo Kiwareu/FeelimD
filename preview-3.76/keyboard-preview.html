@@ -123,6 +123,9 @@ body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; 
   <label>底部留白 <select id="previewBottomPad"><option value="0">0 dp</option><option value="12">12 dp</option><option value="24">24 dp</option><option value="36">36 dp</option><option value="48">48 dp</option></select></label>
   <label>界面 <select id="previewUiVersion"><option value="glass">液态玻璃</option><option value="classic">经典</option></select></label>
   <label>字母数字 <input type="checkbox" id="previewDigits" checked></label>
+  <label>左一图标 <select id="previewToolbarIcon"><option value="">F 标志</option><option value="oneplus">OnePlus 1+</option><option value="xiaomi">小米 MI</option><option value="oppo">OPPO</option><option value="vivo">vivo</option><option value="star">星星</option><option value="moon">月亮</option><option value="bolt">闪电</option><option value="custom">自定义（预览无图→回落 F）</option></select></label>
+  <label>折射边框 <input type="checkbox" id="previewKeyRefraction" checked></label>
+  <label>加厚模糊 <input type="checkbox" id="previewKbBlurHeavy"></label>
   <label>App 底衬 <input type="checkbox" id="previewBehind" checked></label>
   <a href="settings-preview.html">完整设置预览</a>
   <button id="actLog">桥日志</button>
@@ -605,6 +608,13 @@ function pushHello() {
         // 3.75：字母上方数字 + 键盘界面版本（真机由原生 hello 下发）。
         showKeyDigits: document.getElementById('previewDigits').checked,
         keyboardUiVersion: document.getElementById('previewUiVersion').value,
+        // 3.76 原地更新：左一按钮图标 + 折射边框 + 加厚模糊（真机由原生
+        // hello 下发）。自定义图标在预览里没有私有目录文件，URL 留空、
+        // 键盘回落默认 F（下拉里已注明）。
+        toolbarIcon: document.getElementById('previewToolbarIcon').value,
+        toolbarIconUrl: '',
+        keyRefraction: document.getElementById('previewKeyRefraction').checked,
+        kbBgBlurHeavy: document.getElementById('previewKbBlurHeavy').checked,
         orientation: landscape ? 'landscape' : 'portrait',
         // 手势条避让（真机由原生下发 px；预览默认 0）。
         safeBottom: previewSafeBottom,
@@ -782,6 +792,9 @@ document.getElementById('previewTheme').onchange = pushHello;
 document.getElementById('previewBottomPad').onchange = pushHello;
 document.getElementById('previewUiVersion').onchange = pushHello;
 document.getElementById('previewDigits').onchange = pushHello;
+document.getElementById('previewToolbarIcon').onchange = pushHello;
+document.getElementById('previewKeyRefraction').onchange = pushHello;
+document.getElementById('previewKbBlurHeavy').onchange = pushHello;
 document.getElementById('modePortrait').onclick = () => setMode('portrait');
 document.getElementById('modeLandscape').onclick = () => setMode('landscape');
 document.getElementById('modeFill').onclick = () => setMode('fill');
