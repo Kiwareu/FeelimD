@@ -22,7 +22,8 @@ class MarianTokenizerTest {
     private val tokenizer = MarianTokenizer.fromJson(tinyJson)
 
     @Test fun `vocab parses with unk id`() {
-        assertEquals(15, tokenizer.vocabSize)
+        // 迷你词表共 14 条：</s>、<unk>、▁hello、▁world、▁、he、llo、h、e、l、o、w、r、d。
+        assertEquals(14, tokenizer.vocabSize)
         assertEquals(1, tokenizer.unkId)
     }
 
