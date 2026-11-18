@@ -54,6 +54,10 @@ class RimeTextEngine(
                 throw EngineFailure(EngineCode.ENGINE_INIT_FAILED)
             }
             android.util.Log.i("FeelimeEngine", "rime session ok $session")
+            // 繁体（台湾）模式：librime 的 radio 开关在每次建会话时按
+            // reset:1 回到 zh_hans，必须在建会话后重发一次（见
+            // applyScriptVariant）。
+            applyScriptVariant(appContext, session, schemaId)
         }
     }
 
@@ -277,6 +281,7 @@ class RimeTextEngine(
             is EngineCommand.Reset -> synchronized(gate) {
                 NativeSmoke.rimeDestroySession(session)
                 session = NativeSmoke.rimeCreateSession(schemaId)
+                applyScriptVariant(appContext, session, schemaId)
                 viewPage = 0
                 emit(stateEvent())
             }
@@ -429,6 +434,17 @@ class RimeTextEngine(
         private const val ENTER = 0xff0d
         private const val BACKSPACE = 0xff08
         private const val ESCAPE = 0xff1b
+        /** 字形切换合成键（pinned librime key_table.h：Shift=1<<0，
+         *  Control=1<<2；X11 keysym '6'=0x36，'7'=0x37）。 */
+        private const val SCRIPT_TW_KEYCODE = 0x36 // '6' -> zh_hant_tw
+        private const val SCRIPT_MOD_CONTROL_SHIFT = 5 // kShiftMask(1) | kControlMask(4)
+        /** 带 zh_hant_tw set_option 绑定的 schema（8 个拼音类 schema；
+         *  笔画/音形码表没有拼音 simplifier，不参与）。 */
+        private val SCRIPT_VARIANT_SCHEMAS = setOf(
+            "luna_pinyin", "luna_pinyin_fuzzy", "luna_pinyin_t9", "luna_pinyin_t9_fuzzy",
+            "double_pinyin_flypy", "double_pinyin_sogou", "double_pinyin_ziguang",
+            "ziranma_double_pinyin",
+        )
         private val gate = Any()
         @Volatile private var globallyInitialized = false
         /** 引擎代数：reloadGlobal 递增，标记所有现存 session handle 失效。 */
@@ -467,6 +483,9 @@ class RimeTextEngine(
                 val session = NativeSmoke.rimeCreateSession(schemaId)
                 if (session == 0L) return emptyList()
                 try {
+                    // 拼音纠错的 scratch 会话也要按字形偏好先翻开关，否则
+                    // 纠错候选在繁体模式下仍出简体。
+                    applyScriptVariant(context, session, schemaId)
                     for (ch in pinyin) {
                         NativeSmoke.rimeProcessKey(session, ch.code, 0)
                     }
@@ -478,6 +497,42 @@ class RimeTextEngine(
                     NativeSmoke.rimeDestroySession(session)
                 }
             }
+        }
+
+        /**
+         * 字形开关（ScriptVariant）：在新建的 librime 会话上按当前偏好
+         * 选简/繁（台湾）。librime 的 radio 开关在每次建会话时按 schema
+         * 的 reset:1 回到 zh_hans（pinned librime engine.cc
+         * ConcreteEngine::InitializeOptions），所以繁体模式必须在每次
+         * createSession 后重发一次；简体模式不发（复位值即简体）。
+         *
+         * 翻转通道是 key_binder 的 set_option 绑定（pinned librime
+         * key_binder.cc：radio 组按名精确选中，兄弟开关互斥），合成键
+         * Control+Shift+6 选繁（台湾）。Control+Shift+7 选简的绑定也
+         * 在 schema 里（供硬件键盘）；Kotlin 只发 6——简体靠建会话时
+         * 的复位值，不用回切。键码与修饰位取自 pinned librime
+         * key_table.h（Shift=1<<0，Control=1<<2）与 X11 keysym
+         * （'6'=0x36）。
+         *
+         * 安全兜底：若 schema 绑定缺失/拼错，数字会落进组合或直接上屏
+         * ——发键后立刻收一次 commit（丢弃）再发 ESC 清组合，杂字绝不
+         * 上屏；同时记诊断。只对带该绑定的拼音类 schema 发；其它
+         * schema（笔画/音形/英文等）不参与字形切换。
+         * 调用方保证已持 gate 且在建会话后立刻调用（无活动组合）。
+         */
+        fun applyScriptVariant(context: Context, session: Long, schemaId: String) {
+            if (session == 0L || schemaId !in SCRIPT_VARIANT_SCHEMAS) return
+            if (!ScriptVariant.isTraditionalTw(context)) return
+            NativeSmoke.rimeProcessKey(session, SCRIPT_TW_KEYCODE, SCRIPT_MOD_CONTROL_SHIFT)
+            val stray = runCatching { NativeSmoke.rimeCommit(session) }.getOrDefault("")
+            if (stray.isNotEmpty()) {
+                com.feelime.ime.Diagnostics.log(
+                    "engine",
+                    "scriptVariantStray commit=$stray schema=$schemaId",
+                )
+            }
+            // 绑定漏接时数字可能只进了组合（未上屏）：ESC 清掉，无组合时无操作。
+            NativeSmoke.rimeProcessKey(session, ESCAPE, 0)
         }
 
         /** custom_phrase 词表变更后整引擎重载。stabledb（custom_phrase

@@ -477,6 +477,38 @@
       </span>
       <input type="checkbox" id="preeditFrame" class="toggle">
     </label>
+    <!-- 3.76 原地更新：键帽折射边框（默认开）与键盘背景加厚模糊
+         （默认关）。新文案暂用中文原文（翻译文件不动，后续补译）。 -->
+    <label class="row switch-row" for="keyRefraction">
+      <span class="row-label">
+        <span>键帽折射边框</span>
+        <small>键帽边缘多一层斜向折射高光，像玻璃边一样亮；只在液态玻璃界面下可见，默认开。</small>
+      </span>
+      <input type="checkbox" id="keyRefraction" data-keywords="折射 边框 高光 玻璃边 键帽边缘 refraction" class="toggle">
+    </label>
+    <label class="row switch-row" for="kbBgBlurHeavy">
+      <span class="row-label">
+        <span>键盘背景加厚模糊</span>
+        <small>键盘背景的模糊显著加强，更看不清后面的 App；默认关，省电模式下仍不模糊。</small>
+      </span>
+      <input type="checkbox" id="kbBgBlurHeavy" data-keywords="加厚 模糊 背景 更糊 雾面 blur heavy" class="toggle">
+    </label>
+  </section>
+  <!-- 3.76 原地更新：工具栏左一按钮图标。只换图标，按钮作用（打开
+       快捷设置）不变；上传图居中裁剪成正方形、只存本机，不进备份。 -->
+  <section class="card" aria-labelledby="toolbarIconHead">
+    <div class="section-heading"><h2 id="toolbarIconHead">左一按钮图标</h2><span class="eyebrow">工具栏</span></div>
+    <div class="row stack" id="toolbarIconRow" data-keywords="左一 按钮 图标 换图标 工具栏 logo 品牌 上传图片 toolbar icon">
+      <span class="row-label">
+        <span>左一按钮图标</span>
+        <small>工具栏最左边第一个按钮（现在是 F 标志）的图标；只换样子，点它还是打开快捷设置。上传的图片会裁成正方形、只存在本机，备份不带走，换机后要重新上传。</small>
+      </span>
+      <div class="icon-grid" id="toolbarIconGrid" role="radiogroup" aria-label="左一按钮图标"></div>
+      <span class="slider-with-action">
+        <button type="button" id="btnUploadToolbarIcon" class="ghost-btn">上传图片…</button>
+      </span>
+    </div>
+    <p id="toolbarIconNote" class="hint block" role="status" hidden></p>
   </section>
   </main>
 </div>
@@ -495,6 +527,23 @@
           <span class="row-label"><span data-i18n="input.fuzzy.manage">管理模糊音</span><small data-i18n="input.fuzzy.manageHint">分不清的音一起打：平翘舌、n/l、前后鼻音等开关。</small></span>
           <span class="chev" aria-hidden="true">›</span>
         </button>
+      </div>
+    </section>
+
+    <!-- 简/繁（台湾）（3.76 原地更新第 4 项）：拼音输入出繁体字，
+         按台湾用法（軟體/影片/程式…）。切后立即生效，键盘与候选同步变；
+         作用于全拼/双拼/T9，笔画与音形码表不参与。 -->
+    <section class="card" id="sec-script" aria-labelledby="scriptTitle">
+      <div class="section-heading"><h2 id="scriptTitle" data-keywords="简体 繁体 繁體 台湾 台灣 简繁 traditional" data-i18n="input.script.title">简繁体</h2><span class="eyebrow" data-i18n="input.script.badge">输入</span></div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.script.variant">拼音出字</span>
+          <small data-i18n="input.script.variantHint">简体：拼音出简体字；繁體（台灣）：拼音出繁体字，按台湾用法出词（軟體、影片、程式、捷運、機車等）。切换后立即生效。</small>
+        </span>
+        <select id="scriptVariant" class="select" aria-label="拼音出字" data-i18n-aria="input.script.variant">
+          <option value="hans" data-i18n="input.script.hans">简体</option>
+          <option value="hant_tw" data-i18n="input.script.hantTw">繁體（台灣）</option>
+        </select>
       </div>
     </section>
 
@@ -1240,6 +1289,15 @@
       <p class="save-note model-note" id="modelNote" role="status" aria-live="polite"></p>
       <p class="hint" data-i18n="voice.models.note">完整安装包已内置全部模型；精简安装包在此按需下载（断点续传，逐文件校验）。</p>
       <p class="hint" data-i18n="model.importFormat">仅支持与内置清单对应的官方模型 tar.bz2 或 zip 归档。</p>
+    </section>
+
+    <!-- 3.76 离线翻译模型（ONNX 路线）：与语音分区共用同一下载源选择
+         与流量确认门，行按 translate- 前缀分流到这里渲染。 -->
+    <section class="card" id="sec-translate" aria-labelledby="translateTitle">
+      <div class="section-heading"><h2 id="translateTitle" data-i18n="translate.models.title">翻译模型</h2><span class="eyebrow" data-i18n="translate.models.badge">翻译</span></div>
+      <div class="rows" id="translateModelRows"></div>
+      <p class="hint" data-i18n="translate.models.note">中英互译全程离线，不联网。精简档约 114 MB/方向，完整档约 220 MB/方向（更准）；下载源请选 GitHub 或 gh-proxy，翻译模型不在 Gitee 镜像里。</p>
+      <p class="hint" data-i18n="translate.models.power">翻译时 CPU 满载推理，短句几秒完成；连续长句翻译会发热耗电，译完即释放模型。</p>
     </section>
 
     <section class="card" id="sec-asr" aria-labelledby="asrTitle">

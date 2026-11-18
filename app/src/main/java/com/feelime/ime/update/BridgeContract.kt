@@ -43,6 +43,10 @@ object BridgeContract {
         "keyboard-height-reset-v1",
         // 手写识别（design/handwriting.md §3）：recognizeInk + onInkCandidates。
         "handwriting-v1",
+        // 离线翻译（3.76，ONNX 路线）：translateText/cancelTranslate +
+        // onTranslateResult。不进键盘的 REQUIRED——旧壳缺它只是不显示
+        // 翻译入口（height-ack 前车之鉴）。
+        "translate-v1",
         // JS 预抽稀携带原始笔画点数，native 校验后不做第二轮抽稀。
         "ink-predecimated-v1",
     )

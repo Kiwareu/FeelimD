@@ -47,6 +47,18 @@ Saved phrase shortcut initials are derived from the pinned Rime Luna Pinyin
 dictionary and the existing OpenCC conversion data. Source, license, generator
 and SHA-256 are recorded in `third_party/phrase-initials.json`.
 
+Traditional Chinese (Taiwan) input (3.76 in-place update, 2026-11-18) converts
+simplified pinyin output with OpenCC data from the same pinned OpenCC archive
+as the existing conversion data (BYVoid/OpenCC
+`e9f3bb3fa1d058fe2fd4f096503222854bdc31ab`, Apache-2.0; archive SHA-256
+`903c03e92c18c3573b72431e16af3e641e87911236e9fbe4a562e6fde469e215`):
+`engine-data/rime/opencc/s2tw.json`, `STCharacters.txt`, `STPhrases.txt`,
+`TWPhrases.txt`, `TWVariants.txt`, `TWVariantsPhrases.txt`. The 14-entry
+`TWTerms.txt` supplement (words upstream converts wrongly, e.g. 地铁→捷運)
+is hand-curated by FeelimD and released under CC0; it is not upstream OpenCC
+data. No new third-party source was added, so `third_party/manifest.json`
+gains no new `sources` entry.
+
 Model downloads use unmodified OkHttp 4.12.0 and Okio JVM 3.6.0 (Square,
 Apache-2.0) for requests whose cancellation persists before connection starts.
 Sources and artifact hashes are recorded in `model-network.json`; full license

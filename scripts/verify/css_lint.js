@@ -113,5 +113,30 @@ for (const id of declared) {
 }
 pass('R3 overflow', `all ${declared.length} harness scroll containers exist in CSS`);
 
+// ---- R4: 3.76 原地更新——折射边框与加厚模糊的规则必须成对出现，
+// 且省电覆盖必须在加厚规则之后（同权时后出者胜；顺序反了省电
+// 模式会继续糊 26px，GPU/电耗双输）。
+const refractionAt = CSS.indexOf('html.glass-v2.key-refraction .kb-key');
+if (refractionAt < 0) {
+    fail('R4 refraction', 'no html.glass-v2.key-refraction .kb-key rule');
+}
+const heavyAt = CSS.indexOf('body.kb-bg-heavy-blur:not([data-bg-image="on"]) #glassField');
+if (heavyAt < 0) {
+    fail('R4 heavy-blur', 'no body.kb-bg-heavy-blur #glassField rule');
+}
+const heavyBgAt = CSS.indexOf('body.kb-bg-heavy-blur[data-bg-image="on"] #bgImage');
+if (heavyBgAt < 0) {
+    fail('R4 heavy-blur', 'no body.kb-bg-heavy-blur #bgImage rule (background-image mode)');
+}
+const heavySavingAt = CSS.indexOf('body.power-saving.kb-bg-heavy-blur:not([data-bg-image="on"]) #glassField');
+if (heavySavingAt < 0) {
+    fail('R4 heavy-blur', 'no power-saving override for the heavy blur');
+} else if (heavyAt >= 0 && heavySavingAt < heavyAt) {
+    fail('R4 heavy-blur', 'power-saving override must come after the heavy-blur rule');
+}
+if (!ruleFails['R4 refraction'] && !ruleFails['R4 heavy-blur']) {
+    pass('R4 theme-3.76', 'refraction + heavy-blur rules present with the power-saving override last');
+}
+
 console.log(failures ? `\ncss_lint: ${failures} failure(s)` : '\ncss_lint: all rules pass');
 process.exit(failures ? 1 : 0);

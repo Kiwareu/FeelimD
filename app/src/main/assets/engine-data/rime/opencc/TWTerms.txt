@@ -1,0 +1,31 @@
+# FeelimD 台湾用语补表（繁体台湾模式专用）
+# File: TWTerms.txt
+# Format: key\tvalue (simplified Chinese -> Taiwan traditional usage)
+# License: CC0 / FeelimD project (hand-curated, not upstream OpenCC data)
+# Source: 人工整理（两岸常用词对照）；上游 OpenCC 不覆盖这些词
+# Used in configs: s2tw.json (first dict of the first conversion chain)
+#
+# 为什么需要这张表：上游 OpenCC 的 s2twp 链路只做「简 -> 繁（台湾字形）」，
+# 不负责两岸用词差异。下列词按链路 1 逐字转换会得到大陆繁体（如 地鐵、
+# 摩托車、充電寶），与台湾习惯不符。本表以前置短路组优先命中——命中后
+# 该片段不再进逐字转换，也不再受链路 2 的 TWPhrases/TWVariants 改写。
+# 只收上游链路确实会翻错的高频词，不与上游 TWPhrases/STPhrases 重复；
+# 新增词先跑 scripts/verify/mock_bridge_tests.js 的 s2tw 用例核对。
+#
+# 每条都经模拟验证（mock_bridge_tests.js「s2tw 台湾用词」）：
+#   地铁站 -> 捷運站；打车软件 -> 叫車軟體；摩托车驾照 -> 機車駕照。
+
+地铁	捷運
+摩托车	機車
+方便面	泡麵
+土豆	馬鈴薯
+西红柿	番茄
+酸奶	優格
+充电宝	行動電源
+外卖	外送
+打车	叫車
+点赞	按讚
+卫生间	廁所
+邮箱	信箱
+优盘	隨身碟
+公交车	公車

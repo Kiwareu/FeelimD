@@ -109,6 +109,7 @@ class MockSettingsNative {
     clearUserFont(...a) { this._rec('clearUserFont', a); }
     setInkDelay(...a) { this._rec('setInkDelay', a); }
     setFuzzyPinyinMask(...a) { this._rec('setFuzzyPinyinMask', a); }
+    setScriptVariant(...a) { this._rec('setScriptVariant', a); } // 3.76 简/繁（台湾）
     setAssociation(...a) { this._rec('setAssociation', a); }
     setDynamicDateTime(...a) { this._rec('setDynamicDateTime', a); }
     openBaseDictDocument(...a) { this._rec('openBaseDictDocument', a); }
@@ -150,6 +151,11 @@ class MockSettingsNative {
     setGlassRadius(...a) { this._rec('setGlassRadius', a); }
     setPanelOpacity(...a) { this._rec('setPanelOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
+    // 3.76 原地更新：左一按钮图标 + 折射边框 + 加厚模糊。
+    setToolbarIcon(...a) { this._rec('setToolbarIcon', a); }
+    uploadToolbarIcon(...a) { this._rec('uploadToolbarIcon', a); }
+    setKeyRefraction(...a) { this._rec('setKeyRefraction', a); }
+    setKbBgBlurHeavy(...a) { this._rec('setKbBgBlurHeavy', a); }
     setCnEnComposingGuard(...a) { this._rec('setCnEnComposingGuard', a); }
     setVoiceReadyHaptic(...a) { this._rec('setVoiceReadyHaptic', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
@@ -475,6 +481,22 @@ test('English model rows translate titles and action labels for installed/downlo
     equal(installed.querySelector('[data-action="remove"]').textContent, 'Delete', 'English installed action');
     equal(downloading.querySelector('.model-name').textContent, 'Full-sentence correction', 'English downloading title');
     equal(downloading.querySelector('[data-action="cancel"]').textContent, 'Cancel', 'English downloading action');
+});
+
+test('translate models render in their own section, not under voice models (3.76)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, models: [
+        { id: 'streaming-zipformer-bilingual-zh-en', title: '流式语音识别（中英）', sizeBytes: 122577743, state: 'installed' },
+        { id: 'translate-zh-en', title: '离线翻译（中译英 · 精简）', sizeBytes: 119120908, state: 'missing' },
+        { id: 'translate-en-zh-full', title: '离线翻译（英译中 · 完整）', sizeBytes: 229797577, state: 'downloading' },
+    ] });
+    equal(world.$('modelRows').querySelectorAll('.model').length, 1, 'voice section keeps only voice models');
+    equal(world.$('translateModelRows').querySelectorAll('.model').length, 2, 'translate section holds both tiers');
+    equal(world.doc.querySelector('.model[data-id="translate-zh-en"] .model-name').textContent,
+        '离线翻译（中译英 · 精简）', 'manifest title used for translate rows');
+    assert(world.$('translateTitle').textContent.includes('翻译模型'), 'translate section titled');
+    assert(world.doc.querySelector('#sec-translate .hint').textContent.includes('GitHub'),
+        'translate section warns about the download source');
 });
 
 test('archive model shows transfer size separately from installed size', () => {
@@ -2875,6 +2897,81 @@ test('glass skins render and post setGlassSkin; blur slider commits on release',
     equal(world.lastCall('setGlassBlur').args, [12, world.token], 'release commits blur');
 });
 
+// 3.76 原地更新：左一按钮图标网格——8 张内置卡，点卡过桥，state 回显选中态。
+test('toolbar icon grid renders eight built-ins; click posts setToolbarIcon; state marks active', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const cards = [...world.doc.querySelectorAll('#toolbarIconGrid .icon-card')];
+    equal(cards.length, 8, 'eight built-in icons');
+    equal(cards.find(card => card.dataset.icon === '').className.includes('active'), true,
+        'default F marked active when no icon chosen');
+    cards.find(card => card.dataset.icon === 'oneplus').click();
+    equal(world.lastCall('setToolbarIcon').args, ['oneplus', world.token], 'icon click posts id + token');
+    world.push({ ...BASE_STATE, toolbarIcon: 'xiaomi' });
+    const after = [...world.doc.querySelectorAll('#toolbarIconGrid .icon-card')];
+    equal(after.find(card => card.dataset.icon === 'xiaomi').className.includes('active'), true,
+        'current icon marked active');
+    equal(after.length, 8, 'no custom card without an upload');
+});
+
+// 3.76 原地更新：custom 态多挂一张自定义卡，标里是已上传图；无图时退回文字标。
+test('toolbar icon custom state shows a custom card with the uploaded image', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, toolbarIcon: 'custom',
+        toolbarIconUrl: 'https://feelime.local/keyboard/toolbar-icon/v1.png' });
+    const cards = [...world.doc.querySelectorAll('#toolbarIconGrid .icon-card')];
+    equal(cards.length, 9, 'custom card joins the eight built-ins');
+    const custom = cards.find(card => card.dataset.icon === 'custom');
+    assert(custom, 'custom card exists');
+    equal(custom.className.includes('active'), true, 'custom card marked active');
+    const img = custom.querySelector('img');
+    assert(img, 'custom card shows the uploaded image');
+    const imgSrc = String(img.src || img.getAttribute('src') || '');
+    assert(imgSrc.includes('/keyboard/toolbar-icon/'),
+        'custom image comes from the native toolbar-icon route');
+    world.push({ ...BASE_STATE, toolbarIcon: 'custom', toolbarIconUrl: '' });
+    const noImg = [...world.doc.querySelectorAll('#toolbarIconGrid .icon-card')]
+        .find(card => card.dataset.icon === 'custom');
+    assert(noImg && !noImg.querySelector('img'), 'missing file falls back to a text mark');
+});
+
+// 3.76 原地更新：折射默认开、加厚模糊默认关；回显与拨动都过桥。
+test('key refraction defaults on, heavy blur defaults off; toggles echo state and commit', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.$('keyRefraction').checked, true, 'refraction defaults on');
+    equal(world.$('kbBgBlurHeavy').checked, false, 'heavy blur defaults off');
+    world.push({ ...BASE_STATE, keyRefraction: false, kbBgBlurHeavy: true });
+    equal(world.$('keyRefraction').checked, false, 'refraction follows state');
+    equal(world.$('kbBgBlurHeavy').checked, true, 'heavy blur follows state');
+    world.$('keyRefraction').listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: false } });
+    equal(world.lastCall('setKeyRefraction').args, [false, world.token],
+        'refraction toggle commits + token');
+    world.$('kbBgBlurHeavy').listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setKbBgBlurHeavy').args, [true, world.token],
+        'heavy blur toggle commits + token');
+});
+
+// 3.76 原地更新：设置页图标 id 集与键盘侧 TOOLBAR_ICONS 同源（custom
+// 除外——它不在键盘的内置表里，走 toolbarIconUrl）。
+test('toolbar icon ids match the keyboard-side catalog', () => {
+    const kbJs = fs.readFileSync(
+        path.join(ROOT, 'app/src/main/assets/keyboard/keyboard.js'), 'utf8');
+    const kbBlock = kbJs.match(/const TOOLBAR_ICONS = \{([\s\S]*?)\n\};/);
+    assert(kbBlock, 'TOOLBAR_ICONS block exists in keyboard.js');
+    const kbIds = new Set([...kbBlock[1].matchAll(/(?:^|,)\s*(?:'([^']*)'|([A-Za-z]+))\s*:/gm)]
+        .map(m => m[1] !== undefined ? m[1] : m[2]));
+    const settingsJs = fs.readFileSync(
+        path.join(ROOT, 'app/src/main/assets/settings/settings.js'), 'utf8');
+    const optBlock = settingsJs.match(/const TOOLBAR_ICON_OPTIONS = \[([\s\S]*?)\n\];/);
+    assert(optBlock, 'TOOLBAR_ICON_OPTIONS block exists in settings.js');
+    const optIds = new Set([...optBlock[1].matchAll(/id: '([^']*)'/g)].map(m => m[1]));
+    equal([...optIds].sort(), [...kbIds].sort(), 'settings options match the keyboard catalog');
+    assert(!optIds.has('custom'), 'custom is not a built-in option');
+});
+
 test('theme preset swatches render state and post on click', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, themePreset: 'ocean' });
@@ -3020,7 +3117,7 @@ test('skin page row order: tints, saturations, hex codes, opacity, backgrounds, 
     equal(ids, ['themeHue', 'themeSat', 'themeHexSwatch', 'bgImageLight',
         'bgImageDark', 'keyFollow', 'keyHue', 'keySat', 'keyHexSwatch',
         'keyOpacity', 'themePreview', 'glassBlur', 'glassRadius', 'panelOpacity',
-        'keyboardUiVersion', 'preeditFrame'],
+        'keyboardUiVersion', 'preeditFrame', 'keyRefraction', 'kbBgBlurHeavy'],
         'rows follow the agreed order');
 });
 
@@ -4075,6 +4172,90 @@ test('wizard: Kotlin bridge contract (3.76 in-place update)', () => {
     assert(bridgeSrc.includes('fun wizardStatus(token: String): String {'), 'wizardStatus is token-gated');
     // 绝不直接写默认输入法。
     assert(!bridgeSrc.includes('Settings.Secure.putString'), 'bridge never writes DEFAULT_INPUT_METHOD');
+});
+
+
+// ------------------------------------------------- script variant (3.76 原地更新第 4 项：繁体中文（中国台湾）)
+
+test('script variant: select reflects state, defaults to hans', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.$('scriptVariant').value, 'hans', 'missing state falls back to simplified');
+    world.push({ ...BASE_STATE, scriptVariant: 'hant_tw' });
+    equal(world.$('scriptVariant').value, 'hant_tw', 'state value wins');
+    world.push({ ...BASE_STATE, scriptVariant: 'bogus' });
+    equal(world.$('scriptVariant').value, 'hans', 'illegal state falls back to simplified');
+    // 卡片在输入页、紧跟模糊音卡：标题与提示文案就位。
+    assert(world.doc.querySelector('[data-i18n="input.script.title"]').textContent.includes('简繁体'),
+        'script card title renders');
+    const hint = world.doc.querySelector('[data-i18n="input.script.variantHint"]');
+    assert(hint.textContent.includes('軟體') && hint.textContent.includes('捷運'),
+        'hint names Taiwan words');
+});
+
+test('script variant: change calls setScriptVariant with the token', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const select = world.$('scriptVariant');
+    select.value = 'hant_tw';
+    select.listeners.find(l => l.type === 'change').handler({ target: select });
+    equal(world.lastCall('setScriptVariant').args, ['hant_tw', world.token],
+        'setScriptVariant token');
+    // Native 回推后选择跟随 state。
+    world.push({ ...BASE_STATE, scriptVariant: 'hant_tw' });
+    equal(world.$('scriptVariant').value, 'hant_tw', 'selection follows the state push');
+    select.value = 'hans';
+    select.listeners.find(l => l.type === 'change').handler({ target: select });
+    equal(world.lastCall('setScriptVariant').args, ['hans', world.token],
+        'switching back sends hans');
+});
+
+test('script variant: i18n renders in zh and en', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.doc.querySelector('[data-i18n="input.script.hantTw"]').textContent,
+        '繁體（台灣）', 'zh option label');
+    world.push({ ...BASE_STATE, uiLanguage: 'en', uiLocale: 'en' });
+    assert(world.doc.querySelector('[data-i18n="input.script.title"]').textContent
+        .includes('Simplified'), 'en card title');
+    equal(world.doc.querySelector('[data-i18n="input.script.hantTw"]').textContent,
+        'Traditional (Taiwan)', 'en option label');
+});
+
+test('script variant: Kotlin bridge contract (3.76 in-place update)', () => {
+    const bridgeSrc = fs.readFileSync(KT_BRIDGE_PATH, 'utf8');
+    const variantSrc = fs.readFileSync(
+        path.join(ROOT, 'app/src/main/java/com/feelime/ime/engine/ScriptVariant.kt'), 'utf8');
+    const serviceSrc = fs.readFileSync(
+        path.join(ROOT, 'app/src/main/java/com/feelime/ime/FeelimeService.kt'), 'utf8');
+    const engineSrc = fs.readFileSync(
+        path.join(ROOT, 'app/src/main/java/com/feelime/ime/engine/RimeTextEngine.kt'), 'utf8');
+    assert(variantSrc.includes('const val PREF_KEY = "script_variant"'), 'script_variant pref key exists');
+    assert(variantSrc.includes('const val HANS = "hans"'), 'hans value exists');
+    assert(variantSrc.includes('const val HANT_TW = "hant_tw"'), 'hant_tw value exists');
+    assert(bridgeSrc.includes('const val ACTION_SCRIPT_VARIANT_CHANGED = "com.feelime.ime.SCRIPT_VARIANT_CHANGED"'),
+        'broadcast action exists');
+    assert(bridgeSrc.includes('fun setScriptVariant(value: String, token: String)'),
+        'setScriptVariant bridge method exists');
+    // 数据类桥方法照旧全量门闸 + 非法值报错不落盘。
+    const setter = bridgeSrc.slice(bridgeSrc.indexOf('fun setScriptVariant(value: String, token: String)'));
+    assert(setter.slice(0, 400).includes('guarded(token)'), 'setScriptVariant is token-gated');
+    assert(setter.includes('BAD_SCRIPT_VARIANT'), 'illegal value reports instead of persisting');
+    assert(bridgeSrc.includes('Intent(ACTION_SCRIPT_VARIANT_CHANGED)'), 'setter broadcasts the change');
+    assert(bridgeSrc.includes('.put("scriptVariant", com.feelime.ime.engine.ScriptVariant.current(context))'),
+        'settings state carries scriptVariant');
+    // IME 侧：广播接收器注册/注销成对，拼音类会话重建即生效。
+    assert(serviceSrc.includes('scriptVariantReceiver'), 'service has the receiver');
+    assert(serviceSrc.includes('registerReceiver(\n            scriptVariantReceiver,'),
+        'receiver is registered');
+    assert(serviceSrc.includes('unregisterReceiver(scriptVariantReceiver)'),
+        'receiver is unregistered');
+    assert(serviceSrc.includes('coordinator.recreateEngineSession { }'), 'receiver recreates the session');
+    // 引擎侧：新建会话与纠错 scratch 会话都翻开关。
+    assert(engineSrc.includes('applyScriptVariant(appContext, session, schemaId)'),
+        'live session applies the variant');
+    assert(engineSrc.includes('applyScriptVariant(context, session, schemaId)'),
+        'correction session applies the variant');
 });
 
 

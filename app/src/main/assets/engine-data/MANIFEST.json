@@ -41,8 +41,8 @@
       "sha256": "21b46ade56785e543ec8999b443c3ae83225617f080a0dabc1ccd9fdafbdf649"
     },
     "rime/double_pinyin_flypy.schema.yaml": {
-      "bytes": 39220,
-      "sha256": "7850588e9495b50d2f88ad3c37cc83fce26be235858d326e2feba8c4731949be"
+      "bytes": 39889,
+      "sha256": "428394de04a23ce3a99a8996788418ad6b7411f336e9d42bb2961d34128e11fb"
     },
     "rime/double_pinyin_sogou.prism.bin": {
       "bytes": 22128,
@@ -53,8 +53,8 @@
       "sha256": "e1039538cab9750d79f5000c7767f2c758f24d30706005876d25f131862efb60"
     },
     "rime/double_pinyin_sogou.schema.yaml": {
-      "bytes": 39281,
-      "sha256": "e278729922814390775b8006eb7ffe2b08883ad76039537d3e47a80a1257b997"
+      "bytes": 39950,
+      "sha256": "da8673308c6143230ba617f59ba9247f3c3da1cecee37af45e7ded99f75c0a33"
     },
     "rime/double_pinyin_ziguang.prism.bin": {
       "bytes": 21656,
@@ -65,8 +65,8 @@
       "sha256": "ae4aef38c9faf170a1c47067bf465ce18173c85f41f6822155545eab1dc1d469"
     },
     "rime/double_pinyin_ziguang.schema.yaml": {
-      "bytes": 39170,
-      "sha256": "6a139f79776718ddeeb1599810df2620d99c263a9149c6eb63ec09ff2ae3f59b"
+      "bytes": 39839,
+      "sha256": "e160596fd37fd2934f91666724d5911cf8e31f85852b3cddd15a45baf88230bb"
     },
     "rime/feelime_flypy.schema.yaml": {
       "bytes": 2189,
@@ -89,8 +89,8 @@
       "sha256": "729c7dd42a6a8cbb16556b86978674b6757490906f3619ddcb2b8310c375a8f2"
     },
     "rime/luna_pinyin.schema.yaml": {
-      "bytes": 42151,
-      "sha256": "2ef49c09687dc4c0d4dfc13339c2a5445ff2062cac134eb96ba4d6643608bb9a"
+      "bytes": 42451,
+      "sha256": "33f9042489cf410ce6aac114a70fa077f49beb68c809149c69456bf6f7833882"
     },
     "rime/luna_pinyin.table.bin": {
       "bytes": 19352252,
@@ -101,8 +101,8 @@
       "sha256": "13f7e9b04e122bf6c5a3c9a0d77642af827d002f79fa09176290558efdd48e30"
     },
     "rime/luna_pinyin_fuzzy.schema.yaml": {
-      "bytes": 44212,
-      "sha256": "21dcfea18d8316ad1d96006138cc57f0e68af80cb369bdef9d17492758d1e448"
+      "bytes": 44512,
+      "sha256": "850e9e4cac10ae1b6cb2a3253e15437e350a154159dbd2b5d0090441c61dd70e"
     },
     "rime/luna_pinyin_fuzzy_m1.prism.bin": {
       "bytes": 35520,
@@ -233,12 +233,12 @@
       "sha256": "2254ca4d1198283e92a69a8146e2995c979d62bc2d27b9f2bff9a4538aa820d7"
     },
     "rime/luna_pinyin_t9.schema.yaml": {
-      "bytes": 47431,
-      "sha256": "ddc7747c9ac9d674102a3ed912b1c508030f6365b0a1c19a642c73d941d225a1"
+      "bytes": 47731,
+      "sha256": "60074c38b4b90d0d7cc3894409c53ba18599224b9a7da638d8d838173d357595"
     },
     "rime/luna_pinyin_t9_fuzzy.schema.yaml": {
-      "bytes": 47751,
-      "sha256": "5f41ae7908009dd737a3b4d8d5b659c25cd08d259776a7ce407bfd49a7a3d8fd"
+      "bytes": 48051,
+      "sha256": "e3887918852bbf48d521c7603063736af913b44d018cc83aae47578282ff52e5"
     },
     "rime/luna_pinyin_t9_fuzzy_m1.prism.bin": {
       "bytes": 174456,
@@ -364,6 +364,14 @@
       "bytes": 181912,
       "sha256": "2cadc51227ca50a93a99d90eb2d0707f0b0eaefd7293143083b245cfa45f5a30"
     },
+    "rime/opencc/STCharacters.txt": {
+      "bytes": 36022,
+      "sha256": "1bd261a27b7b7ee8a1a8ecd7ef3a109140fb1d55922df64bf66088bba1c4c74b"
+    },
+    "rime/opencc/STPhrases.txt": {
+      "bytes": 1005861,
+      "sha256": "609108ea3a2e4aebe1024a77dab9b863ccc8cf8982d5874df754eef452328aab"
+    },
     "rime/opencc/TSCharacters.txt": {
       "bytes": 104512,
       "sha256": "a0ded7c0aefe350bd96bb0995a604623ee2cc98fe7e3870c886b73fa3184bed6"
@@ -371,6 +379,26 @@
     "rime/opencc/TSPhrases.txt": {
       "bytes": 8743,
       "sha256": "c47e15b4c50f37d2b71cff514307f9afe7cdb8a8297f7abb37de9f4c833fd5e7"
+    },
+    "rime/opencc/TWPhrases.txt": {
+      "bytes": 17761,
+      "sha256": "8d6442e0cf60b0401ccd97d9c48e9fab08d13cbd63ff2ec57e26d1a880c1bbc7"
+    },
+    "rime/opencc/TWTerms.txt": {
+      "bytes": 1359,
+      "sha256": "b47e6fee7666c91fda9397c3a2828ee553e1f4e7816fa1b0cf6da28007637781"
+    },
+    "rime/opencc/TWVariants.txt": {
+      "bytes": 676,
+      "sha256": "48e694ad1ac43fd5927285e4fb3aa8a8dc9d9c065d6d3d314527c021a12839e2"
+    },
+    "rime/opencc/TWVariantsPhrases.txt": {
+      "bytes": 947,
+      "sha256": "7bb61076ab1cca0783fdc823225cd816977d170df74140d143b0dc932085d142"
+    },
+    "rime/opencc/s2tw.json": {
+      "bytes": 931,
+      "sha256": "2e643c28712fbbc88e067bd6298b2e5d50e8f7c27a047e6c71a31c8abff19b25"
     },
     "rime/opencc/t2s.json": {
       "bytes": 348,
@@ -397,8 +425,8 @@
       "sha256": "acc36a533f55fc31c22d61226c020505408e6806a683c4b5a2b271a79036e3a9"
     },
     "rime/ziranma_double_pinyin.schema.yaml": {
-      "bytes": 39513,
-      "sha256": "28aff12e9cf73d9610a007dd154af520572a2fb3a3c2f5d141898d599b7347ad"
+      "bytes": 40182,
+      "sha256": "5cc0c153cf16f24e2f7325d60ee2450f1b506da84840abb684e197feb6825e71"
     }
   },
   "formatVersion": 1

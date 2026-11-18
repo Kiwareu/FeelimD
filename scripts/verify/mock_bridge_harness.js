@@ -1042,6 +1042,14 @@ class MockNative {
     recognizeInk(reqId, payload, token) {
         this._record('recognizeInk', [reqId, payload, token]);
     }
+    // 3.76 离线翻译（ONNX 路线）：只记录调用；结果由测试经
+    // world.context.window.Feelime.onTranslateResult 注入。
+    translateText(text, from, to, reqId, token) {
+        this._record('translateText', [text, from, to, reqId, token]);
+    }
+    cancelTranslate(reqId, token) {
+        this._record('cancelTranslate', [reqId, token]);
+    }
     hideKeyboard(token) {
         this._record('hideKeyboard', [token]);
     }
@@ -1214,6 +1222,7 @@ class KeyboardWorld {
                     'voice-session-v1',
                     'voice-cancel-v1',
                     'ink-predecimated-v1',
+                    'translate-v1',
                 ],
                 pageGenerationToken: this.tokenValue,
                 mode: 'direct',
@@ -1226,6 +1235,11 @@ class KeyboardWorld {
                 // 3.76 候选栏方式 + 键帽小字符（与 SettingsBridge 默认对齐）。
                 candidateBarMode: 'slim',
                 showKeyHints: true,
+                // 3.76 原地更新：左一按钮图标 + 折射边框 + 加厚模糊
+                // （与 SettingsBridge 默认对齐：默认 F、折射开、加厚关）。
+                toolbarIcon: '',
+                keyRefraction: true,
+                kbBgBlurHeavy: false,
                 // #113 底行符号/数字分键（默认关，与 readBottomSymSplit
                 // 的 false 对齐）；开态用例显式传 true。
                 bottomSymSplit: false,

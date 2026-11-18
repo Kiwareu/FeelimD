@@ -9,7 +9,8 @@ custom_phrase:
   user_dict: custom_phrase
 engine:
   filters:
-    - simplifier
+    - "simplifier@zh_hans"
+    - "simplifier@zh_hant_tw"
     - uniquifier
   processors:
     - ascii_composer
@@ -30,6 +31,12 @@ engine:
     - punct_translator
     - "table_translator@custom_phrase"
     - script_translator
+key_binder:
+  bindings:
+    - {accept: "Control+Shift+6", set_option: zh_hant_tw, when: always}
+    - {accept: "Control+Shift+asciicircum", set_option: zh_hant_tw, when: always}
+    - {accept: "Control+Shift+7", set_option: zh_hans, when: always}
+    - {accept: "Control+Shift+ampersand", set_option: zh_hans, when: always}
 menu:
   page_size: 5
 punctuator:
@@ -323,9 +330,18 @@ selector:
   vertical:
     bindings: {ISO_Left_Tab: previous_candidate, "Shift+Tab": previous_candidate, Tab: next_candidate}
     linear: {bindings: {ISO_Left_Tab: previous_candidate, "Shift+Tab": previous_candidate, Tab: next_candidate}}
-simplifier:
+zh_hans:
+  excluded_types:
+    - reverse_lookup
   opencc_config: t2s.json
-  option_name: simplification
+  option_name: zh_hans
+  tips: none
+zh_hant_tw:
+  excluded_types:
+    - reverse_lookup
+  opencc_config: s2tw.json
+  option_name: zh_hant_tw
+  tips: none
 speller:
   algebra:
     - "erase/^xx$/"
@@ -362,8 +378,10 @@ speller:
   alphabet: zyxwvutsrqponmlkjihgfedcba
   delimiter: " '"
 switches:
-  - name: simplification
+  - abbrev: ["漢", "简", "港", "臺"]
+    options: [zh_hant, zh_hans, zh_hant_hk, zh_hant_tw]
     reset: 1
+    states: ["傳統漢字", "简化字", "香港字形", "臺灣字形"]
 translator:
   dictionary: luna_pinyin
   prism: double_pinyin_flypy

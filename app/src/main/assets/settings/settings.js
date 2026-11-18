@@ -128,6 +128,21 @@ const THEME_PRESET_COLORS = {
     classic: '#23c890', ocean: '#4da3ff', violet: '#a78bfa',
     amber: '#ff9f45', sakura: '#ff8fb1', teal: '#2ec8c8',
 };
+// 3.76 原地更新：左一按钮图标选项，与 native TOOLBAR_ICON_IDS /
+// keyboard.js TOOLBAR_ICONS 的 id 集同源（空串 = 默认 F 标志；
+// custom 不在这里——有上传图时由渲染函数另挂一张卡）。卡片只画文
+// 字标，键盘侧的 SVG 形由底下弹出的真键盘实时回显；新标签暂用中文
+// 原文（翻译文件不动，后续补译）。
+const TOOLBAR_ICON_OPTIONS = [
+    { id: '', mark: 'F', label: 'F 标志' },
+    { id: 'oneplus', mark: '1+', label: 'OnePlus' },
+    { id: 'xiaomi', mark: 'MI', label: '小米' },
+    { id: 'oppo', mark: 'OPPO', label: 'OPPO' },
+    { id: 'vivo', mark: 'vivo', label: 'vivo' },
+    { id: 'star', mark: '★', label: '星星' },
+    { id: 'moon', mark: '☾', label: '月亮' },
+    { id: 'bolt', mark: '⚡', label: '闪电' },
+];
 // 预置→hue 映射与 keyboard.css html[data-preset] 同源；键面色板复用同一份。
 const PRESET_HUE = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 344, teal: 180 };
 
@@ -343,6 +358,12 @@ const I18N = {
         "input.fuzzy.manage": "管理模糊音",
         "input.fuzzy.manageHint": "分不清的音一起打：作用于全拼与九宫格 T9（双拼除外）。",
         "input.fuzzy.badge": "输入",
+        "input.script.title": "简繁体",
+        "input.script.badge": "输入",
+        "input.script.variant": "拼音出字",
+        "input.script.variantHint": "简体：拼音出简体字；繁體（台灣）：拼音出繁体字，按台湾用法出词（軟體、影片、程式、捷運、機車等）。切换后立即生效。",
+        "input.script.hans": "简体",
+        "input.script.hantTw": "繁體（台灣）",
         "input.fuzzy.g.ping": "平翘舌",
         "input.fuzzy.g.ping.hint": "z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。",
         "input.fuzzy.g.nl": "声母 n/l",
@@ -649,6 +670,10 @@ const I18N = {
         "voice.mic.hint": "语音输入必需，全程本地处理",
         "voice.mic.action": "去授权",
         "voice.models.note": "完整安装包已内置全部模型；精简安装包在此按需下载（断点续传，逐文件校验）。",
+        "translate.models.title": "翻译模型",
+        "translate.models.badge": "翻译",
+        "translate.models.note": "中英互译全程离线，不联网。精简档约 114 MB/方向，完整档约 220 MB/方向（更准）；下载源请选 GitHub 或 gh-proxy，翻译模型不在 Gitee 镜像里。",
+        "translate.models.power": "翻译时 CPU 满载推理，短句几秒完成；连续长句翻译会发热耗电，译完即释放模型。",
         "voice.asr.title": "语音识别设置",
         "voice.asr.badge": "识别",
         "voice.asr.stripPeriod": "去掉句尾句号",
@@ -1349,6 +1374,12 @@ const I18N = {
         "input.fuzzy.manage": "Manage fuzzy pinyin",
         "input.fuzzy.manageHint": "Type confusable sounds interchangeably (z/zh, n/l, nasal endings). Applies to full pinyin and T9, not double pinyin.",
         "input.fuzzy.badge": "Input",
+        "input.script.title": "Simplified / Traditional",
+        "input.script.badge": "Input",
+        "input.script.variant": "Pinyin output",
+        "input.script.variantHint": "Simplified: pinyin yields simplified characters. Traditional (Taiwan): pinyin yields traditional characters with Taiwan wording (軟體, 影片, 程式, 捷運, 機車). Applies immediately.",
+        "input.script.hans": "Simplified",
+        "input.script.hantTw": "Traditional (Taiwan)",
         "input.fuzzy.g.ping": "Retroflex z/zh, c/ch, s/sh",
         "input.fuzzy.g.ping.hint": "Typing zang also matches 张, typing zhang also matches 脏.",
         "input.fuzzy.g.nl": "n/l initials",
@@ -1653,6 +1684,10 @@ const I18N = {
         "voice.mic.hint": "Required for voice input; processing stays on this device",
         "voice.mic.action": "Allow",
         "voice.models.note": "The full package includes all models. Smaller packages can download models here with resume and per-file verification.",
+        "translate.models.title": "Translation models",
+        "translate.models.badge": "Translation",
+        "translate.models.note": "Chinese–English translation runs fully offline. Slim is about 114 MB per direction, full about 220 MB per direction (more accurate). Pick GitHub or gh-proxy as the download source — translation models are not on the Gitee mirror.",
+        "translate.models.power": "Translation runs the CPU at full load; short sentences take a few seconds. Long passages in a row will heat the phone and drain battery; the model is released when done.",
         "voice.asr.title": "Voice recognition options",
         "voice.asr.badge": "Recognition",
         "voice.asr.stripPeriod": "Remove final periods",
@@ -2380,6 +2415,10 @@ window.FeelimeSettings = {
             case "bgImageError":
                 setNote("bgImageNote", eventText(event, "error.BAD_BG_IMAGE"));
                 $("bgImageNote").hidden = false;
+                break;
+            case "toolbarIconError":
+                setNote("toolbarIconNote", eventText(event, "error.BAD_BG_IMAGE"));
+                $("toolbarIconNote").hidden = false;
                 break;
             case "keySoundError":
                 // #30-2：音效文件不可用（超限/损坏）——提示后 state 回推
@@ -3248,6 +3287,51 @@ function renderFeel(state) {
             glassGrid.append(btn);
         });
     }
+    // 3.76 原地更新：左一按钮图标网格（与 glassSkinGrid 同款卡片渲染）。
+    // custom 卡只在 state.toolbarIcon === "custom" 时挂出，标里放已上传
+    // 图（toolbarIconUrl 为空 = 文件丢了，标退回文字、点它重新上传）。
+    const iconGrid = $("toolbarIconGrid");
+    if (iconGrid) {
+        const active = typeof state.toolbarIcon === "string" ? state.toolbarIcon : "";
+        iconGrid.textContent = "";
+        TOOLBAR_ICON_OPTIONS.forEach(option => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "icon-card" + (option.id === active ? " active" : "");
+            btn.dataset.icon = option.id;
+            btn.setAttribute("aria-pressed", option.id === active ? "true" : "false");
+            const mark = document.createElement("span");
+            mark.className = "icon-mark";
+            mark.textContent = option.mark;
+            const label = document.createElement("span");
+            label.textContent = option.label;
+            btn.append(mark, label);
+            btn.addEventListener("click", () => call("setToolbarIcon", option.id));
+            iconGrid.append(btn);
+        });
+        if (active === "custom") {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "icon-card active";
+            btn.dataset.icon = "custom";
+            btn.setAttribute("aria-pressed", "true");
+            const mark = document.createElement("span");
+            mark.className = "icon-mark";
+            if (state.toolbarIconUrl) {
+                const img = document.createElement("img");
+                img.src = state.toolbarIconUrl;
+                img.alt = "";
+                mark.append(img);
+            } else {
+                mark.textContent = "图";
+            }
+            const label = document.createElement("span");
+            label.textContent = "自定义图片";
+            btn.append(mark, label);
+            btn.addEventListener("click", () => pickToolbarIcon());
+            iconGrid.append(btn);
+        }
+    }
     [["glassBlur", "glassBlur", 26, 0, 32], ["glassRadius", "glassRadius", 22, 8, 28],
         ["panelOpacity", "panelOpacity", 42, 35, 100]].forEach(([id, key, fallback, min, max]) => {
         const slider = $(id);
@@ -3258,6 +3342,12 @@ function renderFeel(state) {
     });
     const bubble = $("keyBubble");
     if (bubble) bubble.checked = state.keyBubble === true;
+    // 3.76 原地更新：折射默认开（state 缺字段也按开回显，与 native
+    // 默认对齐）；加厚模糊默认关。
+    const refraction = $("keyRefraction");
+    if (refraction) refraction.checked = state.keyRefraction !== false;
+    const heavyBlur = $("kbBgBlurHeavy");
+    if (heavyBlur) heavyBlur.checked = state.kbBgBlurHeavy === true;
     const guard = $("cnEnComposingGuard");
     if (guard) guard.checked = state.cnEnComposingGuard === true;
     const scrub = $("preeditScrub");
@@ -3301,6 +3391,8 @@ function renderFeel(state) {
     });
     setSelect("holdMs", state.holdMs ?? 350, ["200", "300", "350", "450", "600"]);
     setSelect("kbLayout", state.kbLayout === "14" ? "14" : "26", ["26", "14"]);
+    // 简/繁（台湾）：非法/缺失值回落简体（与原生 ScriptVariant.current 一致）。
+    setSelect("scriptVariant", state.scriptVariant === "hant_tw" ? "hant_tw" : "hans", ["hans", "hant_tw"]);
     setSelect("scrubSpeed", state.scrubSpeed ?? 3, ["1", "2", "3", "4", "5"]);
     const flickSwap = $("flickSwap");
     if (flickSwap) flickSwap.checked = state.flickSwap === true;
@@ -3450,8 +3542,17 @@ function renderVoice(state) {
     const mic = state.mic || {};
     setLed("micRow", !!mic.granted);
     $("btnMic").hidden = !!mic.granted;
-    const host = $("modelRows");
     const models = Array.isArray(state.models) ? state.models : [];
+    // 3.76 翻译模型单独成区（#translateModelRows）：id 以 translate-
+    // 开头的行渲染到翻译区，其余仍进语音区的 #modelRows；行本身
+    // （buildModelRow/updateModelRow）直接复用，下载/取消/删除/导入
+    // 与流量确认门与语音模型同一条路。
+    renderModelRows($("modelRows"), models.filter(model => !String(model.id || "").startsWith("translate-")));
+    renderModelRows($("translateModelRows"), models.filter(model => String(model.id || "").startsWith("translate-")));
+}
+
+function renderModelRows(host, models) {
+    if (!host) return;
     const existing = new Map([...host.querySelectorAll(".model")].map(node => [node.dataset.id, node]));
     const current = new Set();
     models.forEach(model => {
@@ -4888,6 +4989,7 @@ $("btnMic").addEventListener("click", () => call("requestMic"));
 $("uiLanguage").addEventListener("change", event => setUiLanguage(event.target.value));
 $("dpScheme").addEventListener("change", event => call("setDoublePinyinScheme", event.target.value));
 $("kbLayout").addEventListener("change", event => call("setKbLayout", event.target.value));
+$("scriptVariant").addEventListener("change", event => call("setScriptVariant", event.target.value));
 
 // 输入测试框（验收反馈）：多行 textarea 随内容自适应增高，键盘弹出
 // 窗口压缩时也完整可见；min-height 兜底 rows=4 的初始高度。
@@ -4997,6 +5099,9 @@ $("keyOpacity").addEventListener("change", event => {
 // 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
 // 底下弹出的预览键盘。
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
+// 3.76 原地更新：折射边框（默认开）与加厚模糊（默认关）开关。
+$("keyRefraction").addEventListener("change", event => call("setKeyRefraction", event.target.checked));
+$("kbBgBlurHeavy").addEventListener("change", event => call("setKbBgBlurHeavy", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));
@@ -5112,6 +5217,34 @@ function pickBgImage(variant) {
     });
     input.click();
 }
+// 3.76 原地更新：左一按钮图标上传（与 pickBgImage 同款文件选择器；
+// 原图发桥，原生侧居中裁剪成 192px 方图后落盘。8MB 上限与原生
+// ToolbarIconStore.MAX_IMPORT_BYTES 同口径）。
+let toolbarIconPickGeneration = 0;
+function pickToolbarIcon() {
+    const generation = ++toolbarIconPickGeneration;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        $("toolbarIconNote").hidden = true;
+        if (file.size > 8 * 1024 * 1024) {
+            setNote("toolbarIconNote", t("error.BAD_BG_IMAGE"));
+            $("toolbarIconNote").hidden = false;
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (generation !== toolbarIconPickGeneration) return;
+            call("uploadToolbarIcon", String(reader.result).split(",")[1] || "");
+        };
+        reader.readAsDataURL(file);
+    });
+    input.click();
+}
+$("btnUploadToolbarIcon").addEventListener("click", () => pickToolbarIcon());
 $("holdMs").addEventListener("change", submitFeelOptions);
 $("scrubSpeed").addEventListener("change", submitFeelOptions);
 $("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));

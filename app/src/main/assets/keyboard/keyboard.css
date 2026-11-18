@@ -782,6 +782,24 @@ body.power-saving:not([data-bg-image="on"]) #glassField {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
 }
+/* 3.76 原地更新：键盘背景加厚模糊（body.kb-bg-heavy-blur，默认关）——
+ * 在磨砂滑杆（--glass-blur）基础上再加 26px；背景图模式同步加厚
+ * （#bgImage 自身模糊 +36px）。省电模式优先：两条加厚都被下面的
+ * 覆盖规则强制归零/还原，不跟省电抢。 */
+body.kb-bg-heavy-blur:not([data-bg-image="on"]) #glassField {
+    -webkit-backdrop-filter: blur(calc(var(--glass-blur, 22px) + 26px)) saturate(1.45);
+    backdrop-filter: blur(calc(var(--glass-blur, 22px) + 26px)) saturate(1.45);
+}
+body.kb-bg-heavy-blur[data-bg-image="on"] #bgImage {
+    filter: blur(calc(var(--glass-blur, 22px) + 36px));
+}
+body.power-saving.kb-bg-heavy-blur:not([data-bg-image="on"]) #glassField {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+body.power-saving.kb-bg-heavy-blur[data-bg-image="on"] #bgImage {
+    filter: blur(calc(var(--glass-blur, 22px) + 10px));
+}
 /* 拼音加粗（issue #8）：设置开关，默认关。 */
 body[data-preedit-bold="1"] #preeditLine { font-weight: 600; }
 /* 3.76 紧凑候选栏是默认：拼音带高度默认 0（拼音进候选栏首位 chip）；
@@ -961,6 +979,9 @@ body[data-candidate-mode="slim"] { --preedit-band: 0px; }
 }
 #candidateBar .tool:active, #candidateBar .tool.active-touch,
 #toolboxRow .tool:active, #toolboxRow .tool.active-touch { background: var(--pressed); }
+/* 左一按钮自定义图标（3.76 原地更新）：上传图裁成 192px 方图后以
+ * <img> 挂进 setupButton，盖住 16px 图形区、圆角跟随键帽。 */
+#setupButton img { width: 16px; height: 16px; object-fit: cover; border-radius: 4px; display: block; }
 /* 开关型工具（振动/声音/联想/单手）：开着时点亮。色彩模式是三态
  * 循环无开/关语义，syncToolStates 不再给它挂 state-on。
  * 底色用 active 深绿（mic listening / ctrl active 同配方）、icon 走
@@ -1208,6 +1229,22 @@ html.glass-v2 #candidateBar .tool,
 html.glass-v2 #toolboxRow .tool {
     border: 1px solid var(--glass-v2-edge);
 }
+/* 3.76 原地更新：键帽折射边框（html.key-refraction，默认开）——在
+ * glass-v2 既有顶光/内圈辉光上再叠一层斜向折射高光（左上亮、右下
+ * 微亮）+ 四边不等亮内描边，模拟玻璃边缘的折射。只动 glass-v2，
+ * 经典版不动；省电模式只留描边（与上方省电规则同口径）。 */
+html.glass-v2.key-refraction .kb-key,
+html.glass-v2.key-refraction .sym-tab {
+    background-image:
+        linear-gradient(115deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0) 68%, rgba(255, 255, 255, .16)),
+        linear-gradient(180deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, 0) 45%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .38), inset 1px 0 0 rgba(255, 255, 255, .16), inset -1px 0 0 rgba(255, 255, 255, .10), inset 0 -1px 0 rgba(0, 0, 0, .07), inset 0 0 12px rgba(255, 255, 255, .07), 0 2px 6px rgba(0, 0, 0, .10);
+}
+html.glass-v2.key-refraction body.power-saving .kb-key,
+html.glass-v2.key-refraction body.power-saving .sym-tab {
+    background-image: none;
+    box-shadow: none;
+}
 html.glass-v2 body.power-saving .kb-key,
 html.glass-v2 body.power-saving .sym-tab {
     background-image: none;
@@ -1452,6 +1489,62 @@ body[data-cap-single="on"] .kb-key.kb-letter .kb-main {
  * 第四列 = 右侧竖排 删除/复制/剪切/粘贴。 */
 #editLayer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #editLayer[hidden] { display: none; }
+
+/* --- 3.76 离线翻译面板 -------------------------------------------------- */
+#translateLayer { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }
+#translateLayer[hidden] { display: none; }
+.translate-head { flex: none; display: flex; align-items: center; gap: 8px; }
+.translate-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.translate-dir {
+    flex: none;
+    border: 0;
+    border-radius: 16px;
+    background: var(--pill);
+    color: var(--text);
+    font-size: 13px;
+    padding: 5px 12px;
+}
+.translate-dir:active { background: var(--pressed); }
+.translate-spacer { flex: 1; }
+.translate-head .tool {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--pill);
+    color: var(--icon);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.translate-head .tool:active { background: var(--pressed); }
+.translate-source, .translate-result {
+    flex: 1;
+    min-height: 0;
+    resize: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+.translate-result { background: var(--pill); }
+.translate-actions { flex: none; display: flex; gap: 8px; }
+.translate-btn {
+    flex: none;
+    border: 0;
+    border-radius: 16px;
+    background: var(--pill);
+    color: var(--text);
+    font-size: 14px;
+    padding: 7px 16px;
+}
+.translate-btn.primary { background: var(--accent); color: var(--accent-ink); }
+.translate-btn:active { background: var(--pressed); }
+.translate-btn.primary:active { filter: brightness(0.92); }
+.translate-btn[disabled] { opacity: 0.4; }
+.translate-btn[hidden] { display: none; }
+.translate-status { flex: none; min-height: 18px; margin: 0; font-size: 13px; color: var(--muted); }
+.translate-status:empty { display: none; }
 /* 法语候选大小写循环的 shift 指示（cap=单档亮，upper=锁定亮）。 */
 .kb-mod.shift.case-cap { box-shadow: inset 0 0 0 2px var(--accent); }
 .kb-mod.shift.case-upper {

@@ -137,7 +137,9 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 ### 1.3 输入态（composing）
 
 - `body.composing` 状态类由引擎事件维护。
-- preedit（拼音/罗马字原串）显示在 `#preeditLine`，**不写入宿主编辑器**（§5.2）。
+- preedit（拼音/罗马字原串）显示在 `#preeditLine`，**同时以 composing
+  span 镜像进宿主编辑器**（§5.2；3.76 原地更新①，之前只画在键盘上）。
+  紧凑模式拼音行留空——拼音由宿主输入框里的 span 显示。
   全拼/双拼/九宫格把音节逐个放到首个候选汉字的正上方，不再整串贴在最左边。
   默认没有随字数收缩的外框；皮肤页「拼音外框」打开后才恢复那层胶囊。
   **3.76 紧凑模式（原地更新 2026-11-18）**：拼音不进键盘——拼音已由
@@ -639,11 +641,24 @@ Native→JS 事件：`hello`（§5.3）、引擎状态 `onEngineState`（候选/
 
 ### 5.2 文本提交与 preedit 语义
 
-- **拼音/双拼 preedit 不写入编辑器**：组合原串只存在于键盘 preedit 行与
-  候选条；选字 `commitText` 汉字、回车 `commitText` 原串（经
+- **拼音/双拼 preedit 镜像进宿主编辑器**（3.76 原地更新①，改 IN-04
+  旧语义）：组合原串一面画在键盘 preedit 行与候选条，一面以 composing
+  span 写进宿主输入框（`setComposingText`，每键更新，带音节空格的显示
+  串如 `d b j`）；选字 `commitText` 汉字、回车 `commitText` 原串（经
   preedit_format 归一，如全拼 `nv`→`nü`）、切模式/切编辑器时未确认组合
   **显式提交**（与法/俄语的 span 组合 `finishComposing` 分流，防双写）。
-  法语/俄语拼写组合保留编辑器 span 语义。
+  法语/俄语拼写组合保留编辑器 span 语义。两种布局模式（紧凑/完整）都
+  镜像，与布局无关；紧凑模式键盘拼音行留空，拼音只由宿主 span 显示。
+  不镜像的例外：密码框强制 DIRECT、拼音模式根本选不上；终端型
+  （TYPE_NULL/dummy IC）编辑器不回显。宿主若不支持 composing 显示，
+  再按应用逐个适配，不预写包名特判。
+- **超长组合自动收束**（issue #12，3.76 原地更新②放宽）：拼音族回声侧
+  raw（去空格后）≥64 字母且有候选时自动上屏首候选（等同按空格，主流
+  IME 的超长自动组句）；≥64 字母且无候选时清空组合并提示「组合过长，
+  已清空」。旧阈值 40/16 太紧：2026-11-18 QQ 诊断里 raw=16 的无候选
+  尾段就误清了正在打的组合。64 字母≈一整句话的拼音量，与
+  `queryPinyinCandidates` 的 64 字母上限同档；中置光标帧不参与收束，
+  同一组合指纹只收束一次，死串清空另有在途门闩。
 - **组合落地**：flick/长按候选/符号/粘贴等外部插入前先把未确认组合显式
   commit（`pasteExternal`：先 commit raw 再插入字面量），避免组合区残留
   吞字（如 x + 上滑 e → `x3`）。
@@ -912,6 +927,66 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   词库是真实词条（进 librime user_dict，下次打码即出候选）。上限 200 词
   （同 learnUserWord）；设置页同卡可查看自动写入的词、逐条 ✕ 删除（删后
   可重新学回）；开关是原生偏好 `habit_lexicon`（默认开）。
+
+### 7.8 简/繁（台湾）（3.76 原地更新第 4 项）
+
+- 开关是原生偏好 `feelime_engine` 内的 `script_variant`（`hans` /
+  `hant_tw`，非法值回落 `hans`；设置页「简繁体（台灣）」卡，
+  `SettingsBridge.setScriptVariant`，绝不走 localStorage），切后立即
+  生效：广播 `SCRIPT_VARIANT_CHANGED` → `FeelimeService` 在拼音类模式
+  （PINYIN / T9 / DOUBLE_PINYIN）重建引擎会话 + `pushBridgeHello()`，
+  切换瞬间当前组合丢失（与模糊音开关同款代价）。
+- 转换不在 JS 层、不另建繁体词库：基底词库仍是简体 frost，转换由 librime
+  的 `simplifier` 滤镜承载——8 个拼音类 schema（全拼、模糊音全拼、T9、
+  模糊音 T9、双拼飞 / 搜狗 / 紫光 / 自然码）的 `zh_hant_tw` 开关挂
+  `opencc_config: s2tw.json`（简→繁（台湾）），`zh_hans` 侧仍是
+  `t2s.json`（radio 开关 `reset: 1` 默认回简体）。
+- 开关翻转不用新增 JNI：`RimeTextEngine.applyScriptVariant` 在每次建会话
+  后发 `key_binder` 合成键 `Control+Shift+6`（`set_option: zh_hant_tw`，
+  `set_option` 是确定性选择；`toggle:` 会循环 radio 组，禁用于此）；切回
+  简体不需要发键（建会话即按 reset 复位回简体）。兜底：绑定漏接时合成键
+  的 `6` 可能落入组合，`applyScriptVariant` 先 `rimeCommit` 排空（有字
+  落出时记诊断 `scriptVariantStray`）再发 ESC 清空组合。纠错 scratch 会话
+  查候选前同样翻开关，纠错候选也出繁体。
+- `s2tw.json`：两条 short_circuit 链路——链路 1 `TWTerms.txt`（FeelimD
+  手写补表，14 条，CC0）→ `STPhrases.txt` → `STCharacters.txt`（简→繁），
+  链路 2 `TWPhrases.txt` → `TWVariantsPhrases.txt` → `TWVariants.txt`
+  （繁→台湾用词）。5 份上游表原样取自 OpenCC 钉死版
+  `e9f3bb3fa1d058fe2fd4f096503222854bdc31ab`（与已有 `t2s.json` 同一来源，
+  Apache-2.0），不走上游新版的 `.ocd2` 二进制词典（与仓库现有文本词典
+  格式不一致）。补表只收上游确实翻错的词（地铁→捷運、摩托车→機車、
+  方便面→泡麵、土豆→馬鈴薯、西红柿→番茄、酸奶→優格、充电宝→行動電源、
+  外卖→外送、打车→叫車、点赞→按讚、卫生间→廁所、邮箱→信箱、
+  优盘→隨身碟、公交车→公車），补表排在链路首位、优先于上游；其余台湾
+  词（軟體/影片/程式/螢幕/滑鼠/隨身碟/行動電話/計程車/捷運站/視訊會議/
+  程式設計師等）由上游两条链路直接覆盖。
+- 适用范围：全拼、T9、双拼四方案的引擎候选与提交全部转换；JS 侧动态
+  候选只有日期星期词按 `scriptVariant` 分支（`禮拜` / `礼拜`）。
+  拼音纠错（§7.6）与习惯自动词库（§7.7）照常工作：纠错变体走 scratch
+  会话先翻开关；习惯词进 librime `custom_phrase` 用户段，输出时随
+  模式转换（`char-pinyin.json` 覆盖繁体字注音，自动码可用）。
+- 已知缺口（不假装全通）：① 整句联想 `AssociationStore` 是简体
+  `assoc/zh_bigram.tsv` 的精确后缀匹配——繁体模式下上屏词是繁体，联想
+  多半查空，偶有命中也出简体词（不崩，输入不受影响）；② `feelime_flypy`
+ （音形码表）与笔画五键没有拼音 simplifier，维持原样（不转换）；③ schema
+  的 `zh_hant` 选项无对应 section（出简体原词）是上游预设的旧问题，
+  本次不修；④ 转换由 librime 在设备上实际执行——真机须核对 `s2tw.json`
+  真正加载且出词（配置缺失时滤镜静默直通，mock 只能断言同款词典的
+  模拟转换）。
+- 引擎数据登记：7 个新文件（5 份上游表 + `TWTerms.txt` + `s2tw.json`）
+  与 8 个改动 schema 全部进 `engine-data/MANIFEST.json`（bytes+sha256）；
+  只有 `luna_pinyin.schema.yaml` 同时在 `third_party/manifest.json`
+  的 `outputs` 列表里（其余 7 个 schema 不在该列表），只改它一处。
+  `s2tw.json` / `TWTerms.txt` 不进 `third_party/manifest.json` 的
+  `sources`（与已有 OpenCC 条目同一钉死版本、同一归档，无新第三方来源）。
+
+### 7.9 翻译（离线中英互译）（3.76 原地更新第 5 项）
+
+- 入口：工具栏右组「译」按钮（默认 `[clipboard, favorites, translate, mic]`；旧壳无 `translateText` 桥时隐藏）；面板 `#translateLayer`（`.kb-layer`，已登记 `EXCLUSIVE_VIEWS`）含方向切换、原文框、翻译/取消、状态行、只读译文框、上屏（走 `commitText`）/复制/去下载模型按钮；模型未下载时才亮下载出口。
+- 引擎：`TranslateEngine.kt`，onnxruntime 1.27.0（应用已有，不引新依赖）。编码器一次前向 + 合并解码器 greedy 自回归 + KV-cache（首步 `use_cache_branch=false`、past 喂 24 个空张量，之后 true、past 用上一轮 present 回灌；输入上限 511 token、输出上限 128 token）；单线程 worker、60 秒闲置关闭、只翻最新一句、出错关引擎。分词器 `MarianTokenizer.kt`：纯 Kotlin Unigram，org.json 解析 `tokenizer.json`（WhitespaceSplit + Metaspace、Viterbi 最高分切分，未覆盖字符落 `<unk>`）。
+- 模型不内置，走现成 ModelStore + `models/manifest.json` 下载（4 个条目，每条 3 文件、真实 bytes/SHA-256，`sources` 只有 github 与 ghproxy，无 gitee；默认下载精简档）。两档：精简 int8（Xenova/opus-mt-zh-en/en-zh，约 114MB/方向）与完整 fp16（同仓库，约 220MB/方向）；`installedTier` 完整档优先。方向 `translateDirection` 进原生 prefs；桥 `translateText(text, from, to, reqId, token)`（1000 字硬上限）与 `cancelTranslate`；`BridgeContract` CAPABILITIES 加 `translate-v1`（不进键盘 REQUIRED）。
+- AI 大模型一档做不到：本地 sherpa-onnx 1.13.6 AAR 解包核查无任何 LLM Java 类（只有 `OnlineLMConfig`，ASR 语言模型用）；native `libsherpa-onnx-jni.so` 里确有 `sherpa_onnx::OfflineLM` 符号（llama.cpp 后端），但该 AAR 没有对应的 JNI 绑定，用它等于新写一套 JNI + 引入 GGUF 运行时；即使有运行时，Qwen2.5-0.5B-Instruct-GGUF q4_k_m 约 491MB，在手机 CPU 上翻译速度、电量、内存都不适合键盘场景。替代是 Opus-MT fp16 完整档；设置页不列任何 LLM 下载项。
+- 已知缺口：KV-cache 首步空 past 是否被 ORT 接受（代码里已写 fallback：每步喂全序列 + `use_cache_branch=false`）；翻译质量与 fp16/int8 的速度差异未在真机测；模型下载地址只做了 Range 探测，未完整下载验证。
 
 ## 8. 键盘热更新与包安全
 

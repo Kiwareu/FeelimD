@@ -379,6 +379,55 @@ h3 { margin: 0; font-size: 14px; font-weight: 650; }
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 4px 10px #0003;
 }
 
+/* 3.76 原地更新：左一按钮图标网格（与 skin-grid 同款卡片，只画文字
+ * 标——键盘侧的 SVG 形由真机键盘实时回显，这里不重复画矢量）。 */
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+@media (min-width: 700px) {
+    .icon-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+.icon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 68px;
+    padding: 8px 4px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--pill);
+    color: var(--card-text);
+    font-size: 12px;
+}
+.icon-card.active {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.icon-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pill);
+    color: var(--card-text);
+    font-size: 15px;
+    font-weight: 700;
+    overflow: hidden;
+}
+.icon-mark img {
+    width: 28px;
+    height: 28px;
+    object-fit: cover;
+    display: block;
+}
+
 /* --- rows / status ---------------------------------------------------- */
 
 /* #90 兼容：上四处 flex gap（84+）改子元素 margin 等价模拟——旧

@@ -368,7 +368,24 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u5DF2\u6E05\u7A7A\u7B14\u8FF9": "Ink cleared",
     "\u624B\u5199\u6A21\u578B\u672A\u5C31\u7EEA": "Handwriting model not ready",
     "\u624B\u5199\u8BC6\u522B\u5931\u8D25": "Handwriting recognition failed",
-    "\u624B\u5199": "Handwriting"
+    "\u624B\u5199": "Handwriting",
+    // 3.76 离线翻译面板。
+    "\u7FFB\u8BD1": "Translate",
+    "\u5207\u6362\u7FFB\u8BD1\u65B9\u5411": "Switch translation direction",
+    "\u5173\u95ED\u7FFB\u8BD1": "Close translation",
+    "\u8F93\u5165\u8981\u7FFB\u8BD1\u7684\u5185\u5BB9": "Enter text to translate",
+    "\u539F\u6587": "Source text",
+    "\u8BD1\u6587": "Translation",
+    "\u6B63\u5728\u7FFB\u8BD1\u2026": "Translating\u2026",
+    "\u5148\u8F93\u5165\u8981\u7FFB\u8BD1\u7684\u5185\u5BB9": "Enter text to translate first",
+    "\u4E0A\u5C4F": "Insert",
+    "\u590D\u5236": "Copy",
+    "\u5DF2\u590D\u5236": "Copied",
+    "\u590D\u5236\u5931\u8D25\uFF0C\u53EF\u957F\u6309\u8BD1\u6587\u624B\u52A8\u590D\u5236": "Copy failed \u2014 long-press the translation to copy it manually",
+    "\u53BB\u4E0B\u8F7D\u6A21\u578B": "Download models",
+    "\u5F53\u524D\u7248\u672C\u4E0D\u652F\u6301\u79BB\u7EBF\u7FFB\u8BD1\uFF0C\u8BF7\u66F4\u65B0 APK": "This version doesn't support offline translation \u2014 update the app.",
+    "\u4E2D \u2192 \u82F1": "ZH \u2192 EN",
+    "\u82F1 \u2192 \u4E2D": "EN \u2192 ZH"
   };
   function t(source, ...values) {
     const pattern = uiLocale === "en" ? UI_EN[source] || source : source;
@@ -393,6 +410,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
     edit: { el: "editLayer", openClass: null, close: "closeEditPanel", returnField: "editReturnLayer" },
     panel: { el: "panelLayer", openClass: null, close: "closePanel", returnField: "panelReturnLayer" },
+    // 3.76 离线翻译面板（.kb-layer 整屏级视图）：登记即与全部视图
+    // 双向互斥；mock 的 mutex gate 枚举 DOM 比对，漏登记直接红。
+    translate: { el: "translateLayer", openClass: null, close: "closeTranslatePanel", returnField: "translateReturnLayer" },
     modeMenu: { el: "modeMenu", openClass: "open", close: "closeModeMenu" }
   };
   const MERGEABLE_14 = /* @__PURE__ */ new Set(["pinyin", "double-pinyin", "direct"]);
@@ -439,7 +459,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     xingq: { kind: "week", head: false }
   };
   const dynamicWeekNames = ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"];
-  function dynamicCandidatesFor(raw, mode) {
+  function dynamicCandidatesFor(raw, mode, scriptVariant) {
     if (mode !== "pinyin" && mode !== "double-pinyin") return [];
     let spec = DYNAMIC_INPUT_CODES[raw];
     if (!spec) return [];
@@ -468,7 +488,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       ];
     } else {
       const name = dynamicWeekNames[now.getDay()];
-      texts = [`\u661F\u671F${name}`, `\u5468${name}`, now.getDay() === 0 ? "\u661F\u671F\u5929" : `\u793C\u62DC${name}`];
+      const libai = scriptVariant === "hant_tw" ? "\u79AE\u62DC" : "\u793C\u62DC";
+      texts = [`\u661F\u671F${name}`, `\u5468${name}`, now.getDay() === 0 ? "\u661F\u671F\u5929" : `${libai}${name}`];
     }
     return texts.map((text, index) => ({
       id: `dyn:${spec.kind}-${index}`,
@@ -707,6 +728,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     ime: "imeSwitchButton",
     clipboard: "clipboardButton",
     favorites: "favoritesButton",
+    // 3.76 离线翻译：默认上栏（TOOLBAR_DEFAULT.right），用户可在工具编辑
+    // 里移走；旧壳无 translateText 桥时按钮隐藏（见初始化绑定）。
+    translate: "translateButton",
     mic: "mic",
     // 开关型/动作型工具：默认不上栏，只待在编辑仓库里由用户添加（动态创建）。
     // setup 是静态元素（index.html 里的 fullSetupButton），其余动态创建。
@@ -736,7 +760,17 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
   const HW_TEXT_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin", "flypy", "french", "russian", "japanese"]);
   const PREEDIT_SCRUB_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin"]);
   const CHINESE_INPUT_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin", "t9", "stroke", "flypy"]);
-  const TOOLBAR_DEFAULT = { left: ["ctrl", "ime"], right: ["clipboard", "favorites", "mic"] };
+  const TOOLBAR_DEFAULT = { left: ["ctrl", "ime"], right: ["clipboard", "favorites", "translate", "mic"] };
+  const TOOLBAR_ICONS = {
+    "": '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12.5 8.5h24l-1.8 6.2H19.3v7.2h13.3l-1.8 6.2H19.3v11.4h-6.8z"/><rect x="31" y="31" width="4.5" height="8.5" rx="1"/></svg>',
+    oneplus: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="31" text-anchor="middle" font-size="19" font-weight="700">1+</text></svg>',
+    xiaomi: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="31" text-anchor="middle" font-size="16" font-weight="700">MI</text></svg>',
+    oppo: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="29" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1">OPPO</text></svg>',
+    vivo: '<svg viewBox="0 0 48 48" width="16" height="16" fill="currentColor" aria-hidden="true"><text x="24" y="30" text-anchor="middle" font-size="13" font-weight="700">vivo</text></svg>',
+    star: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+    bolt: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>'
+  };
   const MIN_NATIVE_API = 1;
   const REQUIRED_CAPABILITIES = [
     "candidate-revision-v1",
@@ -1750,6 +1784,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.panelTab = "clipboard";
       this.kaomojiTab = KAOMOJI_TABS[0].id;
       this.panelOpen = false;
+      this.translateDirection = "zh-en";
+      this.translateReqId = 0;
+      this.translateResultText = "";
+      this.translateTranslating = false;
       this.ctrlView = false;
       this.ctrlSuspended = false;
       this.ctrlReturnLayer = "letters";
@@ -1851,6 +1889,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.keyboardUiVersion = "glass";
       this.candidateBarMode = "slim";
       this.showKeyHints = true;
+      this.scriptVariant = "hans";
       this.floating = false;
       this.floatGeom = null;
       this.bubbleLinger = 400;
@@ -2169,6 +2208,37 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (clipBtn) clipBtn.addEventListener("click", () => this.openPanel("clipboard"));
       const favBtn = document.getElementById("favoritesButton");
       if (favBtn) favBtn.addEventListener("click", () => this.openPanel("favorites"));
+      const translateBtn = document.getElementById("translateButton");
+      if (translateBtn) translateBtn.addEventListener("click", () => this.toggleTranslatePanel());
+      this.syncTranslateButton();
+      document.getElementById("translateClose").addEventListener("click", () => this.closeTranslatePanel());
+      document.getElementById("translateDirection").addEventListener("click", () => {
+        this.setTranslateDirection(this.translateDirection === "zh-en" ? "en-zh" : "zh-en");
+      });
+      document.getElementById("translateGo").addEventListener("click", () => this.translateNow());
+      document.getElementById("translateCancel").addEventListener("click", () => this.cancelTranslateRequest());
+      document.getElementById("translateCommit").addEventListener("click", () => this.translateCommit());
+      document.getElementById("translateCopy").addEventListener("click", () => this.translateCopy());
+      document.getElementById("translateDownload").addEventListener("click", () => {
+        this.closeTranslatePanel();
+        if (typeof Native.openSetupPage === "function") {
+          this.call(() => Native.openSetupPage("voice", this.token));
+        }
+      });
+      const translateSource = document.getElementById("translateSource");
+      if (translateSource) {
+        translateSource.addEventListener("focus", () => {
+          this.setPanelInput(true);
+          this.reportPanelSelection();
+        });
+        translateSource.addEventListener("blur", () => {
+          if (!document.getElementById("translateLayer").hidden) {
+          } else {
+            this.setPanelInput(false);
+          }
+        });
+        translateSource.addEventListener("input", () => this.reportPanelSelection());
+      }
       document.getElementById("panelClose").addEventListener("click", () => this.closePanel());
       document.getElementById("panelClear").addEventListener("click", () => {
         if (this.panelTab !== "clipboard") return;
@@ -7306,6 +7376,35 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     // 存在于工具箱行（3.74.9：从候选栏移入独立的 #toolboxRow；编辑态
     // 把未上栏的按钮移进下方仓库 grid），applyToolbarLayout 只负责
     // 按数组重排；事件绑定在元素上，移动安全。
+    /** 工具栏左一按钮换图标（3.76 原地更新）：只换 setupButton 的
+     *  图形，按钮作用（开快捷设置）不变。custom 且有图 = <img>；
+     *  custom 但无图（备份恢复后文件未跟来）回落默认 F；未知 id
+     *  同样回落默认。同一图标+同一 URL 不重复写 DOM。 */
+    applyToolbarIcon(payload) {
+      const btn = document.getElementById("setupButton");
+      if (!btn) return;
+      const id = typeof payload.toolbarIcon === "string" ? payload.toolbarIcon : "";
+      const url = typeof payload.toolbarIconUrl === "string" ? payload.toolbarIconUrl : "";
+      const key = id === "custom" ? "custom|" + url : "builtin|" + id;
+      if (this._toolbarIconKey === key) return;
+      this._toolbarIconKey = key;
+      if (id === "custom" && url) {
+        btn.innerHTML = '<img src="' + url.replace(/"/g, "") + '" width="16" height="16" alt="">';
+        return;
+      }
+      btn.innerHTML = TOOLBAR_ICONS[id] || TOOLBAR_ICONS[""];
+    }
+    /** 折射边框与加厚模糊（3.76 原地更新）：只挂 class，视觉由 CSS
+     *  侧规则出。缺字段按 native 默认补：折射默认开、加厚默认关
+     *  （旧壳 hello 不带字段时也不丢默认行为）。 */
+    applyThemeExtras(payload) {
+      const refraction = typeof payload.keyRefraction === "boolean" ? payload.keyRefraction : true;
+      this.keyRefraction = refraction;
+      document.documentElement.classList.toggle("key-refraction", refraction);
+      const heavy = typeof payload.kbBgBlurHeavy === "boolean" ? payload.kbBgBlurHeavy : false;
+      this.kbBgBlurHeavy = heavy;
+      document.body.classList.toggle("kb-bg-heavy-blur", heavy);
+    }
     applyToolbarLayoutValue(raw) {
       let parsed = null;
       try {
@@ -7351,6 +7450,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (dom === "mic") return;
         const el = document.getElementById(dom);
         if (!el) return;
+        if (dom === "translateButton" && typeof Native.translateText !== "function") {
+          el.hidden = true;
+          return;
+        }
         el.hidden = el.closest("#toolbarEditorGrid") ? false : el.closest("#toolboxRow") ? overflow.has(id) : this.toolbarYield || document.body.classList.contains("composing") || overflow.has(id);
       });
       const mic = document.getElementById("mic");
@@ -7377,6 +7480,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (!el) return;
         const recording = ["listening", "loading", "stopping"].includes(this.voiceState);
         if (recording && id === "mic") return;
+        if (id === "translate" && typeof Native.translateText !== "function") {
+          el.hidden = true;
+          return;
+        }
         if (this.toolbarCandidatesSceneActive() && el.closest("#candidateBar")) {
           el.hidden = true;
           return;
@@ -8256,6 +8363,158 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.body.classList.remove("stats-page");
       this.showKeyLayer(this.statsReturnLayer || "letters");
       this.maybeResumeCtrlView();
+    }
+    /** 3.76 离线翻译入口显隐：旧壳没有 translateText 桥方法时隐藏
+     *  （特性检测，不靠能力握手——translate-v1 不进 REQUIRED）。
+     *  初始化与每次 hello 各同步一次；工具栏对账循环里另有同款
+     *  守卫，防止溢出/组合对账把它翻回可见。 */
+    syncTranslateButton() {
+      const button = document.getElementById("translateButton");
+      if (!button) return;
+      button.hidden = typeof Native.translateText !== "function";
+    }
+    /** 3.76 离线翻译面板（ONNX 路线）：toggle/close 照统计浮层同款
+     *  （互斥走注册表、回层走 returnField、ctrl 视图借出借还）。 */
+    toggleTranslatePanel() {
+      this.closeOtherViews("translate");
+      const layer = document.getElementById("translateLayer");
+      if (layer && !layer.hidden) {
+        this.closeTranslatePanel();
+        return;
+      }
+      if (this.ctrlView) this.suspendCtrlView();
+      this.translateReturnLayer = this.keyLayer;
+      this.keyLayer = "translate";
+      this.hideKeyLayers();
+      document.getElementById("candidateBar").hidden = true;
+      document.getElementById("toolboxRow").hidden = true;
+      layer.hidden = false;
+      this.syncTranslateDirectionLabel();
+      this.setTranslateStatus("", false);
+      this.hwNotifyPanelHeight();
+      const source = document.getElementById("translateSource");
+      if (source) source.focus();
+    }
+    closeTranslatePanel() {
+      const layer = document.getElementById("translateLayer");
+      if (!layer || layer.hidden) return;
+      layer.hidden = true;
+      this.translateTranslating = false;
+      this.syncTranslateButtons();
+      document.getElementById("candidateBar").hidden = false;
+      document.getElementById("toolboxRow").hidden = false;
+      this.auditToolbarTools();
+      this.updateStripTakeover();
+      if (this.settingsInputFocus) this.setPanelInput(false);
+      this.showKeyLayer(this.translateReturnLayer || "letters");
+      this.maybeResumeCtrlView();
+    }
+    /** 方向切换：只认两个合法值；写回原生 pref（setQuickPref 白名单
+     *  里有 translateDirection），hello 重推后回读，不走 localStorage。 */
+    setTranslateDirection(direction) {
+      if (direction !== "zh-en" && direction !== "en-zh") return;
+      this.translateDirection = direction;
+      this.syncTranslateDirectionLabel();
+      if (typeof Native.setQuickPref === "function") {
+        this.call(() => Native.setQuickPref("translateDirection", direction, this.token));
+      }
+    }
+    syncTranslateDirectionLabel() {
+      const button = document.getElementById("translateDirection");
+      if (!button) return;
+      button.textContent = this.translateDirection === "en-zh" ? t("\u82F1 \u2192 \u4E2D") : t("\u4E2D \u2192 \u82F1");
+    }
+    /** 翻译按钮行状态：翻译中只留取消；有译文才亮上屏/复制。
+     *  去下载按钮的显隐只归 setTranslateStatus 管（模型未下载的错
+     *  误才亮），这里不碰它，免得把刚亮起的出口又藏回去。 */
+    syncTranslateButtons() {
+      const go = document.getElementById("translateGo");
+      const cancel = document.getElementById("translateCancel");
+      const commit = document.getElementById("translateCommit");
+      const copy = document.getElementById("translateCopy");
+      const hasResult = !!this.translateResultText;
+      if (go) go.hidden = this.translateTranslating;
+      if (cancel) cancel.hidden = !this.translateTranslating;
+      if (commit) commit.disabled = !hasResult || this.translateTranslating;
+      if (copy) copy.disabled = !hasResult || this.translateTranslating;
+    }
+    setTranslateStatus(text, showDownload) {
+      const status = document.getElementById("translateStatus");
+      if (status) status.textContent = text || "";
+      const download = document.getElementById("translateDownload");
+      if (download) download.hidden = !showDownload;
+    }
+    translateNow() {
+      const source = document.getElementById("translateSource");
+      const text = (source ? source.value : "").trim();
+      if (!text) {
+        this.setTranslateStatus(t("\u5148\u8F93\u5165\u8981\u7FFB\u8BD1\u7684\u5185\u5BB9"), false);
+        return;
+      }
+      if (typeof Native.translateText !== "function") {
+        this.setTranslateStatus(t("\u5F53\u524D\u7248\u672C\u4E0D\u652F\u6301\u79BB\u7EBF\u7FFB\u8BD1\uFF0C\u8BF7\u66F4\u65B0 APK"), false);
+        return;
+      }
+      const [from, to] = this.translateDirection === "en-zh" ? ["en", "zh"] : ["zh", "en"];
+      this.translateReqId += 1;
+      const reqId = this.translateReqId;
+      this.translateTranslating = true;
+      this.translateResultText = "";
+      document.getElementById("translateResult").value = "";
+      this.setTranslateStatus(t("\u6B63\u5728\u7FFB\u8BD1\u2026"), false);
+      this.syncTranslateButtons();
+      this.call(() => Native.translateText(text, from, to, reqId, this.token));
+    }
+    cancelTranslateRequest() {
+      if (!this.translateTranslating) return;
+      const reqId = this.translateReqId;
+      this.translateTranslating = false;
+      this.setTranslateStatus("", false);
+      this.syncTranslateButtons();
+      if (typeof Native.cancelTranslate === "function") {
+        this.call(() => Native.cancelTranslate(reqId, this.token));
+      }
+    }
+    /** 原生回推（仿 onInkCandidates）：reqId 与最新请求不符丢弃。 */
+    onTranslateResult(payload) {
+      if (!payload || payload.reqId !== this.translateReqId) return;
+      this.translateTranslating = false;
+      if (payload.state === "done") {
+        this.translateResultText = payload.text || "";
+        document.getElementById("translateResult").value = this.translateResultText;
+        this.setTranslateStatus("", false);
+      } else {
+        const error = payload.error || "";
+        this.translateResultText = "";
+        document.getElementById("translateResult").value = "";
+        this.setTranslateStatus(error, error.indexOf("\u8FD8\u6CA1\u4E0B\u8F7D") !== -1);
+      }
+      this.syncTranslateButtons();
+    }
+    /** 译文上屏：走现有 commitText 通道（是输入，进统计），然后关面板。 */
+    translateCommit() {
+      if (!this.translateResultText) return;
+      const text = this.translateResultText;
+      this.closeTranslatePanel();
+      this.call(() => Native.commitText(text, this.token));
+    }
+    translateCopy() {
+      if (!this.translateResultText) return;
+      const text = this.translateResultText;
+      const done = /* @__PURE__ */ __name(() => this.showToast(t("\u5DF2\u590D\u5236")), "done");
+      const failed = /* @__PURE__ */ __name(() => this.showToast(t("\u590D\u5236\u5931\u8D25\uFF0C\u53EF\u957F\u6309\u8BD1\u6587\u624B\u52A8\u590D\u5236")), "failed");
+      try {
+        const clip = navigator.clipboard;
+        if (clip && typeof clip.writeText === "function") {
+          const result = clip.writeText(text);
+          if (result && typeof result.then === "function") result.then(done, failed);
+          else done();
+        } else {
+          failed();
+        }
+      } catch (error) {
+        failed();
+      }
     }
     /** #41 二轮：统计浮层。数据经 inputStats 桥同步拉全量 JSON。 */
     renderStatsPanel() {
@@ -9342,7 +9601,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       const raw = (this.lastRawInput || "").replace(/ /g, "").toLowerCase();
       const engineTexts = new Set(engine.map((candidate) => candidate.text));
-      const dyn = (raw && this.dynamicDateTimeOn !== false ? dynamicCandidatesFor(raw, this.mode) : []).filter((item) => !engineTexts.has(item.text));
+      const dyn = (raw && this.dynamicDateTimeOn !== false ? dynamicCandidatesFor(raw, this.mode, this.scriptVariant) : []).filter((item) => !engineTexts.has(item.text));
       const exact = [];
       const prefix = [];
       if (raw) {
@@ -10034,6 +10293,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (dom === "mic") return;
         const el = document.getElementById(dom);
         if (!el) return;
+        if (dom === "translateButton" && typeof Native.translateText !== "function") {
+          el.hidden = true;
+          return;
+        }
         el.hidden = el.closest("#toolboxRow") ? !!(this._overflowTools && this._overflowTools.has(dom)) : this.composing || !!(this._overflowTools && this._overflowTools.has(dom));
       });
       if (this.composing && this.ctrlView) this.suspendCtrlView();
@@ -11179,6 +11442,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (kf >= 50 && kf <= 150) this.keycapFont = kf;
       }
       this.applyKeycapFont();
+      if (payload.translateDirection === "zh-en" || payload.translateDirection === "en-zh") {
+        this.translateDirection = payload.translateDirection;
+        this.syncTranslateDirectionLabel();
+      }
+      this.syncTranslateButton();
       if (typeof payload.userFontDigest === "string") {
         this.applyUserFont(payload.userFontDigest);
       }
@@ -11242,6 +11510,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           this.correctionCandidates = [];
         }
       }
+      if (typeof payload.scriptVariant === "string" && payload.scriptVariant !== this.scriptVariant) {
+        this.scriptVariant = payload.scriptVariant === "hant_tw" ? "hant_tw" : "hans";
+      }
       if (typeof payload.deleteConfirm === "boolean") {
         this.deleteConfirm = payload.deleteConfirm;
       }
@@ -11267,6 +11538,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       document.documentElement.classList.toggle("glass-v2", this.keyboardUiVersion !== "classic");
       this.applyGlass(payload);
+      this.applyThemeExtras(payload);
       this.applyLandscapeChrome();
       {
         const preset = typeof payload.themePreset === "string" ? payload.themePreset : "";
@@ -11364,6 +11636,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.applyToolbarLayoutValue(payload.toolbarLayout);
       }
       this.applyToolbarLayout();
+      this.applyToolbarIcon(payload);
       this.associationOn = !!payload.associationOn;
       this.touchDiagnostics = payload.touchDiagnostics === true;
       this.syncDiagnosticProbe();
@@ -11754,14 +12027,14 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const engineCands = payload.candidates || [];
           const midCaret = Number.isInteger(payload.inputCaret) && payload.inputCaret >= 0 && payload.inputCaret < raw.length;
           if (raw && raw !== this._autoCollapseKey && !midCaret) {
-            if (raw.length >= 40 && engineCands.length) {
+            if (raw.length >= 64 && engineCands.length) {
               this._autoCollapseKey = raw;
               this.call((revision) => Native.chooseCandidate(
                 revision,
                 engineCands[0].id,
                 this.token
               ));
-            } else if (raw.length >= 16 && !engineCands.length) {
+            } else if (raw.length >= 64 && !engineCands.length) {
               if (!this._deadClearPending) {
                 this._deadClearPending = true;
                 this._autoCollapseKey = raw;
@@ -11914,12 +12187,14 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     if (theme !== "auto" && theme !== "light" && theme !== "dark") theme = "auto";
     const root = document.documentElement;
     const glassV2 = root.classList.contains("glass-v2");
+    const refraction = root.classList.contains("key-refraction");
     if (theme !== "auto") {
       root.className = `theme-${theme}`;
     } else {
       root.className = systemThemeKnown ? `theme-${systemTheme}` : "";
     }
     if (glassV2) root.classList.add("glass-v2");
+    if (refraction) root.classList.add("key-refraction");
     try {
       keyboard.swapThemeGlyph(theme);
       keyboard.applyBackground();
@@ -11996,6 +12271,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     onNativeState: /* @__PURE__ */ __name((payload) => keyboard.onNativeState(payload), "onNativeState"),
     onVoiceLevel: /* @__PURE__ */ __name((level) => keyboard.onVoiceLevel(level), "onVoiceLevel"),
     onInkCandidates: /* @__PURE__ */ __name((payload) => keyboard.onInkCandidates(payload), "onInkCandidates"),
+    // 3.76 离线翻译：原生 translateText 的终态回推（done/error）。
+    onTranslateResult: /* @__PURE__ */ __name((payload) => keyboard.onTranslateResult(payload), "onTranslateResult"),
     onEditorInfo: /* @__PURE__ */ __name((payload) => keyboard.onEditorInfo(payload), "onEditorInfo"),
     cancelTouches: /* @__PURE__ */ __name(() => keyboard.cancelTouches(), "cancelTouches"),
     // #H 硬件键盘：native 全认领后的注入入口（design §1/§4.1）。
@@ -12031,6 +12308,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     // #39-10 编辑面板（preview/诊断与 mock 套件共用入口）。
     toggleEditPanel: /* @__PURE__ */ __name(() => keyboard.toggleEditPanel(), "toggleEditPanel"),
     toggleStatsPanel: /* @__PURE__ */ __name(() => keyboard.toggleStatsPanel(), "toggleStatsPanel"),
+    // 3.76 离线翻译面板（mock mutex 矩阵与预览直调入口）。
+    toggleTranslatePanel: /* @__PURE__ */ __name(() => keyboard.toggleTranslatePanel(), "toggleTranslatePanel"),
     toggleControlView: /* @__PURE__ */ __name(() => keyboard.setControlView(!keyboard.ctrlView), "toggleControlView"),
     showNumpad: /* @__PURE__ */ __name(() => keyboard.showNumpad(), "showNumpad"),
     // Called by the native side on every IME show: hiding the IME can

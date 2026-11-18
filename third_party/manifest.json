@@ -241,9 +241,9 @@
     {
       "apkPath": "assets/engine-data/rime/luna_pinyin.schema.yaml",
       "buildRecipe": "cmake-native",
-      "bytes": 42151,
+      "bytes": 42451,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.schema.yaml",
-      "sha256": "2ef49c09687dc4c0d4dfc13339c2a5445ff2062cac134eb96ba4d6643608bb9a",
+      "sha256": "33f9042489cf410ce6aac114a70fa077f49beb68c809149c69456bf6f7833882",
       "sources": [
         "rime-essay",
         "rime-frost",

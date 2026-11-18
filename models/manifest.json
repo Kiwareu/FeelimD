@@ -83,6 +83,126 @@
         "ghproxy": "https://gh-proxy.com/https://github.com/feelime/distribution/releases/download/asr-punct-zh-en/"
       },
       "title": "中英标点恢复"
+    },
+    {
+      "id": "translate-zh-en",
+      "role": "translate-zh-en",
+      "version": "39d480d5",
+      "files": [
+        {
+          "path": "translate-zh-en/encoder_model_int8.onnx",
+          "downloadPath": "onnx/encoder_model_int8.onnx",
+          "sha256": "c285f52c59ae2dee7778050a805ce6af9d6e1579edd9d36e92cd68b58f61ca70",
+          "bytes": 52726552
+        },
+        {
+          "path": "translate-zh-en/decoder_model_merged_int8.onnx",
+          "downloadPath": "onnx/decoder_model_merged_int8.onnx",
+          "sha256": "cc632b896b0248fdf15a2cac2daa4c57cc99447810b58f781196dc962e21592f",
+          "bytes": 60013017
+        },
+        {
+          "path": "translate-zh-en/tokenizer.json",
+          "downloadPath": "tokenizer.json",
+          "sha256": "b306d0301cf280bfd647d7067b5ade2a97b987e6d678df110703c002433643ff",
+          "bytes": 6381339
+        }
+      ],
+      "sources": {
+        "github": "https://huggingface.co/Xenova/opus-mt-zh-en/resolve/39d480d52a9ea3065a1f117adfe4dbc55de10e6f/",
+        "ghproxy": "https://hf-mirror.com/Xenova/opus-mt-zh-en/resolve/39d480d52a9ea3065a1f117adfe4dbc55de10e6f/"
+      },
+      "title": "离线翻译（中译英 · 精简）"
+    },
+    {
+      "id": "translate-en-zh",
+      "role": "translate-en-zh",
+      "version": "046f55ae",
+      "files": [
+        {
+          "path": "translate-en-zh/encoder_model_int8.onnx",
+          "downloadPath": "onnx/encoder_model_int8.onnx",
+          "sha256": "262c0319bd0d8a6570f287211bf962035788954f20697e022cd60aaf62209b9c",
+          "bytes": 52726553
+        },
+        {
+          "path": "translate-en-zh/decoder_model_merged_int8.onnx",
+          "downloadPath": "onnx/decoder_model_merged_int8.onnx",
+          "sha256": "84f71e0787bddb7e654dbf7235b56c429f13db4ee4c5a1f8d1cc347642a59604",
+          "bytes": 60013018
+        },
+        {
+          "path": "translate-en-zh/tokenizer.json",
+          "downloadPath": "tokenizer.json",
+          "sha256": "d0c7da27056e8f42adce9e76d8e792e5daa64e15f5acd2e7aabf0121877dd4c1",
+          "bytes": 6380952
+        }
+      ],
+      "sources": {
+        "github": "https://huggingface.co/Xenova/opus-mt-en-zh/resolve/046f55aec303cdee3e0318604406d4df20f1e8ea/",
+        "ghproxy": "https://hf-mirror.com/Xenova/opus-mt-en-zh/resolve/046f55aec303cdee3e0318604406d4df20f1e8ea/"
+      },
+      "title": "离线翻译（英译中 · 精简）"
+    },
+    {
+      "id": "translate-zh-en-full",
+      "role": "translate-zh-en-full",
+      "version": "39d480d5",
+      "files": [
+        {
+          "path": "translate-zh-en-full/encoder_model_fp16.onnx",
+          "downloadPath": "onnx/encoder_model_fp16.onnx",
+          "sha256": "82feb1ecc135aad5b07e1aa4fae41479c28e7336af4c8972e015cfe79285e279",
+          "bytes": 105062004
+        },
+        {
+          "path": "translate-zh-en-full/decoder_model_merged_fp16.onnx",
+          "downloadPath": "onnx/decoder_model_merged_fp16.onnx",
+          "sha256": "2d0bb108662cbc80d0e34b485045d19e52017a5dfddc190dc7dc752ca6df4a24",
+          "bytes": 118354621
+        },
+        {
+          "path": "translate-zh-en-full/tokenizer.json",
+          "downloadPath": "tokenizer.json",
+          "sha256": "b306d0301cf280bfd647d7067b5ade2a97b987e6d678df110703c002433643ff",
+          "bytes": 6381339
+        }
+      ],
+      "sources": {
+        "github": "https://huggingface.co/Xenova/opus-mt-zh-en/resolve/39d480d52a9ea3065a1f117adfe4dbc55de10e6f/",
+        "ghproxy": "https://hf-mirror.com/Xenova/opus-mt-zh-en/resolve/39d480d52a9ea3065a1f117adfe4dbc55de10e6f/"
+      },
+      "title": "离线翻译（中译英 · 完整）"
+    },
+    {
+      "id": "translate-en-zh-full",
+      "role": "translate-en-zh-full",
+      "version": "046f55ae",
+      "files": [
+        {
+          "path": "translate-en-zh-full/encoder_model_fp16.onnx",
+          "downloadPath": "onnx/encoder_model_fp16.onnx",
+          "sha256": "3848296c1980f6ae3ccea955a33da9646c538b45dd47bef001c56252667a4376",
+          "bytes": 105062004
+        },
+        {
+          "path": "translate-en-zh-full/decoder_model_merged_fp16.onnx",
+          "downloadPath": "onnx/decoder_model_merged_fp16.onnx",
+          "sha256": "181e3c09302fcb57d5afcdf9cba96058a2584959e55c0811e9f09088a207ad09",
+          "bytes": 118354621
+        },
+        {
+          "path": "translate-en-zh-full/tokenizer.json",
+          "downloadPath": "tokenizer.json",
+          "sha256": "d0c7da27056e8f42adce9e76d8e792e5daa64e15f5acd2e7aabf0121877dd4c1",
+          "bytes": 6380952
+        }
+      ],
+      "sources": {
+        "github": "https://huggingface.co/Xenova/opus-mt-en-zh/resolve/046f55aec303cdee3e0318604406d4df20f1e8ea/",
+        "ghproxy": "https://hf-mirror.com/Xenova/opus-mt-en-zh/resolve/046f55aec303cdee3e0318604406d4df20f1e8ea/"
+      },
+      "title": "离线翻译（英译中 · 完整）"
     }
   ]
 }

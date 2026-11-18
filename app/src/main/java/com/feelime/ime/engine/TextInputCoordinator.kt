@@ -31,9 +31,10 @@ class TextInputCoordinator(
      *  由 service 注入；关闭诊断时 sink 内部直接丢弃。行内绝无文本内容。 */
     val diagnosticSink: ((String) -> Unit)? = null,
     /** 自家 app 的编辑框（设置页 textarea 等，#39 反馈）：拼音系组合也
-     *  镜像进编辑器。普通 app 维持「preedit 只在键盘 UI」的设计（原始
-     *  字母不落编辑器）；自家 JSON 框里组合不可见=按键像失灵（T9 打字
-     *  完全无回显），镜像恢复所见即所得，选词 commitText 正常替换。 */
+     *  镜像进编辑器。3.76 原地更新①起普通 app 同样镜像（QQ 等宿主框
+     *  里要能看到拼音进展）；自家 JSON 框里组合不可见=按键像失灵
+     *  （T9 打字完全无回显），镜像恢复所见即所得，选词 commitText
+     *  正常替换。终端型编辑器（TYPE_NULL）仍不镜像，见 terminalEditor。 */
     private val ownAppEditor: () -> Boolean = { false },
 ) {
     /** process-death-safe persistence of the user's selected mode. */
@@ -56,6 +57,10 @@ class TextInputCoordinator(
     /** True once the LIVE engine is the real target (not interim/fallback). */
     private var engineMatchesMode = true
     private var inPasswordField = false
+    /** 当前编辑器是否终端型（TYPE_NULL/dummy IC，见 onEditorStarted）：
+     *  这类编辑器不回显组合串，拼音镜像到此为止（#39 的 carve-out
+     *  从自家编辑器推广到全部终端型编辑器）。 */
+    private var terminalEditor = false
 
     /** 诊断埋点（双拼字母直上屏故障分析）：只有开关打开时 sink 才落盘。 */
     private fun diag(message: String) {
@@ -285,14 +290,24 @@ class TextInputCoordinator(
         }
     }
 
-    /** 拼音族（全拼/双拼/T9）：preedit 只在键盘 UI（候选条/preedit 行），
-     * 宿主编辑器不落组合串；其余模式保持经典 span 语义（IN-04）。 */
+    /** 拼音族（全拼/双拼/T9/笔画）：组合同时存在于键盘 preedit 行与
+     *  宿主编辑器的 composing span（3.76 原地更新①——只画在键盘上
+     *  时 QQ 等宿主框里看不到输入进展；IN-04 旧语义已改，见 §5.2）。
+     *  其余模式保持经典 span 语义。 */
     private fun isPinyinFamily(mode: InputMode): Boolean =
         mode == InputMode.PINYIN || mode == InputMode.DOUBLE_PINYIN || mode == InputMode.T9 ||
             mode == InputMode.STROKE
 
     // 光标预测与实际镜像必须共用规则，否则自家拼音组合的替换回调会被当成外部编辑。
-    private fun mirrorsComposing(): Boolean = !isPinyinFamily(mode) || ownAppEditor()
+    /** 拼音族组合是否镜像进宿主编辑器：默认镜像；密码框已强制
+     *  DIRECT、到不了拼音组合（inPasswordField 是纵深防御），终端型
+     *  （TYPE_NULL/dummy IC）不回显（#39 的 carve-out）；自家编辑器
+     *  （设置页 textarea）始终镜像。 */
+    private fun mirrorsComposing(): Boolean {
+        if (!isPinyinFamily(mode)) return true
+        if (ownAppEditor()) return true
+        return !terminalEditor && !inPasswordField
+    }
 
     private fun expectReplacement(length: Int) {
         if (predictedSelectionStart < 0 || predictedSelectionEnd < 0) return
@@ -326,6 +341,7 @@ class TextInputCoordinator(
         // swap the userdb under the freshly opened session.
         recreateGeneration += 1
         abandonPending()
+        terminalEditor = terminalLike
         if (sensitive) {
             // The production password-field entry must perform the same
             // synchronous scrub as enterPasswordField(): clear any composing
@@ -960,11 +976,11 @@ class TextInputCoordinator(
         // A live composition must LAND before the literal -
         // flicks/long-press popups/symbols all arrive here, and the old
         // setComposing("") wiped the preedit (x + flick-up e produced "3",
-        // dropping the x). Stopped mirroring the pinyin into
-        // the editor, so there is no span to finishComposing any more: the
-        // raw buffer is committed EXPLICITLY instead, then the engine reset
-        // cannot touch the editor (composingActive is already false when its
-        // echo arrives).
+        // dropping the x). 拼音组合已镜像进宿主 span（3.76 原地更新①）：
+        // the raw buffer is committed EXPLICITLY instead — commitText
+        // 替换掉宿主里的显示串（带音节空格/已组汉字），then the engine
+        // reset cannot touch the editor (composingActive is already false
+        // when its echo arrives).
         if (composingActive) {
             // librime's preedit interleaves display-only spaces at syllable
             // boundaries ("xi an") - they are not user input and must not
@@ -1577,12 +1593,12 @@ class TextInputCoordinator(
                 if (event.state.commit == null && event.state.composing.isNotEmpty()) {
                     lastWordCommit = null
                     // Pinyin preedit lives on the keyboard UI
-                    // (candidate bar / preedit line), NOT in the editor - the
-                    // raw letters must not land before a word is chosen.
-                    // Alphabetical spellcheck modes (French/Russian) and the
-                    // editors' own composing spans keep the classic span.
-                    // Own-app editors (settings textareas) mirror the span:
-                    // invisible composition there reads as a dead keyboard.
+                    // (candidate bar / preedit line) AND as a composing span
+                    // in the host editor (3.76 原地更新①——宿主框里要能看到
+                    // 拼音进展；选词前原串只进 span、不落正文）。Alphabetical
+                    // spellcheck modes (French/Russian) keep the classic span.
+                    // Terminal editors (TYPE_NULL) and password fields never
+                    // mirror — see mirrorsComposing().
                     if (mirrorsComposing()) {
                         expectReplacement(event.state.composing.length)
                         editor.setComposing(event.state.composing)

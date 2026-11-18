@@ -52,6 +52,11 @@ internal object StoreMirrorLock
 const val ACTION_DP_SCHEME_CHANGED = "com.feelime.ime.DP_SCHEME_CHANGED"
 const val ACTION_FUZZY_PINYIN_CHANGED = "com.feelime.ime.FUZZY_PINYIN_CHANGED"
 
+/** 简/繁（台湾）切换广播：设置页发，IME 收（当前是拼音类会话时重建
+ *  会话并重推 hello，键盘与候选同步变；非拼音类会话下次建会话自然
+ *  取到）。 */
+const val ACTION_SCRIPT_VARIANT_CHANGED = "com.feelime.ime.SCRIPT_VARIANT_CHANGED"
+
 /** 自定义短语变更广播：设置页发（saveCustomPhrases 已落盘+派生 txt），
  *  IME 收到后整引擎重载（stabledb 生命周期绑定引擎而非会话）。 */
 const val ACTION_CUSTOM_PHRASES_CHANGED = "com.feelimd.kiw.CUSTOM_PHRASES_CHANGED"
@@ -343,6 +348,31 @@ const val PREF_GLASS_RADIUS = "glass_radius"
 const val PREF_PANEL_OPACITY = "panel_opacity"
 /** 上次套用的内置皮肤。空串 = 用户已单独微调，不再点亮某一套。 */
 const val PREF_GLASS_SKIN = "glass_skin"
+/** 工具栏左一按钮图标（3.76 原地更新）：空串 = 默认 F 标志；其余见
+ *  TOOLBAR_ICON_IDS（内置图标 id 或 "custom" = 用户上传图）。
+ *  自定义图文件在应用私有目录（ToolbarIconStore），不进备份。 */
+const val PREF_TOOLBAR_ICON = "toolbar_icon"
+val TOOLBAR_ICON_IDS = setOf("", "oneplus", "xiaomi", "oppo", "vivo", "star", "moon", "bolt", "custom")
+
+fun readToolbarIcon(context: Context): String {
+    val saved = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_TOOLBAR_ICON, "") ?: ""
+    return if (saved in TOOLBAR_ICON_IDS) saved else ""
+}
+/** 键帽折射边框（3.76 原地更新，默认开）：glass-v2 下键帽边缘多一层
+ *  斜向折射高光 + 四边不等亮内描边；经典界面与省电模式不受影响。 */
+const val PREF_KEY_REFRACTION = "key_refraction"
+
+fun readKeyRefraction(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_KEY_REFRACTION, true)
+/** 键盘背景加厚模糊（3.76 原地更新，默认关）：在磨砂滑杆基础上再加
+ *  26px（背景图模式同步加厚）；省电模式仍强制归零。 */
+const val PREF_KB_BG_BLUR_HEAVY = "kb_bg_blur_heavy"
+
+fun readKbBgBlurHeavy(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_KB_BG_BLUR_HEAVY, false)
 /** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
 const val PREF_KEY_BUBBLE = "key_bubble"
 /** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
@@ -672,6 +702,18 @@ const val PREF_THEME_MODE = "theme_mode"
 fun readThemeMode(context: Context): String =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getString(PREF_THEME_MODE, "") ?: ""
+
+/** 翻译方向（3.76 翻译面板）：键盘侧的方向切换经 setQuickPref 写这里，
+ *  hello 下发回读；缺省中→英。localStorage 不存设置（站立规则），
+ *  这个方向也不例外。 */
+const val PREF_TRANSLATE_DIRECTION = "translate_direction"
+val TRANSLATE_DIRECTIONS = listOf("zh-en", "en-zh")
+
+fun readTranslateDirection(context: Context): String {
+    val saved = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_TRANSLATE_DIRECTION, "") ?: ""
+    return if (saved in TRANSLATE_DIRECTIONS) saved else "zh-en"
+}
 
 /** #31 预置色调：键盘 accent 三件套的风格包（设置页外观卡「键盘
  *  色调」，键盘侧 html[data-preset] 应用）。classic=默认绿。 */
@@ -1175,6 +1217,7 @@ class SettingsBridge(
             // 设备能力：无幅度马达的机型强度档按时长近似（hint 说明）。
             .put("keyHapticAmplitude", hapticAmplitudeSupported())
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
+            .put("scriptVariant", com.feelime.ime.engine.ScriptVariant.current(context))
             .put("baseDict", com.feelime.ime.engine.BaseDictInstaller.statusJson(context))
             .put("customPhrases", JSONObject().apply {
                 val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
@@ -1242,6 +1285,10 @@ class SettingsBridge(
             .put("glassRadius", readGlassRadius(context))
             .put("panelOpacity", readPanelOpacity(context))
             .put("glassSkin", readGlassSkin(context))
+            .put("toolbarIcon", readToolbarIcon(context))
+            .put("toolbarIconUrl", ToolbarIconStore.url(context))
+            .put("keyRefraction", readKeyRefraction(context))
+            .put("kbBgBlurHeavy", readKbBgBlurHeavy(context))
             .put("powerSaving", readPowerSaving(context))
             .put("deviceRamGb", deviceRamGb(context))
             .put("recommendedPreset", recommendedPreset(context))
@@ -1840,6 +1887,27 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 简/繁（台湾）切换（3.76 原地更新第 4 项）：\"hans\"（默认）|
+     *  \"hant_tw\"。值落盘并广播，IME 在当前拼音类会话上重建会话即
+     *  生效（键盘与候选同步变）；非法值报错不落盘。 */
+    @JavascriptInterface
+    fun setScriptVariant(value: String, token: String) = guarded(token) {
+        if (!com.feelime.ime.engine.ScriptVariant.set(context, value)) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "scriptVariantError")
+                    .put("code", "BAD_SCRIPT_VARIANT")
+                    .put("message", t(context, "简繁体选择无效", "Invalid script variant")),
+            )
+            pushState()
+            return@guarded
+        }
+        context.sendBroadcast(
+            Intent(ACTION_SCRIPT_VARIANT_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     /** 底部留白（mode-fallback §3）：档位离散，非法值报错不落盘。写完
      *  广播让 IME 重推 hello，运行中的键盘即时采用新 pad。 */
     @JavascriptInterface
@@ -2381,6 +2449,75 @@ class SettingsBridge(
             .edit().putInt(key, value)
             .putString(PREF_GLASS_SKIN, "")
             .commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 工具栏左一按钮图标（3.76 原地更新）：白名单外拒绝；切离 custom
+     *  时删掉已上传的图片（不留悬空文件）；切到 custom 但文件已丢时
+     *  仍落盘——键盘侧无图回落默认 F，设置页回显 custom 需重新上传。 */
+    @JavascriptInterface
+    fun setToolbarIcon(iconId: String, token: String) = guarded(token) {
+        if (iconId !in TOOLBAR_ICON_IDS) return@guarded
+        if (iconId != "custom") ToolbarIconStore.delete(context)
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_TOOLBAR_ICON, iconId).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 上传左一按钮图标（3.76 原地更新）：设置页发原图 base64，原生侧
+     *  居中裁剪成正方形、缩到 192px 存私有目录，落盘为 custom 并广播；
+     *  解码/裁剪失败推 toolbarIconError 事件，pref 不动。 */
+    @JavascriptInterface
+    fun uploadToolbarIcon(base64: String, token: String) = guarded(token) {
+        if (base64.length > 11_000_000) {
+            pushEvent(JSONObject().put("type", "toolbarIconError").put("code", "BAD_TOOLBAR_ICON")
+                .put("message", t(context, "图片过大或无法读取，请先缩小图片后重试", "Image is too large or unreadable. Resize it and try again.")))
+            pushState()
+            return@guarded
+        }
+        val shouldRun = synchronized(lifecycleLock) { !closed }
+        if (!shouldRun) return@guarded
+        worker.execute {
+            if (closed) return@execute
+            runCatching {
+                val bytes = ToolbarIconStore.decodeImport(android.util.Base64.decode(base64, android.util.Base64.NO_WRAP))
+                ToolbarIconStore.install(context, bytes)
+                context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+                    .edit().putString(PREF_TOOLBAR_ICON, "custom").commit()
+                context.sendBroadcast(
+                    Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+                )
+                pushState()
+            }.onFailure {
+                pushEvent(JSONObject().put("type", "toolbarIconError").put("code", "BAD_TOOLBAR_ICON")
+                    .put("message", t(context, "图片过大或无法读取，请先缩小图片后重试", "Image is too large or unreadable. Resize it and try again.")))
+                pushState()
+            }
+        }
+    }
+
+    /** 键帽折射边框开关（3.76 原地更新，默认开）。 */
+    @JavascriptInterface
+    fun setKeyRefraction(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_KEY_REFRACTION, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 键盘背景加厚模糊开关（3.76 原地更新，默认关）。 */
+    @JavascriptInterface
+    fun setKbBgBlurHeavy(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_KB_BG_BLUR_HEAVY, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

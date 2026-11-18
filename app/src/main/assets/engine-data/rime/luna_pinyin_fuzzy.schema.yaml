@@ -93,6 +93,10 @@ key_binder:
     - {accept: "Control+Shift+percent", toggle: extended_charset, when: always}
     - {accept: "Control+Shift+4", toggle: zh_hans, when: always}
     - {accept: "Control+Shift+dollar", toggle: zh_hans, when: always}
+    - {accept: "Control+Shift+6", set_option: zh_hant_tw, when: always}
+    - {accept: "Control+Shift+asciicircum", set_option: zh_hant_tw, when: always}
+    - {accept: "Control+Shift+7", set_option: zh_hans, when: always}
+    - {accept: "Control+Shift+ampersand", set_option: zh_hans, when: always}
   import_preset: default
 menu:
   page_size: 5
@@ -472,6 +476,6 @@ zh_hant_hk:
 zh_hant_tw:
   excluded_types:
     - reverse_lookup
-  opencc_config: t2tw.json
+  opencc_config: s2tw.json
   option_name: zh_hant_tw
   tips: none

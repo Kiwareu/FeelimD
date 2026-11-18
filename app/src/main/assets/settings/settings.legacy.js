@@ -216,6 +216,16 @@ const THEME_PRESET_COLORS = {
   sakura: "#ff8fb1",
   teal: "#2ec8c8"
 };
+const TOOLBAR_ICON_OPTIONS = [
+  { id: "", mark: "F", label: "F \u6807\u5FD7" },
+  { id: "oneplus", mark: "1+", label: "OnePlus" },
+  { id: "xiaomi", mark: "MI", label: "\u5C0F\u7C73" },
+  { id: "oppo", mark: "OPPO", label: "OPPO" },
+  { id: "vivo", mark: "vivo", label: "vivo" },
+  { id: "star", mark: "\u2605", label: "\u661F\u661F" },
+  { id: "moon", mark: "\u263E", label: "\u6708\u4EAE" },
+  { id: "bolt", mark: "\u26A1", label: "\u95EA\u7535" }
+];
 const PRESET_HUE = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 344, teal: 180 };
 const I18N = {
   zh: {
@@ -429,6 +439,12 @@ const I18N = {
     "input.fuzzy.manage": "\u7BA1\u7406\u6A21\u7CCA\u97F3",
     "input.fuzzy.manageHint": "\u5206\u4E0D\u6E05\u7684\u97F3\u4E00\u8D77\u6253\uFF1A\u4F5C\u7528\u4E8E\u5168\u62FC\u4E0E\u4E5D\u5BAB\u683C T9\uFF08\u53CC\u62FC\u9664\u5916\uFF09\u3002",
     "input.fuzzy.badge": "\u8F93\u5165",
+    "input.script.title": "\u7B80\u7E41\u4F53",
+    "input.script.badge": "\u8F93\u5165",
+    "input.script.variant": "\u62FC\u97F3\u51FA\u5B57",
+    "input.script.variantHint": "\u7B80\u4F53\uFF1A\u62FC\u97F3\u51FA\u7B80\u4F53\u5B57\uFF1B\u7E41\u9AD4\uFF08\u53F0\u7063\uFF09\uFF1A\u62FC\u97F3\u51FA\u7E41\u4F53\u5B57\uFF0C\u6309\u53F0\u6E7E\u7528\u6CD5\u51FA\u8BCD\uFF08\u8EDF\u9AD4\u3001\u5F71\u7247\u3001\u7A0B\u5F0F\u3001\u6377\u904B\u3001\u6A5F\u8ECA\u7B49\uFF09\u3002\u5207\u6362\u540E\u7ACB\u5373\u751F\u6548\u3002",
+    "input.script.hans": "\u7B80\u4F53",
+    "input.script.hantTw": "\u7E41\u9AD4\uFF08\u53F0\u7063\uFF09",
     "input.fuzzy.g.ping": "\u5E73\u7FD8\u820C",
     "input.fuzzy.g.ping.hint": "z/zh\u3001c/ch\u3001s/sh\uFF1A\u6253 zang \u4E5F\u80FD\u51FA\u300C\u5F20\u300D\uFF0C\u6253 zhang \u4E5F\u80FD\u51FA\u300C\u810F\u300D\u3002",
     "input.fuzzy.g.nl": "\u58F0\u6BCD n/l",
@@ -736,6 +752,10 @@ const I18N = {
     "voice.mic.hint": "\u8BED\u97F3\u8F93\u5165\u5FC5\u9700\uFF0C\u5168\u7A0B\u672C\u5730\u5904\u7406",
     "voice.mic.action": "\u53BB\u6388\u6743",
     "voice.models.note": "\u5B8C\u6574\u5B89\u88C5\u5305\u5DF2\u5185\u7F6E\u5168\u90E8\u6A21\u578B\uFF1B\u7CBE\u7B80\u5B89\u88C5\u5305\u5728\u6B64\u6309\u9700\u4E0B\u8F7D\uFF08\u65AD\u70B9\u7EED\u4F20\uFF0C\u9010\u6587\u4EF6\u6821\u9A8C\uFF09\u3002",
+    "translate.models.title": "\u7FFB\u8BD1\u6A21\u578B",
+    "translate.models.badge": "\u7FFB\u8BD1",
+    "translate.models.note": "\u4E2D\u82F1\u4E92\u8BD1\u5168\u7A0B\u79BB\u7EBF\uFF0C\u4E0D\u8054\u7F51\u3002\u7CBE\u7B80\u6863\u7EA6 114 MB/\u65B9\u5411\uFF0C\u5B8C\u6574\u6863\u7EA6 220 MB/\u65B9\u5411\uFF08\u66F4\u51C6\uFF09\uFF1B\u4E0B\u8F7D\u6E90\u8BF7\u9009 GitHub \u6216 gh-proxy\uFF0C\u7FFB\u8BD1\u6A21\u578B\u4E0D\u5728 Gitee \u955C\u50CF\u91CC\u3002",
+    "translate.models.power": "\u7FFB\u8BD1\u65F6 CPU \u6EE1\u8F7D\u63A8\u7406\uFF0C\u77ED\u53E5\u51E0\u79D2\u5B8C\u6210\uFF1B\u8FDE\u7EED\u957F\u53E5\u7FFB\u8BD1\u4F1A\u53D1\u70ED\u8017\u7535\uFF0C\u8BD1\u5B8C\u5373\u91CA\u653E\u6A21\u578B\u3002",
     "voice.asr.title": "\u8BED\u97F3\u8BC6\u522B\u8BBE\u7F6E",
     "voice.asr.badge": "\u8BC6\u522B",
     "voice.asr.stripPeriod": "\u53BB\u6389\u53E5\u5C3E\u53E5\u53F7",
@@ -1437,6 +1457,12 @@ const I18N = {
     "input.fuzzy.manage": "Manage fuzzy pinyin",
     "input.fuzzy.manageHint": "Type confusable sounds interchangeably (z/zh, n/l, nasal endings). Applies to full pinyin and T9, not double pinyin.",
     "input.fuzzy.badge": "Input",
+    "input.script.title": "Simplified / Traditional",
+    "input.script.badge": "Input",
+    "input.script.variant": "Pinyin output",
+    "input.script.variantHint": "Simplified: pinyin yields simplified characters. Traditional (Taiwan): pinyin yields traditional characters with Taiwan wording (\u8EDF\u9AD4, \u5F71\u7247, \u7A0B\u5F0F, \u6377\u904B, \u6A5F\u8ECA). Applies immediately.",
+    "input.script.hans": "Simplified",
+    "input.script.hantTw": "Traditional (Taiwan)",
     "input.fuzzy.g.ping": "Retroflex z/zh, c/ch, s/sh",
     "input.fuzzy.g.ping.hint": "Typing zang also matches \u5F20, typing zhang also matches \u810F.",
     "input.fuzzy.g.nl": "n/l initials",
@@ -1741,6 +1767,10 @@ const I18N = {
     "voice.mic.hint": "Required for voice input; processing stays on this device",
     "voice.mic.action": "Allow",
     "voice.models.note": "The full package includes all models. Smaller packages can download models here with resume and per-file verification.",
+    "translate.models.title": "Translation models",
+    "translate.models.badge": "Translation",
+    "translate.models.note": "Chinese\u2013English translation runs fully offline. Slim is about 114 MB per direction, full about 220 MB per direction (more accurate). Pick GitHub or gh-proxy as the download source \u2014 translation models are not on the Gitee mirror.",
+    "translate.models.power": "Translation runs the CPU at full load; short sentences take a few seconds. Long passages in a row will heat the phone and drain battery; the model is released when done.",
     "voice.asr.title": "Voice recognition options",
     "voice.asr.badge": "Recognition",
     "voice.asr.stripPeriod": "Remove final periods",
@@ -2456,6 +2486,10 @@ window.FeelimeSettings = {
         setNote("bgImageNote", eventText(event, "error.BAD_BG_IMAGE"));
         $("bgImageNote").hidden = false;
         break;
+      case "toolbarIconError":
+        setNote("toolbarIconNote", eventText(event, "error.BAD_BG_IMAGE"));
+        $("toolbarIconNote").hidden = false;
+        break;
       case "keySoundError":
         setNote("feelNote", eventText(event, "error.KEY_SOUND_FILE"));
         break;
@@ -3163,6 +3197,48 @@ function renderFeel(state) {
       glassGrid.append(btn);
     });
   }
+  const iconGrid = $("toolbarIconGrid");
+  if (iconGrid) {
+    const active = typeof state.toolbarIcon === "string" ? state.toolbarIcon : "";
+    iconGrid.textContent = "";
+    TOOLBAR_ICON_OPTIONS.forEach((option) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "icon-card" + (option.id === active ? " active" : "");
+      btn.dataset.icon = option.id;
+      btn.setAttribute("aria-pressed", option.id === active ? "true" : "false");
+      const mark = document.createElement("span");
+      mark.className = "icon-mark";
+      mark.textContent = option.mark;
+      const label = document.createElement("span");
+      label.textContent = option.label;
+      btn.append(mark, label);
+      btn.addEventListener("click", () => call("setToolbarIcon", option.id));
+      iconGrid.append(btn);
+    });
+    if (active === "custom") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "icon-card active";
+      btn.dataset.icon = "custom";
+      btn.setAttribute("aria-pressed", "true");
+      const mark = document.createElement("span");
+      mark.className = "icon-mark";
+      if (state.toolbarIconUrl) {
+        const img = document.createElement("img");
+        img.src = state.toolbarIconUrl;
+        img.alt = "";
+        mark.append(img);
+      } else {
+        mark.textContent = "\u56FE";
+      }
+      const label = document.createElement("span");
+      label.textContent = "\u81EA\u5B9A\u4E49\u56FE\u7247";
+      btn.append(mark, label);
+      btn.addEventListener("click", () => pickToolbarIcon());
+      iconGrid.append(btn);
+    }
+  }
   [
     ["glassBlur", "glassBlur", 26, 0, 32],
     ["glassRadius", "glassRadius", 22, 8, 28],
@@ -3176,6 +3252,10 @@ function renderFeel(state) {
   });
   const bubble = $("keyBubble");
   if (bubble) bubble.checked = state.keyBubble === true;
+  const refraction = $("keyRefraction");
+  if (refraction) refraction.checked = state.keyRefraction !== false;
+  const heavyBlur = $("kbBgBlurHeavy");
+  if (heavyBlur) heavyBlur.checked = state.kbBgBlurHeavy === true;
   const guard = $("cnEnComposingGuard");
   if (guard) guard.checked = state.cnEnComposingGuard === true;
   const scrub = $("preeditScrub");
@@ -3217,6 +3297,7 @@ function renderFeel(state) {
   });
   setSelect("holdMs", (_p = state.holdMs) != null ? _p : 350, ["200", "300", "350", "450", "600"]);
   setSelect("kbLayout", state.kbLayout === "14" ? "14" : "26", ["26", "14"]);
+  setSelect("scriptVariant", state.scriptVariant === "hant_tw" ? "hant_tw" : "hans", ["hans", "hant_tw"]);
   setSelect("scrubSpeed", (_q = state.scrubSpeed) != null ? _q : 3, ["1", "2", "3", "4", "5"]);
   const flickSwap = $("flickSwap");
   if (flickSwap) flickSwap.checked = state.flickSwap === true;
@@ -3351,8 +3432,13 @@ function renderVoice(state) {
   const mic = state.mic || {};
   setLed("micRow", !!mic.granted);
   $("btnMic").hidden = !!mic.granted;
-  const host = $("modelRows");
   const models = Array.isArray(state.models) ? state.models : [];
+  renderModelRows($("modelRows"), models.filter((model) => !String(model.id || "").startsWith("translate-")));
+  renderModelRows($("translateModelRows"), models.filter((model) => String(model.id || "").startsWith("translate-")));
+}
+__name(renderVoice, "renderVoice");
+function renderModelRows(host, models) {
+  if (!host) return;
   const existing = new Map([...host.querySelectorAll(".model")].map((node) => [node.dataset.id, node]));
   const current = /* @__PURE__ */ new Set();
   models.forEach((model) => {
@@ -3368,7 +3454,7 @@ function renderVoice(state) {
     if (!current.has(id)) node.remove();
   });
 }
-__name(renderVoice, "renderVoice");
+__name(renderModelRows, "renderModelRows");
 function renderModelSourceRows(source, speed) {
   const host = $("modelSourceRows");
   if (!host) return;
@@ -4667,6 +4753,7 @@ $("btnMic").addEventListener("click", () => call("requestMic"));
 $("uiLanguage").addEventListener("change", (event) => setUiLanguage(event.target.value));
 $("dpScheme").addEventListener("change", (event) => call("setDoublePinyinScheme", event.target.value));
 $("kbLayout").addEventListener("change", (event) => call("setKbLayout", event.target.value));
+$("scriptVariant").addEventListener("change", (event) => call("setScriptVariant", event.target.value));
 (() => {
   const ta = $("testInput");
   if (!ta) return;
@@ -4758,6 +4845,8 @@ $("keyOpacity").addEventListener("change", (event) => {
   });
 });
 $("keyBubble").addEventListener("change", (event) => call("setKeyBubble", event.target.checked));
+$("keyRefraction").addEventListener("change", (event) => call("setKeyRefraction", event.target.checked));
+$("kbBgBlurHeavy").addEventListener("change", (event) => call("setKbBgBlurHeavy", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", (event) => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", (event) => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", (event) => call("setBottomSymSplit", event.target.checked));
@@ -4873,6 +4962,32 @@ function pickBgImage(variant) {
   input.click();
 }
 __name(pickBgImage, "pickBgImage");
+let toolbarIconPickGeneration = 0;
+function pickToolbarIcon() {
+  const generation = ++toolbarIconPickGeneration;
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    $("toolbarIconNote").hidden = true;
+    if (file.size > 8 * 1024 * 1024) {
+      setNote("toolbarIconNote", t("error.BAD_BG_IMAGE"));
+      $("toolbarIconNote").hidden = false;
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (generation !== toolbarIconPickGeneration) return;
+      call("uploadToolbarIcon", String(reader.result).split(",")[1] || "");
+    };
+    reader.readAsDataURL(file);
+  });
+  input.click();
+}
+__name(pickToolbarIcon, "pickToolbarIcon");
+$("btnUploadToolbarIcon").addEventListener("click", () => pickToolbarIcon());
 $("holdMs").addEventListener("change", submitFeelOptions);
 $("scrubSpeed").addEventListener("change", submitFeelOptions);
 $("flickSwap").addEventListener("change", (event) => call("setFlickSwap", event.target.checked));

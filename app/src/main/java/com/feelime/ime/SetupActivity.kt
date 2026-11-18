@@ -384,6 +384,11 @@ class SetupActivity : AppCompatActivity() {
                     view: WebView?, request: android.webkit.WebResourceRequest?,
                 ): android.webkit.WebResourceResponse? {
                     val url = request?.url ?: return null
+                    if (url.scheme == "https" && url.host == ToolbarIconStore.HOST &&
+                        url.path.orEmpty().startsWith(ToolbarIconStore.PREFIX)
+                    ) return ToolbarIconStore.response(this@SetupActivity, url.path.orEmpty())
+                        ?: android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                            emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
                     if (url.scheme == "https" && url.host == BackgroundImageStore.HOST &&
                         url.path.orEmpty().startsWith(BackgroundImageStore.PREFIX)
                     ) return BackgroundImageStore.response(this@SetupActivity, url.path.orEmpty())

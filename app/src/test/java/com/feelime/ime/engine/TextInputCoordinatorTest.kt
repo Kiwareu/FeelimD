@@ -1181,12 +1181,13 @@ class TextInputCoordinatorTest {
 
         executor.runAll()
         // READY arrived and the queued keys replayed as composing — never as
-        // committed latin text, so no word is split across engines. 
-        // the pinyin preedit surfaces on the keyboard UI (echo state), not in
-        // the editor (#8).
+        // committed latin text, so no word is split across engines.
+        // 3.76 原地更新①：拼音 preedit 除键盘 UI 回显外，也以 composing
+        // span 镜像进宿主编辑器（QQ 等宿主框里要能看到拼音进展）；原串
+        // 只进 span、不落正文，所以 commitText 仍为空。
         assertTrue(events.any { it.phase == Phase.READY })
         assertEquals("ni", events.last().state.composing)
-        assertFalse(editor.operations.contains("setComposing:ni"))
+        assertTrue(editor.operations.contains("setComposing:ni"))
         assertFalse(editor.operations.contains("commitText:n"))
         assertFalse(editor.operations.contains("commitText:ni"))
     }
@@ -1194,8 +1195,8 @@ class TextInputCoordinatorTest {
     @Test
     fun ownAppEditorMirrorsPinyinComposing() {
         // #39 反馈：设置页 JSON textarea 里拼音/T9 组合零回显=按键像
-        // 失灵。ownAppEditor 谓词放开镜像（与法/俄同路径），普通 app
-        // 的「preedit 只在键盘 UI」设计保持不变（上一个测试覆盖）。
+        // 失灵。ownAppEditor 谓词放开镜像（与法/俄同路径）；3.76 原地
+        // 更新①起普通 app 同样镜像（上一个测试覆盖）。
         editor = RecordingEditor()
         events = mutableListOf()
         fake = FakeEngine()
@@ -1211,6 +1212,49 @@ class TextInputCoordinatorTest {
         c.key('i'.code)
         assertTrue(editor.operations.contains("setComposing:ni"))
         assertTrue(editor.operations.none { it.startsWith("commitText") })
+    }
+
+    @Test
+    fun pinyinComposingMirrorsIntoHostEditor() {
+        // 3.76 原地更新①：普通 app 的拼音组合也以 composing span 镜像
+        // 进宿主编辑器（QQ 等宿主框里要能看到拼音进展）；选词前原串
+        // 只进 span、不落正文。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        c.selectMode(InputMode.PINYIN)
+        c.key('n'.code)
+        c.key('i'.code)
+        assertEquals("ni", events.last().state.composing)
+        assertTrue(editor.operations.contains("setComposing:ni"))
+        assertTrue(editor.operations.none { it.startsWith("commitText") })
+    }
+
+    @Test
+    fun terminalEditorDoesNotMirrorPinyinComposing() {
+        // 终端型（TYPE_NULL/dummy IC）不回显组合串：拼音引擎照常跑、
+        // 候选照常出，但不往宿主写 span（#39 的 carve-out）。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false, terminalLike = true)
+        c.selectMode(InputMode.PINYIN)
+        c.key('n'.code)
+        c.key('i'.code)
+        assertEquals("ni", events.last().state.composing)
+        assertTrue(editor.operations.none { it.startsWith("setComposing") })
+        assertTrue(editor.operations.none { it.startsWith("commitText") })
+    }
+
+    @Test
+    fun sensitiveEditorBlocksPinyinMode() {
+        // 密码框强制 DIRECT：拼音模式根本选不上，组合串永无机会进
+        // 密码框（mirror 的纵深防御，不只靠 mirrorsComposing）。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = true)
+        assertEquals(InputMode.DIRECT, events.last().stamp.mode)
+        assertEquals(
+            TextInputCoordinator.ModeSelectionResult.BLOCKED_SENSITIVE_EDITOR,
+            c.selectMode(InputMode.PINYIN),
+        )
+        assertEquals(InputMode.DIRECT, events.last().stamp.mode)
     }
 
     @Test
@@ -2065,18 +2109,19 @@ class TextInputCoordinatorTest {
         c.onEditorStarted(sensitive = false)
         c.selectMode(InputMode.PINYIN)
         c.key('n'.code)
-        // The pinyin preedit never reaches the editor.
-        assertEquals(0, editor.operations.count { it.startsWith("setComposing") })
+        // 3.76 原地更新①：拼音 preedit 以 composing span 镜像进宿主
+        // 编辑器（不再是 #8 的「不落编辑器」）。
+        assertTrue(editor.operations.contains("setComposing:n"))
         val ack = c.pasteExternal("粘贴内容")
         assertEquals(DispatchAck.Accepted, ack)
         // onEditorStarted already guards once; the paste guards again.
         assertEquals(2, asrGuardCalls)
         // Engine buffer was reset through the normal command path…
         assertTrue(fake.requests.any { it.command == EngineCommand.Reset })
-        // …the live composition LANDED before the paste. The preedit has no
-        // editor span since #8, so the coordinator commits its raw buffer
-        // explicitly - the old setComposing("") wipe dropped it (the
-        // flick-drops-composition bug).
+        // …the live composition LANDED before the paste. The coordinator
+        // commits its raw buffer explicitly — commitText 替换掉宿主里的
+        // 显示 span，再插入字面量（旧 setComposing("") wipe 丢组合的
+        // flick-drops-composition bug 不复发）。
         assertTrue(editor.operations.contains("commitText:n"))
         assertTrue(
             editor.operations.indexOf("commitText:n") <

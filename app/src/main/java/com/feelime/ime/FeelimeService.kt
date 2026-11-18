@@ -53,6 +53,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private val lastVoiceReadyHapticLoadMs = java.util.concurrent.atomic.AtomicLong(0L)
     /** 手写识别（design/handwriting.md）：独立于 EngineCoordinator，见 §5.1。 */
     private var handwritingEngine: InkEngine? = null
+    /** 离线翻译（3.76，ONNX 路线）：独立引擎，onCreate 建实例、onDestroy 关。 */
+    private var translateEngine: TranslateEngine? = null
     private lateinit var editorPort: InputConnectionEditorPort
     private lateinit var coordinator: TextInputCoordinator
     private lateinit var clipboardStore: com.feelime.ime.panel.ClipboardStore
@@ -462,6 +464,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         }
     }
 
+    /** 设置页切换简/繁（台湾）（3.76 原地更新第 4 项）：当前就是拼音
+     *  类会话（全拼/T9/双拼）时立即重建会话，新会话按偏好翻开关，
+     *  键盘与候选同步变；顺带重推 hello。其它模式（笔画/英文等）下次
+     *  建会话自然取到。 */
+    private val scriptVariantReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action != ACTION_SCRIPT_VARIANT_CHANGED) return
+            onMain {
+                if (coordinator.currentMode == com.feelime.ime.engine.InputMode.PINYIN ||
+                    coordinator.currentMode == com.feelime.ime.engine.InputMode.T9 ||
+                    coordinator.currentMode == com.feelime.ime.engine.InputMode.DOUBLE_PINYIN
+                ) {
+                    coordinator.recreateEngineSession { }
+                }
+                pushBridgeHello()
+            }
+        }
+    }
+
     /** 设置页保存自定义短语（issue #17）：txt 已落盘，stabledb 只在引擎
      *  生命周期加载一次（session 重建不重读），先整引擎 finalize+init
      *  再重建会话。引擎未起（如刚装完直接进设置页）时只留会话重建。
@@ -802,6 +823,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // 模型在首次识别时后台懒加载。
         // 手写引擎统一为 ochwpro（issue #84：Melnyk-Net 2026-11-04 退役）。
         handwritingEngine = OchwproEngine(applicationContext, this)
+        // 离线翻译（3.76，ONNX 路线）：独立引擎，onCreate 建实例、模型在
+        // 首次翻译时后台懒加载（两个 ONNX session + 分词器）。
+        translateEngine = TranslateEngine(applicationContext)
         editorPort = InputConnectionEditorPort(this)
         clipboardStore = com.feelime.ime.panel.ClipboardStore(applicationContext)
         favoritesStore = com.feelime.ime.panel.FavoritesStore(applicationContext)
@@ -838,6 +862,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         registerReceiver(
             fuzzyPinyinReceiver,
             android.content.IntentFilter(ACTION_FUZZY_PINYIN_CHANGED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        registerReceiver(
+            scriptVariantReceiver,
+            android.content.IntentFilter(ACTION_SCRIPT_VARIANT_CHANGED),
             androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         registerReceiver(
@@ -1140,6 +1169,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     // 一律 404——WebView 对 @font-face 404 的行为就是逐字回退
                     // 字体栈，键盘功能不受影响。
                     val path = url.path.orEmpty()
+                    if (path.startsWith(ToolbarIconStore.PREFIX)) {
+                        return ToolbarIconStore.response(this@FeelimeService, path) ?: blocked()
+                    }
                     if (path.startsWith(BackgroundImageStore.PREFIX)) {
                         return BackgroundImageStore.response(this@FeelimeService, path) ?: blocked()
                     }
@@ -1688,6 +1720,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         unregisterReceiver(userdataReceiver)
         unregisterReceiver(dpSchemeReceiver)
         unregisterReceiver(fuzzyPinyinReceiver)
+        unregisterReceiver(scriptVariantReceiver)
         unregisterReceiver(customPhrasesReceiver)
         unregisterReceiver(baseDictReceiver)
         unregisterReceiver(keyboardPrefsReceiver)
@@ -1699,6 +1732,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         engine.release()
         handwritingEngine?.release()
         handwritingEngine = null
+        translateEngine?.close()
+        translateEngine = null
         background.shutdown()
         cursorQueryExecutor.shutdownNow()
         android.view.Choreographer.getInstance().removeFrameCallback(choreoTick)
@@ -2825,6 +2860,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("pinyinCorrection", readPinyinCorrection(this))
             .put("habitLexicon", readHabitLexicon(this))
             .put("glassSkin", readGlassSkin(this))
+            .put("toolbarIcon", readToolbarIcon(this))
+            .put("toolbarIconUrl", ToolbarIconStore.url(this))
+            .put("keyRefraction", readKeyRefraction(this))
+            .put("kbBgBlurHeavy", readKbBgBlurHeavy(this))
             .put("keyBubble", readKeyBubble(this))
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
             .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
@@ -2833,6 +2872,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("keyboardUiVersion", com.feelime.ime.readKeyboardUiVersion(this))
             .put("candidateBarMode", com.feelime.ime.readCandidateBarMode(this))
             .put("showKeyHints", com.feelime.ime.readShowKeyHints(this))
+            // 简/繁（台湾）：键盘只需它管 JS 侧的日期时间动态候选
+            // （礼拜→禮拜）；拼音候选由引擎 simplifier 转换，不经 JS。
+            .put("scriptVariant", com.feelime.ime.engine.ScriptVariant.current(this))
             // 3.75 补漏：deleteConfirm 只在设置页 hello 里、键盘 hello
             // 一直漏了（3.74.11）——键盘拿不到，关掉开关也不生效。
             .put("deleteConfirm", com.feelime.ime.readDeleteConfirm(this))
@@ -2850,6 +2892,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 put("safeSideR", sides.second)
             }
             .put("themeMode", readThemeMode(this))
+            .put("translateDirection", readTranslateDirection(this))
             .put("themePreset", readThemePreset(this))
             .put("themeHue", readThemeHue(this))
             .put("themeSat", readThemeSat(this))
@@ -3243,6 +3286,22 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             else -> message
         }
         pushState(message = t(this, message, english), messageCode = "ASR_ERROR")
+    }
+
+    /** 离线翻译回调（3.76，ONNX 路线）：后台线程 → 主线程推送。
+     *  reqId 单调，JS 侧与最新请求不符时丢弃（仿 onInkResult）。 */
+    fun onTranslateResult(reqId: Int, text: String?, error: String?, pageToken: String) {
+        // 在调用线程完成校验和 JSON 构造；不能让异步主线程抛出未捕获异常。
+        val payload = JSONObject()
+            .put("reqId", reqId)
+            .put("state", if (error == null) "done" else "error")
+            .put("text", text ?: "")
+            .put("error", error ?: "")
+            .toString()
+        onMain {
+            if (pageToken != this.pageToken || translateEngine == null) return@onMain
+            evaluate("window.Feelime && window.Feelime.onTranslateResult && window.Feelime.onTranslateResult($payload)")
+        }
     }
 
     /** 手写识别回调（design/handwriting.md §3）：后台线程 → 主线程推送。
@@ -3880,6 +3939,30 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     keyboardPrefs.edit().putString(PREF_THEME_MODE, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
+                "toolbarIcon" -> {
+                    // 工具栏左一按钮图标（3.76 原地更新）：白名单外拒绝；
+                    // 切离 custom 删已上传图（与 SettingsBridge 同口径）。
+                    if (value !in TOOLBAR_ICON_IDS) return@guarded
+                    if (value != "custom") ToolbarIconStore.delete(this@FeelimeService)
+                    keyboardPrefs.edit().putString(PREF_TOOLBAR_ICON, value).commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "keyRefraction" -> {
+                    val on = boolArg() ?: return@guarded
+                    keyboardPrefs.edit().putBoolean(PREF_KEY_REFRACTION, on).commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "kbBgBlurHeavy" -> {
+                    val on = boolArg() ?: return@guarded
+                    keyboardPrefs.edit().putBoolean(PREF_KB_BG_BLUR_HEAVY, on).commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "translateDirection" -> {
+                    // 翻译面板的方向切换（3.76）：只认两个合法值，其余拒绝。
+                    if (value !in TRANSLATE_DIRECTIONS) return@guarded
+                    keyboardPrefs.edit().putString(PREF_TRANSLATE_DIRECTION, value).commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
                 "oneHand" -> {
                     val mode = value.toIntOrNull()
                     if (mode == null || mode !in 0..2) return@guarded
@@ -4368,6 +4451,39 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 }
                 handwritingEngine?.recognizeInk(reqId, payload, token)
             }
+
+        /** 离线翻译（3.76，ONNX 路线）：from/to 取 "zh"/"en"。方法在 JavaBridge
+         *  线程被调，guarded 转主线程后交引擎（引擎内部再转后台线程推理，
+         *  立即返回；结果只经 onTranslateResult 回调）。超长直接回 error，
+         *  不静默吞掉（仿 recognizeInk 的做法）。 */
+        @JavascriptInterface
+        fun translateText(text: String, from: String, to: String, reqId: Int, token: String) =
+            guarded(token, limited = false) {
+                if (reqId < 0 || text.length > MAX_TRANSLATE_CHARS) {
+                    rejectedCalls += 1
+                    Diagnostics.log("translateReject", "req=$reqId chars=${text.length} reason=budget-or-id")
+                    if (reqId >= 0) {
+                        onTranslateResult(reqId, null, "一次最多翻译 1000 字", token)
+                    }
+                    return@guarded
+                }
+                val engine = translateEngine
+                if (engine == null) {
+                    onTranslateResult(reqId, null, "离线翻译还没准备好", token)
+                    return@guarded
+                }
+                engine.translate(text, from, to, object : TranslateEngine.Listener {
+                    override fun onDone(result: String) =
+                        onTranslateResult(reqId, result, null, token)
+
+                    override fun onError(message: String) =
+                        onTranslateResult(reqId, null, message, token)
+                })
+            }
+
+        @JavascriptInterface
+        fun cancelTranslate(reqId: Int, token: String) =
+            guarded(token, limited = false) { translateEngine?.cancel(reqId) }
 
         @JavascriptInterface
         fun stopVoice(token: String) = guarded(token, limited = false) { stopVoice() }
@@ -5614,6 +5730,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
          *  不应答，真机复测实录）。 */
         const val SETTLE_BASELINE_TIMEOUT_MS = 120L
         const val CALLS_PER_SECOND = 25
+        /** 离线翻译一次最多翻的字数（桥层硬上限；编码器本身还按
+         *  511 token 截断，见 TranslateDirections.MAX_INPUT_TOKENS）。 */
+        const val MAX_TRANSLATE_CHARS = 1000
         @Volatile private var lastThrottleDiag = 0L
         const val HEIGHT_PREF_DEBOUNCE_MS = 300L
 

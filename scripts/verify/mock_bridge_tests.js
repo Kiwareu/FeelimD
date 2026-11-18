@@ -1908,6 +1908,64 @@ test('keyboard UI version: glass-v2 class follows the hello payload, classic kee
     assert(/border:\s*1px solid var\(--glass-v2-edge\)/.test(v2[0]), 'glass-v2 adds the hairline edge');
 });
 
+// 3.76 原地更新：工具栏左一按钮换图标——只换 setupButton 图形，
+// 按钮作用（开快捷设置）不变；未知 id 与无图 custom 都回落默认 F。
+test('toolbar icon: built-in ids swap the setup mark, unknown ids fall back to F (3.76)', {since: '3.76'}, () => {
+    const world = fresh();
+    assert(world.$('setupButton').innerHTML.includes('M12.5 8.5h24'),
+        'default hello keeps the F logo');
+    world.hello({ toolbarIcon: 'oneplus' });
+    assert(world.$('setupButton').innerHTML.includes('1+'), 'oneplus shows the 1+ mark');
+    world.hello({ toolbarIcon: 'xiaomi' });
+    assert(world.$('setupButton').innerHTML.includes('MI'), 'xiaomi shows the MI mark');
+    world.hello({ toolbarIcon: 'oppo' });
+    assert(world.$('setupButton').innerHTML.includes('OPPO'), 'oppo shows the OPPO mark');
+    world.hello({ toolbarIcon: 'vivo' });
+    assert(world.$('setupButton').innerHTML.includes('vivo'), 'vivo shows the vivo mark');
+    world.hello({ toolbarIcon: 'nope' });
+    assert(world.$('setupButton').innerHTML.includes('M12.5 8.5h24'),
+        'unknown id falls back to the F logo');
+    world.hello({ toolbarIcon: 'custom' });
+    assert(world.$('setupButton').innerHTML.includes('M12.5 8.5h24'),
+        'custom without a stored image falls back to the F logo');
+});
+
+test('toolbar icon: custom with a URL renders the uploaded image; swapping keeps the button working (3.76)', {since: '3.76'}, () => {
+    const world = fresh({ toolbarIcon: 'custom',
+        toolbarIconUrl: 'https://feelime.local/keyboard/toolbar-icon/v1.png' });
+    const img = world.$('setupButton').querySelector('img');
+    assert(img, 'custom icon renders an img');
+    assert(img.getAttribute('src').includes('/keyboard/toolbar-icon/'),
+        'img src is the native toolbar-icon route');
+    world.hello({ toolbarIcon: 'star' });
+    assert(!world.$('setupButton').querySelector('img'), 'leaving custom removes the img');
+    world.tap(world.$('setupButton'));
+    assert(world.$('settingsPanel').classList.contains('open'),
+        'icon swap does not change what the button does');
+});
+
+// 3.76 原地更新：折射边框默认开、加厚模糊默认关；hello 显式值覆盖，
+// 缺字段时不丢默认（旧壳 hello 不带字段）。
+test('theme extras: refraction defaults on, heavy blur defaults off; hello overrides both (3.76)', {since: '3.76'}, () => {
+    const world = fresh();
+    assert(world.document.documentElement.classList.contains('key-refraction'),
+        'refraction is on by default');
+    assert(!world.document.body.classList.contains('kb-bg-heavy-blur'),
+        'heavy blur is off by default');
+    world.hello({ keyRefraction: false, kbBgBlurHeavy: true });
+    assert(!world.document.documentElement.classList.contains('key-refraction'),
+        'hello can turn refraction off');
+    assert(world.document.body.classList.contains('kb-bg-heavy-blur'),
+        'hello can turn heavy blur on');
+    // 缺字段（旧壳 hello 不带这两项）：harness 默认值被 undefined 覆盖
+    // 后按 native 默认补——折射开、加厚关。
+    world.hello({ keyRefraction: undefined, kbBgBlurHeavy: undefined });
+    assert(world.document.documentElement.classList.contains('key-refraction'),
+        'a payload without the field keeps refraction on');
+    assert(!world.document.body.classList.contains('kb-bg-heavy-blur'),
+        'a payload without the field keeps heavy blur off');
+});
+
 test('keyboard background blur: translucent sheet over a 22px blur, opaque again in power-saving (3.75)', {since: '3.75'}, () => {
     // 根因：底板 sheet 渐变近不透明（.90/.94），backdrop-filter 再强也
     // 透不出后面的 App。新式是半透明底色 + 18–24px 模糊（苹果原生键
@@ -2695,11 +2753,12 @@ test('long-press popup drags to a different cell with real displacement', {since
     const q = world.key('q');
     const e = world.key('e');
     // 非零位移换格：fake 几何下 'e' 弹层格子心在 x=28/62/96,y=24、卡片
-    // 矩形 [176,94,220,138]（3.74.10：clipSplitCard 插入使 #keyPopup
-    // 兄弟索引 +1，卡片右移 34px；3.74.9 同款：工具箱行插入亦 +1）；
-    // 锚(E)=62,24，B 从 (100,20) 拖到 (236,112) → 虚拟光标 (198,116)
+    // 矩形 [210,94,254,138]（3.74.10：clipSplitCard 插入使 #keyPopup
+    // 兄弟索引 +1，卡片右移 34px；3.74.9 同款：工具箱行插入亦 +1；
+    // 3.76 同款：翻译入口按钮进工具箱行再 +1，卡片从 176 移到 210）；
+    // 锚(E)=62,24，B 从 (100,20) 拖到 (270,112) → 虚拟光标 (232,116)
     // 入卡、最近格=末格 'e'。origin 若钉在首指 (20,20) 上，虚拟光标
-    // (278,116) 出卡 → 取消零提交——正好钉死 origin 归属。
+    // (312,116) 出卡 → 取消零提交——正好钉死 origin 归属。
     world.dispatch(q, 'touchstart', 20, 20,
         { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
     world.dispatch(e, 'touchstart', 100, 20,
@@ -2707,11 +2766,11 @@ test('long-press popup drags to a different cell with real displacement', {since
           touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
     world.clock.advance(360);
     assert(world.$('keyPopup').classList.contains('open'), 'popup open');
-    world.dispatch(e, 'touchmove', 236, 112,
-        { changedTouches: [touchPoint(2, 236, 112)],
-          touches: [touchPoint(1, 20, 20), touchPoint(2, 236, 112)] });
-    world.dispatch(e, 'touchend', 236, 112,
-        { changedTouches: [touchPoint(2, 236, 112)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(e, 'touchmove', 270, 112,
+        { changedTouches: [touchPoint(2, 270, 112)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 270, 112)] });
+    world.dispatch(e, 'touchend', 270, 112,
+        { changedTouches: [touchPoint(2, 270, 112)], touches: [touchPoint(1, 20, 20)] });
     const keys = world.native.of('key');
     equal(keys.length, 1, 'one commit from popup (A still holds)');
     equal(keys[0].args[0], 'e', 'nonzero drag lands the last cell, origin at the pressing finger');
@@ -4249,6 +4308,7 @@ test('mutex gate: registry pairs are mutually exclusive in BOTH directions (#39-
         custom: () => w.context.window.Feelime.toggleCustomPanel(),
         panel: () => w.tap(w.$('clipboardButton')),
         modeMenu: () => w.context.window.Feelime.toggleModeMenu(),
+        translate: () => w.context.window.Feelime.toggleTranslatePanel(),
     };
     const held = {
         settings: () => w.$('settingsPanel').classList.contains('open'),
@@ -4257,6 +4317,7 @@ test('mutex gate: registry pairs are mutually exclusive in BOTH directions (#39-
         custom: () => !w.$('customLayer').hidden,
         panel: () => !w.$('panelLayer').hidden,
         modeMenu: () => w.$('modeMenu').classList.contains('open'),
+        translate: () => !w.$('translateLayer').hidden,
     };
     names.forEach(a => {
         names.forEach(b => {
@@ -4270,6 +4331,96 @@ test('mutex gate: registry pairs are mutually exclusive in BOTH directions (#39-
             openers[b]();
         });
     });
+});
+
+test('translate: toolbar button hidden on an old shell without translateText', {since: '3.76'}, () => {
+    const w = fresh();
+    assert(!w.$('translateButton').hidden, 'button visible when the bridge has translateText');
+    w.context.window.FeelimeNative.translateText = undefined;
+    w.hello();
+    assert(w.$('translateButton').hidden, 'button hidden once the bridge loses translateText');
+    // Layout reconciliation must not resurrect it (audit + composing paths).
+    w.context.window.Feelime.toggleSettingsPanel();
+    w.context.window.Feelime.closeSettingsPanel();
+    assert(w.$('translateButton').hidden, 'still hidden after toolbar audit');
+});
+
+test('translate: panel opens from the toolbar; direction toggles and persists via setQuickPref', {since: '3.76'}, () => {
+    const w = fresh();
+    w.tap(w.$('translateButton'));
+    assert(!w.$('translateLayer').hidden, 'translate layer opens');
+    assert(w.$('candidateBar').hidden, 'candidate bar hidden while translating');
+    equal(w.$('translateDirection').textContent, '中 → 英', 'default direction zh-en');
+    w.tap(w.$('translateDirection'));
+    equal(w.$('translateDirection').textContent, '英 → 中', 'direction flips to en-zh');
+    assert(w.native.of('setQuickPref').map(c => c.args.slice(0, 2))
+        .some(a => a[0] === 'translateDirection' && a[1] === 'en-zh'),
+        'direction persisted to native prefs, not localStorage');
+    w.tap(w.$('translateDirection'));
+    equal(w.$('translateDirection').textContent, '中 → 英', 'direction flips back');
+    w.tap(w.$('translateClose'));
+    assert(w.$('translateLayer').hidden, 'translate layer closes');
+    assert(!w.$('qwertyLayer').hidden, 'letters layer restored');
+});
+
+test('translate: hello adopts the saved direction; translateNow sends one call with direction args', {since: '3.76'}, () => {
+    const w = fresh({ translateDirection: 'en-zh' });
+    equal(w.$('translateDirection').textContent, '英 → 中', 'hello direction adopted');
+    w.tap(w.$('translateButton'));
+    w.$('translateSource').value = 'Hello world';
+    w.tap(w.$('translateGo'));
+    const calls = w.native.of('translateText');
+    equal(calls.length, 1, 'one translate call');
+    equal(calls[0].args[0], 'Hello world', 'source text sent');
+    equal(calls[0].args[1], 'en', 'from en');
+    equal(calls[0].args[2], 'zh', 'to zh');
+    assert(w.$('translateCancel').hidden === false, 'cancel shows while translating');
+});
+
+test('translate: empty source never calls the bridge', {since: '3.76'}, () => {
+    const w = fresh();
+    w.tap(w.$('translateButton'));
+    w.$('translateSource').value = '   ';
+    w.tap(w.$('translateGo'));
+    equal(w.native.of('translateText').length, 0, 'no call for blank source');
+    assert(w.$('translateStatus').textContent.includes('先输入'), 'prompt to enter text');
+});
+
+test('translate: done result shows and commits on 上屏; stale results are dropped', {since: '3.76'}, () => {
+    const w = fresh();
+    w.tap(w.$('translateButton'));
+    w.$('translateSource').value = '你好';
+    w.tap(w.$('translateGo'));
+    const reqId = w.native.of('translateText')[0].args[3];
+    // A newer request displaces this one: its late result must be dropped.
+    w.$('translateSource').value = '你好世界';
+    w.tap(w.$('translateGo'));
+    const reqId2 = w.native.of('translateText')[1].args[3];
+    assert(reqId2 !== reqId, 'second request gets a new id');
+    w.context.window.Feelime.onTranslateResult({ reqId, state: 'done', text: 'STALE', error: '' });
+    equal(w.$('translateResult').value, '', 'stale result dropped');
+    w.context.window.Feelime.onTranslateResult({ reqId: reqId2, state: 'done', text: 'Hello world', error: '' });
+    equal(w.$('translateResult').value, 'Hello world', 'latest result shown');
+    assert(!w.$('translateCommit').disabled, 'commit enabled with a result');
+    w.tap(w.$('translateCommit'));
+    equal(w.native.of('commitText')[0].args[0], 'Hello world', 'result committed to the editor');
+    assert(w.$('translateLayer').hidden, 'panel closes after commit');
+});
+
+test('translate: missing-model error shows the download exit; other errors do not', {since: '3.76'}, () => {
+    const w = fresh();
+    w.tap(w.$('translateButton'));
+    w.$('translateSource').value = '你好';
+    w.tap(w.$('translateGo'));
+    const reqId = w.native.of('translateText')[0].args[3];
+    w.context.window.Feelime.onTranslateResult({ reqId, state: 'error', text: '', error: '离线翻译模型还没下载' });
+    assert(w.$('translateStatus').textContent.includes('还没下载'), 'error shown');
+    assert(!w.$('translateDownload').hidden, 'download exit shown for missing model');
+    w.$('translateSource').value = '你好';
+    w.tap(w.$('translateGo'));
+    const reqId2 = w.native.of('translateText')[1].args[3];
+    w.context.window.Feelime.onTranslateResult({ reqId: reqId2, state: 'error', text: '', error: '离线翻译出错：超时' });
+    assert(w.$('translateDownload').hidden, 'no download exit for a generic failure');
 });
 
 test('toolbar numpad toggle only fires while the pad is really visible (#39-12 lock-state)', {since: '3.73.10'}, () => {
@@ -5754,11 +5905,11 @@ test('resetToHome cancels toolbar edit (hide-path rollback, nothing saved)', {si
     const x = fav.children.find(c => c.className === 'tool-x');
     w.touchDown(x);
     w.touchUp(x);
-    equal(state().toolbarRight.join(','), 'clipboard,mic', 'favorites removed');
+    equal(state().toolbarRight.join(','), 'clipboard,translate,mic', 'favorites removed');
     // 收起键盘等价路径：resetToHome 必须按「取消」回退，不落盘。
     w.context.window.Feelime.resetToHome();
     assert(!w.document.body.classList.contains('toolbar-edit'), 'edit class gone');
-    equal(state().toolbarRight.join(','), 'clipboard,favorites,mic',
+    equal(state().toolbarRight.join(','), 'clipboard,favorites,translate,mic',
         'snapshot restored');
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length,
         0, 'nothing saved on rollback');
@@ -7127,7 +7278,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(w.document.body.className.includes('toolbar-edit'), true, 'body edit class');
     equal(w.$('toolbarEditor').hidden, false, 'editor section visible');
 
-    // 默认 5 个工具全在栏上（left=[ctrl,ime] right=[clipboard,favorites,mic]）；
+    // 默认 6 个工具全在栏上（left=[ctrl,ime] right=[clipboard,favorites,translate,mic]）；
     // 仓库里是 8 个默认不上栏的开关型/动作型工具（动态创建）。
     equal(w.$('toolbarEditorGrid').children.length, 13, 'pool starts with the 13 extra tools (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating + #93 share)');
     ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand',
@@ -7146,8 +7297,23 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     assert(x, '× badge exists on tool');
     w.touchDown(x);
     w.touchUp(x);
-    equal(kb().toolbarRight.join(','), 'clipboard,mic', '× removes favorites from right group');
+    equal(kb().toolbarRight.join(','), 'clipboard,translate,mic', '× removes favorites from right group');
     equal(w.$('toolbarEditorGrid').children.length, 14, 'removed tool joins the 13 extra tools');
+
+    // #39-12：池里的定制按键必须能上栏——TOOL_CATALOG 漏登记时按钮
+    // 照样创建，但接线循环遍历目录，池里那颗点不动（真机实录）。
+    // 3.76：右组默认已占 4 格中的 3 格（clipboard/translate/mic），
+    // 先上定制键再加回 favorites，否则右组满格会把定制键挤进左组。
+    w.touchDown(w.$('toolCustom'));
+    w.touchUp(w.$('toolCustom'));
+    equal(kb().toolbarRight.join(','), 'clipboard,translate,mic,custom',
+        'pool tap lands custom on the right group');
+    equal(w.$('toolCustom').children.some(c => c.className === 'tool-x'),
+        true, 'cataloged custom carries the × badge');
+    w.touchDown(w.$('toolCustom').children.find(c => c.className === 'tool-x'));
+    w.touchUp(w.$('toolCustom').children.find(c => c.className === 'tool-x'));
+    equal(kb().toolbarRight.join(','), 'clipboard,translate,mic',
+        '× puts custom back in the pool');
 
     // 点仓库里的 favorites 加回（right 组未满 → 追加到队尾）。
     // 编辑态点仓库只做「上工具栏」：favorites 的 click 直连
@@ -7159,28 +7325,15 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     // touchend 通道（添加）必须继续工作。
     w.touchDown(fav);
     w.touchUp(fav);
-    equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'pool tap appends to right group');
+    equal(kb().toolbarRight.join(','), 'clipboard,translate,mic,favorites', 'pool tap appends to right group');
     equal(w.$('toolbarEditorGrid').children.length, 13, 'pool back to the 13 extra tools');
-
-    // #39-12：池里的定制按键必须能上栏——TOOL_CATALOG 漏登记时按钮
-    // 照样创建，但接线循环遍历目录，池里那颗点不动（真机实录）。
-    w.touchDown(w.$('toolCustom'));
-    w.touchUp(w.$('toolCustom'));
-    equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites,custom',
-        'pool tap lands custom on the right group');
-    equal(w.$('toolCustom').children.some(c => c.className === 'tool-x'),
-        true, 'cataloged custom carries the × badge');
-    w.touchDown(w.$('toolCustom').children.find(c => c.className === 'tool-x'));
-    w.touchUp(w.$('toolCustom').children.find(c => c.className === 'tool-x'));
-    equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites',
-        '× puts custom back in the pool');
 
     // 「完成」退出并持久化。
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'done exits edit mode');
     const saved = w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout');
     equal(saved.length, 1, 'layout saved once on done');
-    equal(saved[0].args[1], JSON.stringify({ left: ['ctrl', 'ime'], right: ['clipboard', 'mic', 'favorites'] }),
+    equal(saved[0].args[1], JSON.stringify({ left: ['ctrl', 'ime'], right: ['clipboard', 'translate', 'mic', 'favorites'] }),
         'layout payload matches groups');
 
     // 退出后原功能恢复。
@@ -7196,12 +7349,12 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchUp(xOf('favoritesButton'));
     w.touchDown(xOf('mic'));
     w.touchUp(xOf('mic'));
-    equal(kb().toolbarRight.join(','), 'clipboard', 'two removals land both in the pool');
+    equal(kb().toolbarRight.join(','), 'clipboard,translate', 'two removals land both in the pool');
     equal(w.$('toolbarEditorGrid').children.length, 15,
         'pool holds both removed tools + 13 extra tools (no innerHTML wipe)');
     w.tap(w.$('toolbarEditCancel'));
     equal(kb().toolbarLeft.join(','), 'ctrl,ime', 'cancel restores left snapshot');
-    equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'cancel restores right snapshot');
+    equal(kb().toolbarRight.join(','), 'clipboard,translate,mic,favorites', 'cancel restores right snapshot');
     equal(w.$('toolbarEditorGrid').children.length, 13,
         'pool drains back to the 13 extra tools after cancel');
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length, 1,
@@ -7212,7 +7365,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(w.$('mic'));
     w.clock.advance(400);
     w.touchUp(w.$('mic'));
-    ['favoritesButton', 'mic', 'clipboardButton', 'ctrlTool', 'imeSwitchButton']
+    ['favoritesButton', 'mic', 'clipboardButton', 'translateButton', 'ctrlTool', 'imeSwitchButton']
         .forEach(id => {
             const x = xOf(id);
             assert(x, '× exists on ' + id);
@@ -7220,7 +7373,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
             w.touchUp(x);
         });
     equal(kb().toolbarLeft.length + kb().toolbarRight.length, 0, 'bar fully stripped');
-    equal(w.$('toolbarEditorGrid').children.length, 18, 'all eighteen tools in the pool (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating + #93 share)');
+    equal(w.$('toolbarEditorGrid').children.length, 19, 'all nineteen tools in the pool (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating + #93 share + 3.76 translate)');
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'empty layout saves fine');
     w.touchDown(w.$('toolboxRow'));
@@ -7273,7 +7426,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(st.toolbarRight.includes('ime'), true, 'ime lands in the right group');
     equal(st.toolbarLeft.length, 1, 'left group keeps one (the displaced tool)');
     equal(st.toolbarLeft.length + st.toolbarRight.length, 5, 'no tool lost in the swap');
-    equal(poolNow.children.length, 13, 'pool back to the extra tools only');
+    equal(poolNow.children.length, 14, 'pool back to the extra tools only (3.76: 19 tools, 5 on the bar)');
     w.tap(w.$('toolbarEditCancel'));
 });
 
@@ -12060,33 +12213,33 @@ test('handwriting: the empty-pad hint is the softened bilingual copy (2026-11-01
 
 // ------------------------------------------------ issue #12 超长组合自动收束
 
-test('issue12: pinyin composition auto-commits the pool head at 40 letters', {since: '3.68.0'}, () => {
+test('issue12: pinyin composition auto-commits the pool head at 64 letters', {since: '3.68.0'}, () => {
     const world = fresh({ mode: 'pinyin' });
-    // 39 字母（带音节空格的 rawInput）：不到阈值，不自动上屏。
+    // 63 字母（带音节空格的 rawInput）：不到阈值，不自动上屏。
     world.engineState({ mode: 'pinyin', revision: 1,
-        composing: 'a'.repeat(39), rawInput: 'a'.repeat(39),
+        composing: 'a'.repeat(63), rawInput: 'a'.repeat(63),
         candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
     equal(world.native.of('chooseCandidate').length, 0, 'under the threshold nothing auto-commits');
-    // 40 字母（去空格后）：回声侧自动上屏首候选（等同按空格）。
-    const raw40 = 'a '.repeat(39) + 'a';
-    world.engineState({ mode: 'pinyin', revision: 2, composing: raw40, rawInput: raw40,
+    // 64 字母（去空格后）：回声侧自动上屏首候选（等同按空格）。
+    const raw64 = 'a '.repeat(63) + 'a';
+    world.engineState({ mode: 'pinyin', revision: 2, composing: raw64, rawInput: raw64,
         candidates: [{ id: 'c1', text: '啊' }, { id: 'c2', text: '阿' }], hasNextPage: false });
     const picks = world.native.of('chooseCandidate');
     equal(picks.length, 1, 'one auto-commit fires');
     equal(picks[0].args[1], 'c1', 'it commits the pool head by id');
 });
 
-test('issue12: dead unparseable composition clears at 16 letters', {since: '3.68.0'}, () => {
+test('issue12: dead unparseable composition clears at 64 letters', {since: '3.68.0'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ mode: 'pinyin', revision: 1,
-        composing: 'v'.repeat(16), rawInput: 'v'.repeat(16),
+        composing: 'v'.repeat(64), rawInput: 'v'.repeat(64),
         candidates: [], hasNextPage: false });
     equal(world.native.of('clearComposing').length, 1,
-        'a 16-letter composition with no candidates clears');
-    // 15 字符不触发——正常打字的瞬态不该被误清。
+        'a 64-letter composition with no candidates clears');
+    // 63 字符不触发——正常打字的瞬态不该被误清。
     const world2 = fresh({ mode: 'pinyin' });
     world2.engineState({ mode: 'pinyin', revision: 1,
-        composing: 'v'.repeat(15), rawInput: 'v'.repeat(15),
+        composing: 'v'.repeat(63), rawInput: 'v'.repeat(63),
         candidates: [], hasNextPage: false });
     equal(world2.native.of('clearComposing').length, 0,
         'under the dead-string threshold nothing clears');
@@ -12095,7 +12248,7 @@ test('issue12: dead unparseable composition clears at 16 letters', {since: '3.68
 test('issue12: direct mode never auto-collects', {since: '3.68.0'}, () => {
     const world = fresh({ mode: 'direct' });
     world.engineState({ mode: 'direct', revision: 1,
-        composing: 'a'.repeat(60), rawInput: 'a'.repeat(60),
+        composing: 'a'.repeat(80), rawInput: 'a'.repeat(80),
         candidates: [], hasNextPage: false });
     equal(world.native.of('chooseCandidate').length + world.native.of('clearComposing').length, 0,
         'long raw input is normal in direct mode');
@@ -12108,14 +12261,14 @@ test('issue12: a prefix favorite must not mask the dead-string clear', {since: '
     const world = fresh({ mode: 'pinyin' });
     world.favorites([{ id: 'f1', code: 'n', text: '测试短语' }]);
     world.engineState({ mode: 'pinyin', revision: 1,
-        composing: 'n'.repeat(16), rawInput: 'n'.repeat(16),
+        composing: 'n'.repeat(64), rawInput: 'n'.repeat(64),
         candidates: [], hasNextPage: false });
     equal(world.native.of('chooseCandidate').length, 0,
         'no fav: id ever rides the engine choose channel');
     equal(world.native.of('clearComposing').length, 1,
         'the dead engine pool still clears with a favorite masking the bar');
-    // ≥40 且引擎候选空（fav 顶在展示池首）也绝不能拿 fav: 去选词。
-    const longDead = 'n'.repeat(41);
+    // ≥64 且引擎候选空（fav 顶在展示池首）也绝不能拿 fav: 去选词。
+    const longDead = 'n'.repeat(65);
     world.engineState({ mode: 'pinyin', revision: 2, composing: longDead,
         rawInput: longDead, candidates: [], hasNextPage: false });
     equal(world.native.of('chooseCandidate').length, 0,
@@ -12131,26 +12284,26 @@ test('issue12: one collapse per composition fingerprint, in-flight safe', {since
     const echo = (rev, n, comp, cands) => world.engineState({ mode: 'pinyin', revision: rev,
         composing: comp !== undefined ? comp : 'v'.repeat(n), rawInput: 'v'.repeat(n),
         candidates: cands || [], hasNextPage: false });
-    echo(1, 16);
-    echo(2, 16); // 迟到的同态回声（清空请求在途）
-    echo(3, 17, undefined); // 迟到的高位旧回声：门闩挡住
+    echo(1, 64);
+    echo(2, 64); // 迟到的同态回声（清空请求在途）
+    echo(3, 65, undefined); // 迟到的高位旧回声：门闩挡住
     equal(world.native.of('clearComposing').length, 1,
         'a late pre-clear echo never fires a second reset');
     echo(4, 0, ''); // 组合结束回声：解除门闩
-    echo(5, 18); // 下一轮死串照常清
+    echo(5, 66); // 下一轮死串照常清
     equal(world.native.of('clearComposing').length, 2,
         'the settle echo re-arms the dead-string clear');
 });
 
 test('issue12: new input after a dead clear survives late echoes', {since: '3.68.0'}, () => {
-    // codex R3 P1 点名交错：清空 A 在途 → 迟到旧回声 17 → 新输入低位
+    // codex R3 P1 点名交错：清空 A 在途 → 迟到旧回声 65 → 新输入低位
     // 回声 2 → 完成回声。整个序列只允许一次清空。
     const world = fresh({ mode: 'pinyin' });
     const seq = [
-        { rev: 1, raw: 'v'.repeat(16), cands: [] },  // 触发清空
-        { rev: 2, raw: 'v'.repeat(17), cands: [] },  // 迟到旧回声
+        { rev: 1, raw: 'v'.repeat(64), cands: [] },  // 触发清空
+        { rev: 2, raw: 'v'.repeat(65), cands: [] },  // 迟到旧回声
         { rev: 3, raw: 'ni', cands: [{ id: 'c1', text: '你' }] }, // 新输入
-        { rev: 4, raw: 'v'.repeat(16), cands: [] },  // 又一轮迟到高位
+        { rev: 4, raw: 'v'.repeat(64), cands: [] },  // 又一轮迟到高位
     ];
     seq.forEach(e => world.engineState({ mode: 'pinyin', revision: e.rev,
         composing: e.raw, rawInput: e.raw, candidates: e.cands, hasNextPage: false }));
@@ -12159,14 +12312,14 @@ test('issue12: new input after a dead clear survives late echoes', {since: '3.68
 });
 
 test('issue12: partial selection progress re-collapses without new keys', {since: '3.68.0'}, () => {
-    // codex R2 P1 场景：40 字母触发选词后部分选词回声仍剩 44 字母（且
+    // codex R2 P1 场景：64 字母触发选词后部分选词回声仍剩 65 字母（且
     // 有候选）——指纹已变，立即再次收束，不依赖用户再按键。
     const world = fresh({ mode: 'pinyin' });
-    const raw40 = 'a '.repeat(39) + 'a';
-    world.engineState({ mode: 'pinyin', revision: 1, composing: raw40, rawInput: raw40,
+    const raw64 = 'a '.repeat(63) + 'a';
+    world.engineState({ mode: 'pinyin', revision: 1, composing: raw64, rawInput: raw64,
         candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
-    const left44 = 'b'.repeat(44);
-    world.engineState({ mode: 'pinyin', revision: 2, composing: left44, rawInput: left44,
+    const left65 = 'b'.repeat(65);
+    world.engineState({ mode: 'pinyin', revision: 2, composing: left65, rawInput: left65,
         candidates: [{ id: 'c2', text: '把' }], hasNextPage: false });
     const picks = world.native.of('chooseCandidate');
     equal(picks.length, 2, 'the leftover over-limit composition re-commits by itself');
@@ -12176,7 +12329,7 @@ test('issue12: partial selection progress re-collapses without new keys', {since
 test('issue12: the settle echo re-arms the fingerprint for a repeat offense', {since: '3.68.0'}, () => {
     // 清空回声（composing=false）清指纹：用户重打同一死串仍会被清。
     const world = fresh({ mode: 'pinyin' });
-    const dead = 'v'.repeat(16);
+    const dead = 'v'.repeat(64);
     const echo = (rev, raw, comp, cands) => world.engineState({ mode: 'pinyin', revision: rev,
         composing: comp, rawInput: raw, candidates: cands || [], hasNextPage: false });
     echo(1, dead, dead);
@@ -12188,15 +12341,15 @@ test('issue12: the settle echo re-arms the fingerprint for a repeat offense', {s
 
 test('issue12: the settle echo and fresh input do not re-trigger', {since: '3.68.0'}, () => {
     const world = fresh({ mode: 'pinyin' });
-    const raw40 = 'a '.repeat(39) + 'a';
-    world.engineState({ mode: 'pinyin', revision: 1, composing: raw40, rawInput: raw40,
+    const raw64 = 'a '.repeat(63) + 'a';
+    world.engineState({ mode: 'pinyin', revision: 1, composing: raw64, rawInput: raw64,
         candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
     // 上屏后的空组合回声：不触发任何收束。
     world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
-    // 新组合 39 字母：阈值下不触发。
+    // 新组合 63 字母：阈值下不触发。
     world.engineState({ mode: 'pinyin', revision: 3,
-        composing: 'a'.repeat(39), rawInput: 'a'.repeat(39),
+        composing: 'a'.repeat(63), rawInput: 'a'.repeat(63),
         candidates: [{ id: 'c2', text: '阿' }], hasNextPage: false });
     equal(world.native.of('chooseCandidate').length, 1,
         'only the over-threshold echo commits');
@@ -12211,7 +12364,7 @@ test('issue12: a variant replay must not strand the dead-clear latch', {since: '
     const world = fresh({ mode: 'double-pinyin' });
     const echo = (rev, raw, cands) => world.engineState({ mode: 'double-pinyin', revision: rev,
         composing: raw, rawInput: raw, candidates: cands || [], hasNextPage: false });
-    echo(1, 'v'.repeat(16));           // 死串 → 清空 #1，门闩挂起
+    echo(1, 'v'.repeat(64));           // 死串 → 清空 #1，门闩挂起
     echo(2, "x'an", [{ id: 'c1', text: '西安' }]);
     world.tap(world.$('composeExpand'));
     const variant = world.document.querySelector('#expandVariants .expand-variant');
@@ -12220,24 +12373,105 @@ test('issue12: a variant replay must not strand the dead-clear latch', {since: '
     // 回放风暴中的空回声（早退路径）：记账在早退之前，门闩必须解除。
     echo(3, '', []);
     echo(4, variant.textContent, [{ id: 'c2', text: '西安' }]); // target 回声结束回放
-    echo(5, 'v'.repeat(17));           // 下一轮死串：必须照常清
+    echo(5, 'v'.repeat(65));           // 下一轮死串：必须照常清
     equal(world.native.of('clearComposing').length, 2,
         'a variant replay storm still re-arms the dead-clear latch');
 });
 
 test('issue12: double-pinyin auto-commits too', {since: '3.68.0'}, () => {
     const world = fresh({ mode: 'double-pinyin' });
-    // 39 字母（未满阈值）不触发。
-    const justUnder = 'ni '.repeat(19) + 'n';
+    // 63 字母（未满阈值）不触发。
+    const justUnder = 'ni '.repeat(31) + 'n';
     world.engineState({ mode: 'double-pinyin', revision: 1, composing: justUnder,
         rawInput: justUnder, candidates: [{ id: 'd0', text: '你' }], hasNextPage: false });
-    equal(world.native.of('chooseCandidate').length, 0, '39 letters stay composing');
-    const raw = 'ni '.repeat(19) + 'ni';
+    equal(world.native.of('chooseCandidate').length, 0, '63 letters stay composing');
+    const raw = 'ni '.repeat(31) + 'ni';
     world.engineState({ mode: 'double-pinyin', revision: 1, composing: raw, rawInput: raw,
         candidates: [{ id: 'd1', text: '你' }], hasNextPage: false });
     const picks = world.native.of('chooseCandidate');
     equal(picks.length, 1, 'double pinyin joins the auto-commit regime');
     equal(picks[0].args[1], 'd1', 'pool head id rides the choose call');
+});
+
+
+// ------------------------------------------------ 3.76 原地更新②：连点卡死复现
+// 2026-11-18 QQ 诊断（feelime-diagnostics-20261118-113019.txt）：
+// composing 从 d → db → "d b j" 一路长到 raw=20（候选一直在，cand=5）；
+// 部分选词后剩余尾段 raw=16 且候选归零，下一键 rev=21 即触发旧 16 字母
+// 死串清空（rev=22 composing 被清空），用户看到「组合过长，已清空」
+// 且正在打的组合被丢掉。旧阈值下 20+ 字母的正常整句输入必死。
+
+test('3.76: rapid 20+ letter input never stalls, no clear, no dropped keys', {since: '3.76'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    // 诊断同款按键流：d b j d d f v h g d n n j s c，再续打 10 字母到 25。
+    // 默认紧凑模式（slim）：拼音行按设计留空（拼音应显示在宿主输入框
+    // 里，见 renderPreeditLine），这里只断言回声侧不断流、不误清。
+    const stream = 'dbjddfvhgdnnjscfvvfvvfvv';
+    let rev = 0;
+    const echo = (raw, cands) => {
+        rev += 1;
+        world.engineState({ mode: 'pinyin', revision: rev,
+            composing: raw, rawInput: raw,
+            candidates: cands, hasNextPage: false });
+    };
+    const five = [{ id: 'c1', text: '都' }, { id: 'c2', text: '不' },
+        { id: 'c3', text: '得' }, { id: 'c4', text: '觉' }, { id: 'c5', text: '地' }];
+    for (let i = 1; i <= stream.length; i++) {
+        echo(stream.slice(0, i), five);
+        equal(world.native.of('clearComposing').length, 0,
+            `no clear while typing fast (${i} letters)`);
+        equal(world.native.of('chooseCandidate').length, 0,
+            `no auto-commit while typing fast (${i} letters)`);
+    }
+    // 诊断同款部分选词：首选上屏后剩余尾段无候选；再敲一键到 raw=16——
+    // 旧阈值会在这里误清，新阈值下必须纹丝不动。
+    echo('都不觉得地方vhgdnnjsc', []);
+    equal(world.native.of('clearComposing').length, 0,
+        'partial-commit tail with no candidates survives');
+    echo('都不觉得地方vhgdnnjsct', []);
+    equal(world.native.of('clearComposing').length, 0,
+        'the diagnostic rev=21 frame (16 letters, no candidates) no longer clears');
+    // 完整模式（full）：同一串拼音必须实时画在键盘拼音行上。
+    const full = fresh({ mode: 'pinyin', candidateBarMode: 'full' });
+    let revFull = 0;
+    for (let i = 1; i <= stream.length; i++) {
+        revFull += 1;
+        full.engineState({ mode: 'pinyin', revision: revFull,
+            composing: stream.slice(0, i), rawInput: stream.slice(0, i),
+            candidates: five, hasNextPage: false });
+    }
+    equal(full.$('preeditLine').textContent, stream,
+        'full mode preedit keeps showing the latest composition after 25 fast keys');
+    revFull += 1;
+    full.engineState({ mode: 'pinyin', revision: revFull,
+        composing: '都不觉得地方vhgdnnjsct', rawInput: '都不觉得地方vhgdnnjsct',
+        candidates: [], hasNextPage: false });
+    equal(full.$('preeditLine').textContent, '都不觉得地方vhgdnnjsct',
+        'the 16-letter tail stays on screen for the user to edit or delete');
+});
+
+test('3.76: dead-string clear still fires at 64, and candidates work after it', {since: '3.76'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    let rev = 0;
+    const echo = (raw, cands) => {
+        rev += 1;
+        world.engineState({ mode: 'pinyin', revision: rev,
+            composing: raw, rawInput: raw,
+            candidates: cands, hasNextPage: false });
+    };
+    echo('v'.repeat(63), []);
+    equal(world.native.of('clearComposing').length, 0, '63 letters never clears');
+    echo('v'.repeat(64), []);
+    equal(world.native.of('clearComposing').length, 1, 'the 64-letter dead string clears once');
+    // 清空后的组合结束回声解除门闩；重新打字、点候选照常上屏。
+    echo('', []);
+    echo('f', [{ id: 'c9', text: '发' }]);
+    const cell = world.$('candidates').children[0];
+    assert(cell && cell.textContent === '发', 'fresh candidate renders after the clear');
+    world.tap(cell);
+    const picks = world.native.of('chooseCandidate');
+    equal(picks.length, 1, 'candidate tap after a dead clear still chooses');
+    equal(picks[0].args[1], 'c9', 'the tapped candidate id rides the choose call');
 });
 
 
@@ -12722,6 +12956,249 @@ test('common-en: | and \\ take the &/# slots; & # lead row 4; nothing dropped (u
     const all = rows.map(rowText).join('');
     for (const ch of ['&', '#', '°', '¶', '¦', '`', '{', '}', '[', ']', '§']) {
         assert(all.includes(ch), ch + ' still reachable');
+    }
+});
+
+// ---------------------------------------------------------------------------
+// 简/繁（台湾）（3.76 原地更新第 4 项）
+// 路线：词库是简体，转换由 librime 的 simplifier 滤镜承载——8 个拼音类
+// schema 的 zh_hant_tw 开关挂 opencc s2tw.json（简 -> 繁（台湾））；
+// 开关翻转走 key_binder 的 set_option 合成键（Control+Shift+6），由
+// RimeTextEngine 在每次建会话后重发（radio 开关按 reset:1 复位回简体）。
+// 下列测试不跑真机引擎：用仓库内同款词典文件实现 OpenCC 文本词典的
+// 最长匹配转换（短路组、两链路），断言端到端输出；再断言 schema /
+// MANIFEST / Kotlin 接线的静态契约。真机仍须核对 librime 实际出词。
+// ---------------------------------------------------------------------------
+
+const S2TW_DIR = path.resolve(__dirname, '../../app/src/main/assets/engine-data/rime/opencc');
+const RIME_DIR = path.resolve(__dirname, '../../app/src/main/assets/engine-data/rime');
+
+function loadOpenccDict(file) {
+    const dict = new Map();
+    for (const line of fs.readFileSync(path.join(S2TW_DIR, file), 'utf8').split('\n')) {
+        if (!line || line.startsWith('#')) continue;
+        const tab = line.indexOf('\t');
+        if (tab < 0) continue;
+        const key = line.slice(0, tab);
+        const value = line.slice(tab + 1).split(' ')[0];
+        if (key && value && !dict.has(key)) dict.set(key, value);
+    }
+    return dict;
+}
+
+// OpenCC 文本词典语义：每位置按组内顺序取首个命中词典、典内取最长键；
+// 两条链路顺序应用（链路 1 简->繁，链路 2 繁->台湾）。
+function s2twConvert(text, chain) {
+    const maxKey = Math.max(...chain.flat().map(d => {
+        let m = 0;
+        for (const k of d.keys()) if ([...k].length > m) m = [...k].length;
+        return m;
+    }));
+    let out = text;
+    for (const group of chain) {
+        let next = '';
+        const chars = [...out];
+        let i = 0;
+        while (i < chars.length) {
+            let matched = null;
+            for (const dict of group) {
+                for (let len = Math.min(maxKey, chars.length - i); len >= 1; len--) {
+                    const key = chars.slice(i, i + len).join('');
+                    if (dict.has(key)) { matched = [len, dict.get(key)]; break; }
+                }
+                if (matched) break;
+            }
+            if (matched) { next += matched[1]; i += matched[0]; }
+            else { next += chars[i]; i += 1; }
+        }
+        out = next;
+    }
+    return out;
+}
+
+function s2twChain() {
+    return [
+        [loadOpenccDict('TWTerms.txt'), loadOpenccDict('STPhrases.txt'), loadOpenccDict('STCharacters.txt')],
+        [loadOpenccDict('TWPhrases.txt'), loadOpenccDict('TWVariantsPhrases.txt'), loadOpenccDict('TWVariants.txt')],
+    ];
+}
+
+test('s2tw: Taiwan wording for the required words (3.76 item 4)', () => {
+    const chain = s2twChain();
+    const cases = [
+        // 任务点名的台湾用词（高频词与易混词）
+        ['软件', '軟體'], ['视频', '影片'], ['程序', '程式'], ['屏幕', '螢幕'],
+        ['鼠标', '滑鼠'], ['U盘', '隨身碟'], ['行动电话', '行動電話'],
+        ['计程车', '計程車'], ['出租车', '計程車'], ['地铁', '捷運'],
+        ['摩托车', '機車'], ['打印机', '印表機'], ['网络', '網路'],
+        ['信息', '資訊'], ['硬盘', '硬碟'], ['光盘', '光碟'],
+        ['服务器', '伺服器'], ['内存', '記憶體'], ['文件夹', '資料夾'],
+        ['默认', '預設'], ['设置', '設定'], ['移动电话', '行動電話'],
+        ['互联网', '網際網路'], ['宽带', '寬頻'], ['方便面', '泡麵'],
+        ['土豆', '馬鈴薯'], ['西红柿', '番茄'], ['酸奶', '優格'],
+        ['充电宝', '行動電源'], ['外卖', '外送'], ['打车', '叫車'],
+        ['点赞', '按讚'], ['卫生间', '廁所'], ['邮箱', '信箱'],
+        ['优盘', '隨身碟'], ['公交车', '公車'],
+        // 组词：补表命中后其余部分继续逐字转换
+        ['地铁站', '捷運站'], ['打车软件', '叫車軟體'], ['摩托车驾照', '機車駕照'],
+        ['出租车司机', '計程車司機'], ['视频会议', '視訊會議'], ['程序员', '程式設計師'],
+        // 回归：两岸同形或逐字即对的词不被改坏
+        ['今天', '今天'], ['我们', '我們'], ['中国', '中國'], ['台湾', '臺灣'],
+        ['电话', '電話'], ['电脑', '電腦'], ['手机', '手機'], ['头发', '頭髮'],
+        ['信号', '訊號'], ['激光', '雷射'], ['登录', '登入'], ['短信', '簡訊'],
+    ];
+    for (const [input, expected] of cases) {
+        equal(s2twConvert(input, chain), expected, `s2tw ${input}`);
+    }
+    // 否定：绝不出大陆词/简体字形
+    const forbidden = [
+        ['软件', '軟件'], ['视频', '視頻'], ['地铁', '地鐵'], ['摩托车', '摩托車'],
+        ['打印机', '打印機'], ['网络', '網絡'], ['硬盘', '硬盤'], ['光盘', '光盤'],
+    ];
+    for (const [input, bad] of forbidden) {
+        assert(s2twConvert(input, chain) !== bad, `s2tw ${input} must not yield ${bad}`);
+    }
+    // 补表只收上游确实翻错的词：去掉补表后，上游链路对该词的输出必须
+    // 不是台湾词（否则补表就是重复建设）。
+    const terms = loadOpenccDict('TWTerms.txt');
+    equal(terms.size, 14, 'TWTerms carries exactly the 14 upstream-missed words');
+    const upstreamOnlyChain = [
+        [loadOpenccDict('STPhrases.txt'), loadOpenccDict('STCharacters.txt')],
+        [loadOpenccDict('TWPhrases.txt'), loadOpenccDict('TWVariantsPhrases.txt'), loadOpenccDict('TWVariants.txt')],
+    ];
+    for (const [key, value] of terms) {
+        assert(s2twConvert(key, upstreamOnlyChain) !== value,
+            `TWTerms ${key} is already correct upstream (got ${value} without the supplement)`);
+    }
+    // 词典规模 sanity：上游表确已落盘且非空壳。
+    assert(loadOpenccDict('STCharacters.txt').size > 3000, 'STCharacters loaded');
+    assert(loadOpenccDict('STPhrases.txt').size > 40000, 'STPhrases loaded');
+    assert(loadOpenccDict('TWPhrases.txt').size > 700, 'TWPhrases loaded');
+});
+
+test('s2tw: schema wiring across the 8 pinyin schemas (3.76 item 4)', () => {
+    const luna = ['luna_pinyin', 'luna_pinyin_fuzzy', 'luna_pinyin_t9', 'luna_pinyin_t9_fuzzy'];
+    const dp = ['double_pinyin_flypy', 'double_pinyin_sogou', 'double_pinyin_ziguang', 'ziranma_double_pinyin'];
+    for (const id of [...luna, ...dp]) {
+        const src = fs.readFileSync(path.join(RIME_DIR, id + '.schema.yaml'), 'utf8');
+        assert(src.includes('opencc_config: s2tw.json'), `${id} zh_hant_tw uses s2tw.json`);
+        assert(src.includes('option_name: zh_hant_tw'), `${id} has zh_hant_tw option`);
+        assert(src.includes('{accept: "Control+Shift+6", set_option: zh_hant_tw, when: always}'),
+            `${id} binds Control+Shift+6 to zh_hant_tw`);
+        assert(src.includes('{accept: "Control+Shift+7", set_option: zh_hans, when: always}'),
+            `${id} binds Control+Shift+7 back to zh_hans`);
+        assert(!src.includes('t2tw.json'), `${id} no longer references the missing t2tw.json`);
+        assert(!src.includes('toggle: zh_hant_tw'), `${id} must not cycle the radio group with toggle:`);
+    }
+    // 全拼/T9：简体侧仍是 t2s.json（默认复位值即简体，不可动）。
+    for (const id of luna) {
+        const src = fs.readFileSync(path.join(RIME_DIR, id + '.schema.yaml'), 'utf8');
+        assert(src.includes('opencc_config: t2s.json'), `${id} zh_hans still uses t2s.json`);
+        assert(src.includes('reset: 1'), `${id} radio switch still resets to zh_hans`);
+    }
+    // 双拼：旧布尔 simplifier 已换成与全拼同款的双标签滤镜 + 四态开关。
+    for (const id of dp) {
+        const src = fs.readFileSync(path.join(RIME_DIR, id + '.schema.yaml'), 'utf8');
+        assert(src.includes('"simplifier@zh_hans"'), `${id} has the tagged hans simplifier`);
+        assert(src.includes('"simplifier@zh_hant_tw"'), `${id} has the tagged tw simplifier`);
+        assert(src.includes('options: [zh_hant, zh_hans, zh_hant_hk, zh_hant_tw]'),
+            `${id} has the four-way script switch`);
+        assert(!src.includes('option_name: simplification'), `${id} drops the old boolean switch`);
+    }
+    // s2tw.json 只引用已落盘的词典文件（相对 opencc/ 目录）。
+    const cfg = JSON.parse(fs.readFileSync(path.join(S2TW_DIR, 's2tw.json'), 'utf8'));
+    const files = cfg.conversion_chain.flatMap(c => c.dict.dicts.map(d => d.file));
+    equal(JSON.stringify(files), JSON.stringify(['TWTerms.txt', 'STPhrases.txt', 'STCharacters.txt',
+        'TWPhrases.txt', 'TWVariantsPhrases.txt', 'TWVariants.txt']),
+        's2tw chain order (FeelimD terms first, then upstream, then TW variants)');
+    for (const file of files) {
+        assert(fs.existsSync(path.join(S2TW_DIR, file)), `s2tw references existing ${file}`);
+    }
+});
+
+test('s2tw: MANIFEST registers every new/changed engine file (3.76 item 4)', () => {
+    const crypto = require('crypto');
+    const manifest = JSON.parse(fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/engine-data/MANIFEST.json'), 'utf8'));
+    const check = rel => {
+        const entry = manifest.files['rime/' + rel];
+        assert(entry, `MANIFEST lists rime/${rel}`);
+        const bytes = fs.readFileSync(path.join(RIME_DIR, rel));
+        equal(entry.bytes, bytes.length, `MANIFEST bytes for rime/${rel}`);
+        equal(entry.sha256, crypto.createHash('sha256').update(bytes).digest('hex'),
+            `MANIFEST sha256 for rime/${rel}`);
+    };
+    for (const rel of ['opencc/STCharacters.txt', 'opencc/STPhrases.txt', 'opencc/TWVariants.txt',
+        'opencc/TWVariantsPhrases.txt', 'opencc/TWPhrases.txt', 'opencc/TWTerms.txt',
+        'opencc/s2tw.json']) {
+        check(rel);
+    }
+    for (const id of ['luna_pinyin', 'luna_pinyin_fuzzy', 'luna_pinyin_t9', 'luna_pinyin_t9_fuzzy',
+        'double_pinyin_flypy', 'double_pinyin_sogou', 'double_pinyin_ziguang',
+        'ziranma_double_pinyin']) {
+        check(id + '.schema.yaml');
+    }
+});
+
+test('s2tw: Kotlin wiring for the script switch (3.76 item 4)', () => {
+    const kt = p => fs.readFileSync(path.resolve(__dirname, '../../app/src/main/java/com/feelime/ime/', p), 'utf8');
+    const variant = kt('engine/ScriptVariant.kt');
+    assert(variant.includes('const val PREF_KEY = "script_variant"'), 'pref key is script_variant');
+    assert(variant.includes('const val HANT_TW = "hant_tw"'), 'hant_tw value');
+    assert(variant.includes('fun isTraditionalTw(context: Context): Boolean'), 'isTraditionalTw exists');
+    const engine = kt('engine/RimeTextEngine.kt');
+    assert(engine.includes('fun applyScriptVariant(context: Context, session: Long, schemaId: String)'),
+        'applyScriptVariant exists');
+    assert(engine.includes('SCRIPT_TW_KEYCODE = 0x36'), 'TW key is Control+Shift+6 (0x36)');
+    assert(engine.includes('SCRIPT_MOD_CONTROL_SHIFT = 5'), 'modifiers are Shift(1)|Control(4)=5');
+    assert(engine.includes('applyScriptVariant(appContext, session, schemaId)'),
+        'live session applies the variant after creation');
+    assert(engine.includes('applyScriptVariant(context, session, schemaId)'),
+        'correction scratch session applies the variant too');
+    // 兜底：绑定漏接时杂字绝不上屏（收 commit + ESC 清组合）。
+    assert(engine.includes('rimeCommit(session)'), 'stray digit is drained via commit');
+    assert(engine.includes('rimeProcessKey(session, ESCAPE, 0)'), 'stray preedit is cleared with ESC');
+    for (const id of ['"luna_pinyin"', '"luna_pinyin_fuzzy"', '"luna_pinyin_t9"',
+        '"luna_pinyin_t9_fuzzy"', '"double_pinyin_flypy"', '"double_pinyin_sogou"',
+        '"double_pinyin_ziguang"', '"ziranma_double_pinyin"']) {
+        assert(engine.includes(id), `apply gate covers ${id}`);
+    }
+    const bridge = kt('SettingsBridge.kt');
+    assert(bridge.includes('const val ACTION_SCRIPT_VARIANT_CHANGED = "com.feelime.ime.SCRIPT_VARIANT_CHANGED"'),
+        'broadcast action exists');
+    assert(bridge.includes('fun setScriptVariant(value: String, token: String)'),
+        'setScriptVariant bridge method exists');
+    assert(bridge.includes('.put("scriptVariant", com.feelime.ime.engine.ScriptVariant.current(context))'),
+        'settings state carries scriptVariant');
+    const service = kt('FeelimeService.kt');
+    assert(service.includes('scriptVariantReceiver'), 'service has the script-variant receiver');
+    assert(service.includes('ACTION_SCRIPT_VARIANT_CHANGED'), 'service listens for the broadcast');
+    assert(service.includes('InputMode.DOUBLE_PINYIN'), 'receiver covers double-pinyin sessions');
+    assert(service.includes('.put("scriptVariant", com.feelime.ime.engine.ScriptVariant.current(this))'),
+        'keyboard hello carries scriptVariant');
+});
+
+test('dynamic week candidates follow the script variant (3.76 item 4)', {since: '3.51.0'}, () => {
+    const bar = world => [...world.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent);
+    const xingqi = world => world.engineState({ mode: 'pinyin', revision: 1, composing: 'xingqi',
+        rawInput: 'xingqi', candidates: [{ id: 'c1', text: '星期日' }], hasNextPage: false });
+    const weekday = new Date().getDay();
+    // 繁体：出「禮拜X」，不出「礼拜X」。
+    const tw = fresh();
+    tw.hello({ scriptVariant: 'hant_tw' });
+    xingqi(tw);
+    assert(!bar(tw).some(t => t.startsWith('礼拜')), 'TW bar has no simplified 礼拜');
+    if (weekday !== 0) {
+        assert(bar(tw).some(t => /^禮拜[一二三四五六]$/.test(t)), 'TW bar offers 禮拜 + weekday');
+    }
+    // 简体（默认 hello 不带该字段）：出「礼拜X」，不出「禮拜X」。
+    const hans = fresh();
+    hans.hello();
+    xingqi(hans);
+    assert(!bar(hans).some(t => t.startsWith('禮拜')), 'hans bar has no traditional 禮拜');
+    if (weekday !== 0) {
+        assert(bar(hans).some(t => /^礼拜[一二三四五六]$/.test(t)), 'hans bar offers 礼拜 + weekday');
     }
 });
 
