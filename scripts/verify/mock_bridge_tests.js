@@ -1767,6 +1767,53 @@ test('clipboard favorite star: favorited rows render ★, tap flips ☆ to ★ a
     equal(favBtn(rows2[0]).textContent, '☆', 'removed elsewhere renders back to ☆');
 });
 
+test('clipboard favorite star: two stars add two favorites; over-200-char rows carry no star (3.76)', {since: '3.76'}, () => {
+    const world = fresh();
+    world.hello({});
+    world.favorites([]);
+    const longText = '很长的内容。'.repeat(40);
+    assert(longText.length > 200, 'test text exceeds the favorites limit');
+    world.clipboard([
+        { id: 'c1', time: 1, text: '第一句常用语' },
+        { id: 'c2', time: 2, text: '第二句常用语' },
+        { id: 'c3', time: 3, text: longText },
+    ]);
+    world.tap(world.$('clipboardButton'));
+    const rows = [...world.document.querySelectorAll('.panel-item')];
+    const favBtn = row => row.querySelector('.clip-fav-btn');
+    assert(favBtn(rows[0]), 'short row 1 has a star');
+    assert(favBtn(rows[1]), 'short row 2 has a star');
+    equal(favBtn(rows[2]), null, 'over-200-char row has no star (native would silently reject it)');
+    world.tap(favBtn(rows[0]));
+    world.tap(favBtn(rows[1]));
+    const adds = world.native.of('favoritesAdd');
+    equal(adds.length, 2, 'two stars call favoritesAdd twice');
+    equal(adds[0].args[0], '第一句常用语', 'first star adds the first text');
+    equal(adds[1].args[0], '第二句常用语', 'second star adds the second text');
+    assert(world.native.of('getFavorites').length >= 1, 'star re-fetches favorites so ☆/★ reconcile with the store');
+});
+
+test('clipboard split view: preview renders per-char spans and the selection actions exist (3.76)', {since: '3.76'}, () => {
+    const world = fresh();
+    world.hello({});
+    const text = '今天天气很好适合出门散步';
+    world.clipboard([{ id: '1', time: 1, text }]);
+    world.tap(world.$('clipboardButton'));
+    world.tap(world.document.querySelectorAll('.panel-item')[0].querySelector('.clip-expand-btn'));
+    const textEl = world.$('clipSplitText');
+    const chars = [...textEl.querySelectorAll('.clip-split-char')];
+    equal(chars.length, [...text].length, 'preview is one span per character');
+    equal(chars.map(c => c.textContent).join(''), text, 'spans spell the full preview text');
+    const bar = world.$('clipSplitActions');
+    assert(bar.hidden, 'selection actions hidden until a range is selected');
+    assert(world.$('clipSplitCopy'), 'copy-selection button present');
+    assert(world.$('clipSplitPaste'), 'paste-selection button present');
+    const css = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/keyboard/keyboard.css'), 'utf8');
+    assert(/\.clip-split-char\.sel/.test(css), 'selected-char highlight rule exists');
+    assert(/\.clip-split-actions/.test(css), 'selection actions rule exists');
+});
+
 test('clipboard split view: long text shows each sentence once and the card scrolls (3.75)', {since: '3.75'}, () => {
     const world = fresh();
     world.hello({});

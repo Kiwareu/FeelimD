@@ -313,11 +313,15 @@ class FavoritesStore(context: Context) {
         PanelStoreSignals.fireFavoritesChanged()
     }
 
+    /** Pure read: input codes are derived deterministically from the text
+     * (PhraseInputCode.generate), so they are resolved on the fly and never
+     * written back. An earlier async apply() write-back here could land
+     * after a concurrent add()'s commit() and clobber the new row with the
+     * pre-add list (the clipboard ☆ "only one favorite" bug: the second
+     * star's add was overwritten by the stale write-back). */
     fun items(): List<PanelItem> = synchronized(prefs) {
         val stored = PanelCodec.parse(prefs.getString(KEY, "").orEmpty())
-        val resolved = stored.map { if (it.code.isBlank()) it.copy(code = inputCode(it.text, "")) else it }
-        if (resolved != stored) prefs.edit().putString(KEY, PanelCodec.serialize(resolved)).apply()
-        resolved
+        stored.map { if (it.code.isBlank()) it.copy(code = inputCode(it.text, "")) else it }
     }
 
     /** Returns false when the text is empty or exceeds the per-item limit.

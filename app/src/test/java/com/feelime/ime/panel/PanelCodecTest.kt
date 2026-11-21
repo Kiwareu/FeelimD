@@ -72,6 +72,28 @@ class PanelCodecTest {
     }
 
     @Test
+    fun `two sequential favorites adds both persist through serialize-parse round trips`() {
+        // 2026-11-22 regression: the clipboard ☆ "only one favorite" bug.
+        // Mirrors FavoritesStore.add: read -> insert -> serialize -> store,
+        // then read the stored string back and add again. The second add
+        // must NOT drop the first one.
+        var stored = ""
+        val first = PanelStoreOps.insert(
+            PanelCodec.parse(stored), "第一句常用语", "a1", 1L, 56 * 1024, 200,
+        )!!
+        stored = PanelCodec.serialize(first)
+        assertEquals(listOf("第一句常用语"), PanelCodec.parse(stored).map { it.text })
+        val second = PanelStoreOps.insert(
+            PanelCodec.parse(stored), "第二句常用语", "a2", 2L, 56 * 1024, 200,
+        )!!
+        stored = PanelCodec.serialize(second)
+        assertEquals(
+            listOf("第二句常用语", "第一句常用语"),
+            PanelCodec.parse(stored).map { it.text },
+        )
+    }
+
+    @Test
     fun `insert drops oldest until item cap holds`() {
         val items = (1..50).map { PanelItem(it.toString(), it.toLong(), "t$it") }
         val next = PanelStoreOps.insert(items, "new", "51", 51L, 1024 * 1024, 50)!!

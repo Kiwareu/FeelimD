@@ -995,6 +995,10 @@ class MockNative {
     getFavorites(token) {
         this._record('getFavorites', [token]);
     }
+    // 选词视图（3.76）：把拖选出的范围写回系统剪贴板。
+    copyText(text, token) {
+        this._record('copyText', [text, token]);
+    }
     // userdata 备份的 localStorage 设置级镜像（docs/design/userdata.md §1.4）。
     // 与原生 ImeBridge.pushStores 一致：合并进镜像并抬高 rev，下次拉取可见。
     pushStores(json, token) {

@@ -390,6 +390,8 @@
         "上屏": "Insert",
         "复制": "Copy",
         "已复制": "Copied",
+        "复制选中": "Copy selection",
+        "粘贴选中": "Paste selection",
         "复制失败，可长按译文手动复制": "Copy failed — long-press the translation to copy it manually",
         "去下载模型": "Download models",
         "当前版本不支持离线翻译，请更新 APK": "This version doesn't support offline translation — update the app.",
@@ -701,6 +703,11 @@ const TOOLBAR_ICONS = {
     // 粘贴上限：再大就容易把输入框和桥一次撑爆。条数不设上限，
     // 全部正文大约 32MB，只存在本机。
     const MAX_COMMIT_CODE_POINTS = 100000;
+    // 常用语单条上限（与原生 FavoritesStore.MAX_TEXT_CHARS 一致，
+    // 按 UTF-16 长度计）：超长的剪贴板条目点 ☆ 会被原生静默拒绝，
+    // 星标却先变 ★ 再被 onFavorites 打回 ☆，看起来像“只能收藏
+    // 一个”。这类条目不渲染 ☆，避免误导。
+    const MAX_FAVORITE_CHARS = 200;
     // Cursor scrub: one caret step per 12px of drag at the default
     // 3x speed (SCRUB_UNIT_BASE_PX / scrubSpeed), counted after the fixed
     // recognition-threshold crossing. Exposes 1x..5x in the quick
@@ -12633,21 +12640,32 @@ const TOOLBAR_ICONS = {
                     // 3.74.11：剪贴板条目直加常用语（☆）。favoritesAdd
                     // 已有桥方法；输入码留空自动生成，位次 1。点后 toast
                     // 回执，面板不关（可连续加多条）。
-                    const fav = document.createElement('button');
-                    fav.type = 'button';
-                    fav.className = 'clip-fav-btn';
-                    // 3.75：已在常用语里的条目渲染成实心 ★（以
-                    // onFavorites 下发的数据为准）；点 ☆ 后立即变 ★
-                    // （favoritesAdd 是本机写操作，随后 onFavorites
-                    // 回推还会再对一次账）。
-                    fav.textContent = this.isFavoriteText(item.text) ? '★' : '☆';
-                    fav.setAttribute('aria-label', t("加到常用语"));
-                    fav.addEventListener('click', event => {
-                        event.stopPropagation();
-                        this.call(() => Native.favoritesAdd(item.text, '', 1, this.token));
-                        fav.textContent = '★';
-                        this.showToast(t("已加到常用语"));
-                    });
+                    // 2026-11-22：超过 200 字的条目原生会静默拒绝，
+                    // 不渲染 ☆（见 MAX_FAVORITE_CHARS），避免点了却加
+                    // 不上的误导；这类条目仍可用 ⌄/长按进选词视图。
+                    const favable = item.text.trim().length <= MAX_FAVORITE_CHARS;
+                    const fav = favable ? document.createElement('button') : null;
+                    if (fav) {
+                        fav.type = 'button';
+                        fav.className = 'clip-fav-btn';
+                        // 3.75：已在常用语里的条目渲染成实心 ★（以
+                        // onFavorites 下发的数据为准）；点 ☆ 后立即变 ★
+                        // （favoritesAdd 是本机写操作，随后 onFavorites
+                        // 回推还会再对一次账）。
+                        fav.textContent = this.isFavoriteText(item.text) ? '★' : '☆';
+                        fav.setAttribute('aria-label', t("加到常用语"));
+                        fav.addEventListener('click', event => {
+                            event.stopPropagation();
+                            this.call(() => Native.favoritesAdd(item.text, '', 1, this.token));
+                            fav.textContent = '★';
+                            this.showToast(t("已加到常用语"));
+                            // 2026-11-22：只收藏一个的修复——favoritesAdd 成功
+                            // 后原生会经 onFavorites 回推，但信号若漏推，星标
+                            // 状态就与常用语脱节。主动再拉一次，让 ☆/★ 以
+                            // 常用语里的真实内容为准（多条并存时逐个变 ★）。
+                            this.call(() => Native.getFavorites(this.token));
+                        });
+                    }
                     const body = document.createElement('span');
                     body.className = 'clip-body';
                     body.append(preview);
@@ -12671,7 +12689,8 @@ const TOOLBAR_ICONS = {
                             event.stopPropagation();
                             this.openClipSplit(item);
                         });
-                        row.append(body, expandBtn, fav);
+                        row.append(body, expandBtn);
+                        if (fav) row.append(fav);
                         this.bindItemLongPress(row, () => {
                             longPressed = true;
                             this.openClipSplit(item);
@@ -13494,10 +13513,30 @@ const TOOLBAR_ICONS = {
             // 3.74.11：全文特别长（约 200 字以上）只显示前 200 字加
             // 省略号，不整段铺开；片段 chips 照常显示，点「全文」
             // chip 仍贴整条（pasteClipPiece 用 item.text 全文）。
+            // 2026-11-22：预览按字拆成 span，供长按拖选按字定位；
+            // 截断的 … 单独一个不可选 span，不进选区。
             const shown = [...item.text];
-            textEl.textContent = shown.length > 200
-                ? shown.slice(0, 200).join('') + '…'
-                : item.text;
+            const cut = shown.length > 200;
+            const shownChars = cut ? shown.slice(0, 200) : shown;
+            this.clipSplitShown = shownChars;
+            this.clipSplitChars = [];
+            textEl.replaceChildren();
+            shownChars.forEach((ch, i) => {
+                const span = document.createElement('span');
+                span.className = 'clip-split-char';
+                span.dataset.i = String(i);
+                span.textContent = ch;
+                textEl.append(span);
+                this.clipSplitChars.push(span);
+            });
+            if (cut) {
+                const dots = document.createElement('span');
+                dots.className = 'clip-split-char';
+                dots.textContent = '…';
+                textEl.append(dots);
+            }
+            this.clearClipSplitSelection();
+            this.bindClipSplitSelection(textEl);
             chipsEl.replaceChildren();
             const full = document.createElement('button');
             full.type = 'button';
@@ -13532,10 +13571,120 @@ const TOOLBAR_ICONS = {
 
         closeClipSplit() {
             this.clipSplitItem = null;
+            this.clearClipSplitSelection();
             const card = document.getElementById('clipSplitCard');
             if (!card) return;
             card.classList.remove('open');
             card.hidden = true;
+        }
+
+        /** 清掉拖选高亮与复制/粘贴操作条。 */
+        clearClipSplitSelection() {
+            this.clipSplitSelection = '';
+            (this.clipSplitChars || []).forEach(span => span.classList.remove('sel'));
+            const bar = document.getElementById('clipSplitActions');
+            if (bar) bar.hidden = true;
+        }
+
+        /** 选词视图长按拖选（2026-11-22）：按住约 350ms 不动进入选区，
+         * 拖动扩到手指下的字，松手后操作条出现，可复制选中或粘贴选中。
+         * 未长按的拖动照常滚动，不进选区。 */
+        bindClipSplitSelection(textEl) {
+            if (!textEl || textEl.__clipSelBound) return;
+            textEl.__clipSelBound = true;
+            let start = null;
+            let timer = null;
+            let selecting = false;
+            let anchor = -1;
+            let end = -1;
+            const clearTimer = () => { if (timer) { clearTimeout(timer); timer = null; } };
+            const indexAt = (x, y) => {
+                const el = typeof document.elementFromPoint === 'function'
+                    ? document.elementFromPoint(x, y) : null;
+                const span = el && el.closest ? el.closest('.clip-split-char[data-i]') : null;
+                if (span) return Number(span.dataset.i);
+                const rect = textEl.getBoundingClientRect();
+                if (y <= rect.top) return 0;
+                if (y >= rect.bottom) return Math.max(0, (this.clipSplitChars || []).length - 1);
+                return -1;
+            };
+            const paint = () => {
+                const lo = Math.min(anchor, end);
+                const hi = Math.max(anchor, end);
+                (this.clipSplitChars || []).forEach((span, i) => {
+                    span.classList.toggle('sel', i >= lo && i <= hi);
+                });
+            };
+            const showActions = () => {
+                const bar = document.getElementById('clipSplitActions');
+                if (!bar) return;
+                const has = anchor >= 0 && end >= 0;
+                bar.hidden = !has;
+                if (has) {
+                    const lo = Math.min(anchor, end);
+                    const hi = Math.max(anchor, end);
+                    this.clipSplitSelection = (this.clipSplitShown || []).slice(lo, hi + 1).join('');
+                } else {
+                    this.clipSplitSelection = '';
+                }
+            };
+            textEl.addEventListener('touchstart', event => {
+                const t = event.changedTouches[0];
+                if (!t) return;
+                start = { x: t.clientX, y: t.clientY };
+                clearTimer();
+                timer = setTimeout(() => {
+                    const i = indexAt(start.x, start.y);
+                    if (i < 0) { timer = null; return; }
+                    selecting = true;
+                    anchor = i;
+                    end = i;
+                    paint();
+                    showActions();
+                    timer = null;
+                }, 350);
+            }, { passive: true });
+            textEl.addEventListener('touchmove', event => {
+                const t = event.changedTouches[0];
+                if (!t) return;
+                if (selecting) {
+                    event.preventDefault();
+                    const i = indexAt(t.clientX, t.clientY);
+                    if (i >= 0 && i !== end) { end = i; paint(); showActions(); }
+                    return;
+                }
+                if (start && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) {
+                    clearTimer();
+                }
+            }, { passive: false });
+            const finish = () => { clearTimer(); selecting = false; start = null; };
+            textEl.addEventListener('touchend', finish, { passive: true });
+            textEl.addEventListener('touchcancel', finish, { passive: true });
+            const copyBtn = document.getElementById('clipSplitCopy');
+            if (copyBtn && !copyBtn.__clipSelBound) {
+                copyBtn.__clipSelBound = true;
+                copyBtn.addEventListener('click', () => {
+                    const sel = this.clipSplitSelection || '';
+                    if (!sel) return;
+                    this.call(() => {
+                        if (typeof Native.copyText === 'function') {
+                            Native.copyText(sel, this.token);
+                            this.showToast(t("已复制"));
+                        } else {
+                            this.showToast(t("当前版本不支持复制，请更新 APK"));
+                        }
+                    });
+                });
+            }
+            const pasteBtn = document.getElementById('clipSplitPaste');
+            if (pasteBtn && !pasteBtn.__clipSelBound) {
+                pasteBtn.__clipSelBound = true;
+                pasteBtn.addEventListener('click', () => {
+                    const sel = this.clipSplitSelection || '';
+                    if (!sel) return;
+                    this.pasteClipPiece(sel);
+                });
+            }
         }
 
         /** 片段/全文的上屏与整条一致：编辑卡开着时填进「常用内容」

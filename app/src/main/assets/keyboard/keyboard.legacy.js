@@ -381,6 +381,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u4E0A\u5C4F": "Insert",
     "\u590D\u5236": "Copy",
     "\u5DF2\u590D\u5236": "Copied",
+    "\u590D\u5236\u9009\u4E2D": "Copy selection",
+    "\u7C98\u8D34\u9009\u4E2D": "Paste selection",
     "\u590D\u5236\u5931\u8D25\uFF0C\u53EF\u957F\u6309\u8BD1\u6587\u624B\u52A8\u590D\u5236": "Copy failed \u2014 long-press the translation to copy it manually",
     "\u53BB\u4E0B\u8F7D\u6A21\u578B": "Download models",
     "\u5F53\u524D\u7248\u672C\u4E0D\u652F\u6301\u79BB\u7EBF\u7FFB\u8BD1\uFF0C\u8BF7\u66F4\u65B0 APK": "This version doesn't support offline translation \u2014 update the app.",
@@ -791,6 +793,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "voice-cancel-v1"
   ];
   const MAX_COMMIT_CODE_POINTS = 1e5;
+  const MAX_FAVORITE_CHARS = 200;
   const SCRUB_UNIT_BASE_PX = 36;
   const BS_UNDO_KEYCODE = 29 + "Z".charCodeAt(0) - 65;
   const MODES = {
@@ -10519,17 +10522,21 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const preview2 = document.createElement("span");
           preview2.className = "panel-text";
           preview2.textContent = tooLong ? Array.from(item.text).slice(0, 400).join("") + t("\u2026\uFF08\u5185\u5BB9\u8FC7\u957F\uFF09") : item.text;
-          const fav = document.createElement("button");
-          fav.type = "button";
-          fav.className = "clip-fav-btn";
-          fav.textContent = this.isFavoriteText(item.text) ? "\u2605" : "\u2606";
-          fav.setAttribute("aria-label", t("\u52A0\u5230\u5E38\u7528\u8BED"));
-          fav.addEventListener("click", (event) => {
-            event.stopPropagation();
-            this.call(() => Native.favoritesAdd(item.text, "", 1, this.token));
-            fav.textContent = "\u2605";
-            this.showToast(t("\u5DF2\u52A0\u5230\u5E38\u7528\u8BED"));
-          });
+          const favable = item.text.trim().length <= MAX_FAVORITE_CHARS;
+          const fav = favable ? document.createElement("button") : null;
+          if (fav) {
+            fav.type = "button";
+            fav.className = "clip-fav-btn";
+            fav.textContent = this.isFavoriteText(item.text) ? "\u2605" : "\u2606";
+            fav.setAttribute("aria-label", t("\u52A0\u5230\u5E38\u7528\u8BED"));
+            fav.addEventListener("click", (event) => {
+              event.stopPropagation();
+              this.call(() => Native.favoritesAdd(item.text, "", 1, this.token));
+              fav.textContent = "\u2605";
+              this.showToast(t("\u5DF2\u52A0\u5230\u5E38\u7528\u8BED"));
+              this.call(() => Native.getFavorites(this.token));
+            });
+          }
           const body = document.createElement("span");
           body.className = "clip-body";
           body.append(preview2);
@@ -10544,7 +10551,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
               event.stopPropagation();
               this.openClipSplit(item);
             });
-            row.append(body, expandBtn, fav);
+            row.append(body, expandBtn);
+            if (fav) row.append(fav);
             this.bindItemLongPress(row, () => {
               longPressed2 = true;
               this.openClipSplit(item);
@@ -11273,7 +11281,27 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const pieces = this.clipPieces(item.text);
       this.clipSplitItem = item;
       const shown = [...item.text];
-      textEl.textContent = shown.length > 200 ? shown.slice(0, 200).join("") + "\u2026" : item.text;
+      const cut = shown.length > 200;
+      const shownChars = cut ? shown.slice(0, 200) : shown;
+      this.clipSplitShown = shownChars;
+      this.clipSplitChars = [];
+      textEl.replaceChildren();
+      shownChars.forEach((ch, i) => {
+        const span = document.createElement("span");
+        span.className = "clip-split-char";
+        span.dataset.i = String(i);
+        span.textContent = ch;
+        textEl.append(span);
+        this.clipSplitChars.push(span);
+      });
+      if (cut) {
+        const dots = document.createElement("span");
+        dots.className = "clip-split-char";
+        dots.textContent = "\u2026";
+        textEl.append(dots);
+      }
+      this.clearClipSplitSelection();
+      this.bindClipSplitSelection(textEl);
       chipsEl.replaceChildren();
       const full = document.createElement("button");
       full.type = "button";
@@ -11302,10 +11330,133 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     closeClipSplit() {
       this.clipSplitItem = null;
+      this.clearClipSplitSelection();
       const card = document.getElementById("clipSplitCard");
       if (!card) return;
       card.classList.remove("open");
       card.hidden = true;
+    }
+    /** 清掉拖选高亮与复制/粘贴操作条。 */
+    clearClipSplitSelection() {
+      this.clipSplitSelection = "";
+      (this.clipSplitChars || []).forEach((span) => span.classList.remove("sel"));
+      const bar = document.getElementById("clipSplitActions");
+      if (bar) bar.hidden = true;
+    }
+    /** 选词视图长按拖选（2026-11-22）：按住约 350ms 不动进入选区，
+     * 拖动扩到手指下的字，松手后操作条出现，可复制选中或粘贴选中。
+     * 未长按的拖动照常滚动，不进选区。 */
+    bindClipSplitSelection(textEl) {
+      if (!textEl || textEl.__clipSelBound) return;
+      textEl.__clipSelBound = true;
+      let start = null;
+      let timer = null;
+      let selecting = false;
+      let anchor = -1;
+      let end = -1;
+      const clearTimer = /* @__PURE__ */ __name(() => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      }, "clearTimer");
+      const indexAt = /* @__PURE__ */ __name((x, y) => {
+        const el = typeof document.elementFromPoint === "function" ? document.elementFromPoint(x, y) : null;
+        const span = el && el.closest ? el.closest(".clip-split-char[data-i]") : null;
+        if (span) return Number(span.dataset.i);
+        const rect = textEl.getBoundingClientRect();
+        if (y <= rect.top) return 0;
+        if (y >= rect.bottom) return Math.max(0, (this.clipSplitChars || []).length - 1);
+        return -1;
+      }, "indexAt");
+      const paint = /* @__PURE__ */ __name(() => {
+        const lo = Math.min(anchor, end);
+        const hi = Math.max(anchor, end);
+        (this.clipSplitChars || []).forEach((span, i) => {
+          span.classList.toggle("sel", i >= lo && i <= hi);
+        });
+      }, "paint");
+      const showActions = /* @__PURE__ */ __name(() => {
+        const bar = document.getElementById("clipSplitActions");
+        if (!bar) return;
+        const has = anchor >= 0 && end >= 0;
+        bar.hidden = !has;
+        if (has) {
+          const lo = Math.min(anchor, end);
+          const hi = Math.max(anchor, end);
+          this.clipSplitSelection = (this.clipSplitShown || []).slice(lo, hi + 1).join("");
+        } else {
+          this.clipSplitSelection = "";
+        }
+      }, "showActions");
+      textEl.addEventListener("touchstart", (event) => {
+        const t2 = event.changedTouches[0];
+        if (!t2) return;
+        start = { x: t2.clientX, y: t2.clientY };
+        clearTimer();
+        timer = setTimeout(() => {
+          const i = indexAt(start.x, start.y);
+          if (i < 0) {
+            timer = null;
+            return;
+          }
+          selecting = true;
+          anchor = i;
+          end = i;
+          paint();
+          showActions();
+          timer = null;
+        }, 350);
+      }, { passive: true });
+      textEl.addEventListener("touchmove", (event) => {
+        const t2 = event.changedTouches[0];
+        if (!t2) return;
+        if (selecting) {
+          event.preventDefault();
+          const i = indexAt(t2.clientX, t2.clientY);
+          if (i >= 0 && i !== end) {
+            end = i;
+            paint();
+            showActions();
+          }
+          return;
+        }
+        if (start && Math.hypot(t2.clientX - start.x, t2.clientY - start.y) > 10) {
+          clearTimer();
+        }
+      }, { passive: false });
+      const finish = /* @__PURE__ */ __name(() => {
+        clearTimer();
+        selecting = false;
+        start = null;
+      }, "finish");
+      textEl.addEventListener("touchend", finish, { passive: true });
+      textEl.addEventListener("touchcancel", finish, { passive: true });
+      const copyBtn = document.getElementById("clipSplitCopy");
+      if (copyBtn && !copyBtn.__clipSelBound) {
+        copyBtn.__clipSelBound = true;
+        copyBtn.addEventListener("click", () => {
+          const sel = this.clipSplitSelection || "";
+          if (!sel) return;
+          this.call(() => {
+            if (typeof Native.copyText === "function") {
+              Native.copyText(sel, this.token);
+              this.showToast(t("\u5DF2\u590D\u5236"));
+            } else {
+              this.showToast(t("\u5F53\u524D\u7248\u672C\u4E0D\u652F\u6301\u590D\u5236\uFF0C\u8BF7\u66F4\u65B0 APK"));
+            }
+          });
+        });
+      }
+      const pasteBtn = document.getElementById("clipSplitPaste");
+      if (pasteBtn && !pasteBtn.__clipSelBound) {
+        pasteBtn.__clipSelBound = true;
+        pasteBtn.addEventListener("click", () => {
+          const sel = this.clipSplitSelection || "";
+          if (!sel) return;
+          this.pasteClipPiece(sel);
+        });
+      }
     }
     /** 片段/全文的上屏与整条一致：编辑卡开着时填进「常用内容」
      *  输入框而不是上屏；贴完关面板（连带收起拆分视图）。 */

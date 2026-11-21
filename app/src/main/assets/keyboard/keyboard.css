@@ -940,7 +940,36 @@ body[data-candidate-mode="slim"] { --preedit-band: 0px; }
     overflow-y: auto;
     word-break: break-word;
     padding: 2px 2px 8px;
+    /* 2026-11-22：长按拖选——选中态不拦截点按，拖选时禁原生
+     * 文本选择与长按菜单，选区由 JS 按字 span 高亮。 */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: pan-y;
 }
+.clip-split-char.sel {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: 3px;
+}
+.clip-split-actions {
+    display: flex;
+    gap: 8px;
+    padding: 0 0 8px;
+}
+.clip-split-actions[hidden] { display: none; }
+.clip-split-action {
+    flex: 1;
+    min-height: 36px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--pill);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+}
+.clip-split-action-primary { background: var(--accent); color: var(--accent-ink); }
+.clip-split-action:active { background: var(--pressed); }
 .clip-split-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .clip-split-chip {
     display: flex;

@@ -1,6 +1,8 @@
 package com.feelime.ime
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
@@ -4954,6 +4956,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 return@guarded
             }
             coordinator.pasteExternal(text, countStats = false)
+        }
+
+        /** 选词视图（2026-11-22）：把拖选出的范围写回系统剪贴板。
+         * 与 pasteText 同门闸、同校验；写剪贴板是本机操作，不上传。 */
+        @JavascriptInterface
+        fun copyText(text: String, token: String) = guarded(token, limited = false) {
+            if (!isValidCommitPayload(text)) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            val manager = applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            manager.setPrimaryClip(ClipData.newPlainText("feelime", text))
         }
 
         /** Candidate-bar ×: abort composition, restore the toolbar.
